@@ -14,6 +14,7 @@ import InlineWorker from './worker.ts?worker&inline';
 const renderer = new VizRenderer();
 let currentAnalysis: AnalysisSuccess | null = null;
 let userEditedAlphabet: string[] | null = null;
+let buildGeneration = 0;
 
 // Setup inline worker
 try {
@@ -164,6 +165,7 @@ function insertAtCursor(char: string): void {
 
 async function handleBuild() {
   if (!inputEl) return;
+  const gen = ++buildGeneration;
   const source = inputEl.value;
 
   const notation = notationSelectEl?.value === 'textbook' ? 'textbook' : 'standard';
@@ -281,11 +283,16 @@ async function handleBuild() {
   const dot = toDot(analysis.nfa);
   const result = await renderer.render(dot);
 
+  if (gen !== buildGeneration) return;
+
   if (canvasEl) {
     if (result.ok) {
       canvasEl.innerHTML = result.svg;
     } else {
-      canvasEl.textContent = `Error rendering diagram: ${result.error}`;
+      canvasEl.innerHTML = '';
+      if (result.error) {
+        canvasEl.textContent = `Error rendering diagram: ${result.error}`;
+      }
     }
   }
 

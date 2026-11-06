@@ -364,6 +364,29 @@ const assert = require('node:assert');
   assert(!verdictAfterTextbookSwitch.includes('ACCEPT'), 'Run "ba" must not show ACCEPT after switching to textbook with "|"');
   assert.strictEqual(verdictAfterTextbookSwitch, '', 'Verdict must be empty when no NFA exists');
 
+  // 22. Stale-render guard race test:
+  // Inside ONE page.evaluate (same task), set #regex-input to "a" and click #build-button,
+  // then set it to "(a|" and click #build-button. Wait for in-flight render to settle (~500 ms),
+  // then assert #canvas contains no svg and #verdict is empty.
+  await page.selectOption('#notation-select', 'standard');
+  await page.evaluate(() => {
+    const input = document.getElementById('regex-input');
+    const btn = document.getElementById('build-button');
+    input.value = 'a';
+    btn.click();
+    input.value = '(a|';
+    btn.click();
+  });
+
+  // Wait for the in-flight render to settle
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  const hasSvgAfterRace = await page.evaluate(() => document.querySelector('#canvas svg') !== null);
+  assert.strictEqual(hasSvgAfterRace, false, '#canvas must contain no svg after failed build preempts in-flight render');
+
+  const verdictAfterRace = await page.textContent('#verdict');
+  assert.strictEqual(verdictAfterRace, '', '#verdict must be empty');
+
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
 
 
