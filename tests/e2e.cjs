@@ -92,7 +92,7 @@ const assert = require('node:assert');
   console.log('Trace escaped text:', traceEscapedText);
   assert(traceEscapedText.includes('<b>&'), 'Trace textContent must contain the literal "<b>&"');
 
-  // 12. Syntax error test: type '(a|)', see error at position 2, last good build stays, then fix it
+  // 12. Syntax error test: type '(a|)', see error at position 2, last good build stays
   await page.evaluate(() => { window.__buildDone = false; });
   await page.fill('#regex-input', '(a|)');
   await page.click('#build-button');
@@ -113,18 +113,7 @@ const assert = require('node:assert');
   const hasSvgAfterError = await page.evaluate(() => !!document.querySelector('#canvas svg'));
   assert(hasSvgAfterError, 'Previous canvas SVG must stay on screen after error');
 
-  // Fix the error
-  await page.evaluate(() => { window.__buildDone = false; });
-  await page.fill('#regex-input', '(a|b)*a');
-  await page.click('#build-button');
-  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
-
-  const errorTextFixed = await page.textContent('#error-message');
-  assert.strictEqual(errorTextFixed, '', 'Error message must be cleared after fixing syntax error');
-  const fixedPosAttr = await page.getAttribute('#regex-input', 'data-error-position');
-  assert.strictEqual(fixedPosAttr, null, 'regex-input data-error-position must be removed after successful build');
-
-  // 13. Empty input hint test: empty input shows a hint and no error, last good build stays on screen
+  // 13. Empty input hint test directly after error: build '(a|)' -> attribute is '2'. Clear the input and build -> attribute is absent, hint is shown, last good build is still on screen.
   await page.evaluate(() => { window.__buildDone = false; });
   await page.fill('#regex-input', '');
   await page.click('#build-button');
@@ -136,8 +125,36 @@ const assert = require('node:assert');
   const errorClass = await page.getAttribute('#error-message', 'class');
   assert(errorClass.includes('hint') && !errorClass.includes('error'), 'Empty input hint must not be styled as an error');
 
+  const emptyPosAttr = await page.getAttribute('#regex-input', 'data-error-position');
+  assert.strictEqual(emptyPosAttr, null, 'regex-input data-error-position must be absent on empty input');
+
   const statsAfterEmpty = await page.textContent('#stats');
   assert(statsAfterEmpty.includes('States: 10'), 'Previous build stats must stay on screen on empty input');
+
+  // Fix the error by building (a|b)*a
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const errorTextFixed = await page.textContent('#error-message');
+  assert.strictEqual(errorTextFixed, '', 'Error message must be cleared after fixing syntax error');
+  const fixedPosAttr = await page.getAttribute('#regex-input', 'data-error-position');
+  assert.strictEqual(fixedPosAttr, null, 'regex-input data-error-position must be removed after successful build');
+
+  // 14. Non-BMP UTF-16 selection range test: '🚀 |' error at code point 2 has UTF-16 selection [3, 4]
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '🚀 |');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const selection = await page.evaluate(() => {
+    const el = document.getElementById('regex-input');
+    return { start: el.selectionStart, end: el.selectionEnd };
+  });
+  console.log('Selection for "🚀 |":', selection);
+  assert.strictEqual(selection.start, 3, 'selectionStart must be UTF-16 offset 3');
+  assert.strictEqual(selection.end, 4, 'selectionEnd must be UTF-16 offset 4');
 
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
 

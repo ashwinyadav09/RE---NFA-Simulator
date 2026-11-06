@@ -520,6 +520,48 @@ test('syntax error position counts whitespace and indexes by code points for non
   }
 });
 
+test('pending binary operator does not mask unclosed group at end of input', () => {
+  const res1 = analyze('a|(b');
+  expect(res1.ok).toBe(false);
+  if (!res1.ok) {
+    expect(res1.code).toBe('UNBALANCED_LPAREN');
+    expect(res1.position).toBe(2);
+  }
+
+  const res2 = analyze('(a|(b');
+  expect(res2.ok).toBe(false);
+  if (!res2.ok) {
+    expect(res2.code).toBe('UNBALANCED_LPAREN');
+    expect(res2.position).toBe(0);
+  }
+
+  // Regression guards
+  const reg1 = analyze('(a|');
+  expect(reg1.ok).toBe(false);
+  if (!reg1.ok) {
+    expect(reg1.code).toBe('MISSING_OPERAND');
+    expect(reg1.position).toBe(2);
+  }
+
+  const reg2 = analyze('a|');
+  expect(reg2.ok).toBe(false);
+  if (!reg2.ok) {
+    expect(reg2.code).toBe('MISSING_OPERAND');
+    expect(reg2.position).toBe(1);
+  }
+
+  const reg3 = analyze('(a|)');
+  expect(reg3.ok).toBe(false);
+  if (!reg3.ok) {
+    expect(reg3.code).toBe('MISSING_OPERAND');
+    expect(reg3.position).toBe(2);
+  }
+
+  const reg4 = analyze('a|(b)');
+  expect(reg4.ok).toBe(true);
+  assertSuccess(reg4);
+});
+
 
 
 

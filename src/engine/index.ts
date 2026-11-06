@@ -179,6 +179,7 @@ function validateTokens(tokens: Token[]): AnalysisError | null {
         state = 'EXPECTING_OPERATOR';
         frames[frames.length - 1].lastBinaryOp = null;
       } else if (token.type === 'LPAREN') {
+        frames[frames.length - 1].lastBinaryOp = null;
         frames.push({ lparen: token, lastBinaryOp: null });
         state = 'EXPECTING_OPERAND';
       } else if (token.type === 'STAR' || token.type === 'PLUS' || token.type === 'OPT') {

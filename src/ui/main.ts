@@ -85,6 +85,16 @@ function renderTransitionTable(container: HTMLElement, analysis: AnalysisSuccess
 }
 
 
+function codePointToUtf16Range(source: string, codePointIndex: number): { start: number; end: number } {
+  const codePoints = Array.from(source);
+  let start = 0;
+  for (let i = 0; i < codePointIndex && i < codePoints.length; i++) {
+    start += codePoints[i].length;
+  }
+  const len = codePointIndex < codePoints.length ? codePoints[codePointIndex].length : 1;
+  return { start, end: start + len };
+}
+
 async function handleBuild() {
   if (!inputEl) return;
   const source = inputEl.value;
@@ -106,10 +116,13 @@ async function handleBuild() {
         errorEl.className = 'error';
       }
     }
-    if (analysis.code !== 'EMPTY_INPUT' && analysis.position !== undefined) {
+    if (analysis.code === 'EMPTY_INPUT') {
+      inputEl.removeAttribute('data-error-position');
+    } else if (analysis.position !== undefined) {
       inputEl.setAttribute('data-error-position', String(analysis.position));
       inputEl.focus();
-      inputEl.setSelectionRange(analysis.position, analysis.position + 1);
+      const { start, end } = codePointToUtf16Range(source, analysis.position);
+      inputEl.setSelectionRange(start, end);
     }
     (window as any).__buildDone = true;
     return;
