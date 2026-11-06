@@ -163,6 +163,58 @@ test('toDot generates valid DOT with dashed epsilon edges and ids for 10-state w
   }
 });
 
+test('toDot correctly renders merge-mode NFA with gaps, node and edge ids, and VizRenderer succeeds', async () => {
+  // Merge-mode NFA for (a|b)*a: state 8 is removed, 11 transitions
+  const mergeNfa = {
+    states: [0, 1, 2, 3, 4, 5, 6, 7, 9],
+    start: 6,
+    accept: 9,
+    transitions: [
+      { from: 0, to: 1, label: 'a' },
+      { from: 2, to: 3, label: 'b' },
+      { from: 4, to: 0, label: 'ε' },
+      { from: 4, to: 2, label: 'ε' },
+      { from: 1, to: 5, label: 'ε' },
+      { from: 3, to: 5, label: 'ε' },
+      { from: 6, to: 4, label: 'ε' },
+      { from: 5, to: 7, label: 'ε' },
+      { from: 6, to: 7, label: 'ε' },
+      { from: 5, to: 4, label: 'ε' },
+      { from: 7, to: 9, label: 'a' }
+    ]
+  };
+
+  const dot = toDot(mergeNfa);
+
+  // States check: q0..q7 and q9 are present, q8 is absent
+  for (const s of [0, 1, 2, 3, 4, 5, 6, 7, 9]) {
+    expect(dot).toContain(`id="n${s}"`);
+    expect(dot).toContain(`q${s} [`);
+  }
+  expect(dot).not.toContain('id="n8"');
+  expect(dot).not.toMatch(/\bq8\b/);
+
+  // Edges: e0 through e10 all present
+  for (let i = 0; i <= 10; i++) {
+    expect(dot).toContain(`id="e${i}"`);
+  }
+
+  // Double circle on accept state q9
+  expect(dot).toMatch(/q9\s*\[[^\]]*shape=doublecircle/);
+
+  // Start arrow to q6
+  expect(dot).toContain('__start -> q6 [id="start-edge"]');
+
+  // Verify rendering with VizRenderer
+  const renderer = new VizRenderer();
+  const renderResult = await renderer.render(dot);
+  expect(renderResult.ok).toBe(true);
+  if (renderResult.ok) {
+    expect(renderResult.svg).toContain('<svg');
+  }
+});
+
+
 
 
 

@@ -228,6 +228,102 @@ const assert = require('node:assert');
   assert(verdictPlus.includes('ACCEPT'), 'a+ must accept "a"');
   assert(verdictPlus.includes('REJECT'), 'a+ must reject ""');
 
+  // 19. Ticket 06: Concat-select merge mode rebuilds automatically
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.selectOption('#notation-select', 'standard');
+  await page.selectOption('#concat-select', 'merge');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const statsMerge = await page.textContent('#stats');
+  console.log('Stats for (a|b)*a in merge mode:', statsMerge);
+  assert(statsMerge.includes('States: 9'), 'Merge mode (a|b)*a must have 9 states');
+  assert(statsMerge.includes('Transitions: 11'), 'Merge mode (a|b)*a must have 11 transitions');
+
+  // Build (a|b)*abb in merge mode
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|b)*abb');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const statsAbbMerge = await page.textContent('#stats');
+  console.log('Stats for (a|b)*abb in merge mode:', statsAbbMerge);
+  assert(statsAbbMerge.includes('States: 11'), 'Merge mode (a|b)*abb must have 11 states');
+  assert(statsAbbMerge.includes('Transitions: 13'), 'Merge mode (a|b)*abb must have 13 transitions');
+
+  // 20. Ticket 06: Textbook notation
+  // Switch notation-select to textbook, concat-select to epsilon-link
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.selectOption('#concat-select', 'epsilon-link');
+  await page.selectOption('#notation-select', 'textbook');
+  await page.fill('#regex-input', '(a+b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const statsTextbook = await page.textContent('#stats');
+  console.log('Stats for (a+b)*a in textbook mode:', statsTextbook);
+  assert(statsTextbook.includes('States: 10'), 'Textbook (a+b)*a must have 10 states');
+  assert(statsTextbook.includes('Transitions: 12'), 'Textbook (a+b)*a must have 12 transitions');
+
+  // Type 'a|b' in textbook mode -> NOT_AN_OPERATOR
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', 'a|b');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const errorTextbook = await page.textContent('#error-message');
+  console.log('Error message for a|b in textbook mode:', errorTextbook);
+  assert(errorTextbook.includes('not an operator') || errorTextbook.includes('NOT_AN_OPERATOR'), 'Must report not an operator');
+  const textbookErrorCode = await page.getAttribute('#error-message', 'data-error-code');
+  assert.strictEqual(textbookErrorCode, 'NOT_AN_OPERATOR', 'data-error-code must be NOT_AN_OPERATOR');
+
+  // 21. Ticket 06: Buttons insert ε and ∅ at cursor
+  await page.fill('#regex-input', '');
+  await page.click('#insert-eps');
+  let inputVal = await page.inputValue('#regex-input');
+  assert.strictEqual(inputVal, 'ε', 'Insert ε button must insert ε');
+
+  await page.click('#insert-empty');
+  inputVal = await page.inputValue('#regex-input');
+  assert.strictEqual(inputVal, 'ε∅', 'Insert ∅ button must insert ∅');
+
+  // 22. Ticket 06: Alphabet editing and symbol removal protection
+  await page.selectOption('#notation-select', 'standard');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const inferredAlpha = await page.inputValue('#alphabet-input');
+  console.log('Inferred alphabet value:', inferredAlpha);
+  assert(inferredAlpha.includes('a') && inferredAlpha.includes('b'), 'Alphabet must contain a and b');
+
+  // Add symbol 'c' to alphabet: 'a, b, c'
+  await page.fill('#alphabet-input', 'a, b, c');
+  await page.dispatchEvent('#alphabet-input', 'change');
+
+  // Run 'c', verify dead run (not out of alphabet)
+  await page.evaluate(() => { window.__runDone = false; });
+  await page.fill('#test-input', 'c');
+  await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
+
+  const traceWithC = await page.textContent('#trace');
+  console.log('Trace for added symbol c:', traceWithC);
+  assert(traceWithC.includes('Dead at position 0'), 'Unused alphabet symbol c must cause dead run');
+  assert(!traceWithC.includes('outside alphabet'), 'Symbol c is in alphabet so must not report outside alphabet');
+
+  // Attempt to remove symbol 'a' by setting alphabet to 'b, c'
+  await page.fill('#alphabet-input', 'b, c');
+  await page.dispatchEvent('#alphabet-input', 'change');
+
+  const alphaMsg = await page.textContent('#alphabet-message');
+  console.log('Alphabet removal message:', alphaMsg);
+  assert(alphaMsg.includes("Cannot remove symbol 'a'"), 'Must refuse removal of used symbol a');
+
+  const restoredAlpha = await page.inputValue('#alphabet-input');
+  assert(restoredAlpha.includes('a'), 'Alphabet input must retain used symbol a');
+
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
 
 

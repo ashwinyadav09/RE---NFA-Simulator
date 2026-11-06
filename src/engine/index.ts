@@ -1,3 +1,5 @@
+export const EPS = 'ε';
+
 export type TokenType =
   | 'SYMBOL'
   | 'EPSILON'
@@ -8,7 +10,8 @@ export type TokenType =
   | 'PLUS'
   | 'OPT'
   | 'LPAREN'
-  | 'RPAREN';
+  | 'RPAREN'
+  | 'INVALID_PIPE';
 
 // Parse tree node types (built from postfix form; binary operators are left-nested)
 export type ParseNode =
@@ -60,6 +63,8 @@ export interface Step {
   stackAfter: Fragment[];
   stackDepthAfter: number;
   position?: number;
+  mergedPair?: { removed: number; into: number };
+  merged?: { removed: number; into: number };
 }
 
 export interface InvariantsResult {
@@ -121,6 +126,7 @@ export interface RunResult {
 export interface AnalyzeOptions {
   notation?: 'standard' | 'textbook';
   concatenation?: 'epsilon-link' | 'merge';
+  alphabet?: string[];
 }
 
 function tokenize(source: string, notation: 'standard' | 'textbook' = 'standard'): Token[] {
@@ -139,9 +145,10 @@ function tokenize(source: string, notation: 'standard' | 'textbook' = 'standard'
       rawTokens.push({ type: 'RPAREN', position: i });
     } else if (char === '|') {
       if (notation === 'textbook') {
-        throw new Error('NOT_AN_OPERATOR: | is not allowed in textbook mode');
+        rawTokens.push({ type: 'INVALID_PIPE', position: i });
+      } else {
+        rawTokens.push({ type: 'UNION', position: i });
       }
-      rawTokens.push({ type: 'UNION', position: i });
     } else if (char === '+') {
       if (notation === 'textbook') {
         rawTokens.push({ type: 'UNION', position: i });
@@ -164,17 +171,27 @@ function tokenize(source: string, notation: 'standard' | 'textbook' = 'standard'
   return rawTokens;
 }
 
-function validateTokens(tokens: Token[]): AnalysisError | null {
+function validateTokens(tokens: Token[], notation: 'standard' | 'textbook' = 'standard'): AnalysisError | null {
   interface Frame {
     lparen?: Token;
     lastBinaryOp: Token | null;
   }
 
+  const unionOpChar = notation === 'textbook' ? '+' : '|';
   const frames: Frame[] = [{ lastBinaryOp: null }];
   let state: 'EXPECTING_OPERAND' | 'EXPECTING_OPERATOR' = 'EXPECTING_OPERAND';
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
+
+    if (token.type === 'INVALID_PIPE') {
+      return {
+        code: 'NOT_AN_OPERATOR',
+        position: token.position,
+        message: "'|' is not an operator in textbook mode",
+        hint: "Use '+' for union in textbook mode"
+      };
+    }
 
     // Check for empty group: ( immediately followed by )
     if (token.type === 'LPAREN' && tokens[i + 1]?.type === 'RPAREN') {
@@ -207,14 +224,14 @@ function validateTokens(tokens: Token[]): AnalysisError | null {
           return {
             code: 'MISSING_OPERAND',
             position: currentFrame.lastBinaryOp.position,
-            message: "Missing operand after '|'",
+            message: `Missing operand after '${unionOpChar}'`,
             hint: 'Binary operator requires operands on both sides'
           };
         } else {
           return {
             code: 'MISSING_OPERAND',
             position: token.position,
-            message: "Missing operand before '|'",
+            message: `Missing operand before '${unionOpChar}'`,
             hint: 'Binary operator requires operands on both sides'
           };
         }
@@ -224,7 +241,7 @@ function validateTokens(tokens: Token[]): AnalysisError | null {
           return {
             code: 'MISSING_OPERAND',
             position: currentFrame.lastBinaryOp.position,
-            message: "Missing operand after '|'",
+            message: `Missing operand after '${unionOpChar}'`,
             hint: 'Binary operator requires operands on both sides'
           };
         } else {
@@ -276,7 +293,7 @@ function validateTokens(tokens: Token[]): AnalysisError | null {
       return {
         code: 'MISSING_OPERAND',
         position: frames[f].lastBinaryOp!.position,
-        message: "Missing operand after '|'",
+        message: `Missing operand after '${unionOpChar}'`,
         hint: 'Binary operator requires operands on both sides'
       };
     }
@@ -387,7 +404,10 @@ function toPostfix(tokensWithConcat: Token[]): Token[] {
   return postfix;
 }
 
-function buildNFA(postfix: Token[]): {
+function buildNFA(
+  postfix: Token[],
+  concatenation: 'epsilon-link' | 'merge' = 'epsilon-link'
+): {
   steps: Step[];
   nfa: NFA;
   allStates: number[];
@@ -404,6 +424,7 @@ function buildNFA(postfix: Token[]): {
     let rule = '';
     const newStates: number[] = [];
     const newTransitions: Transition[] = [];
+    let mergedPair: { removed: number; into: number } | undefined;
     let produced: Fragment;
 
     switch (token.type) {
@@ -422,7 +443,7 @@ function buildNFA(postfix: Token[]): {
         const s = nextStateId++;
         const f = nextStateId++;
         newStates.push(s, f);
-        newTransitions.push({ from: s, to: f, label: 'ε' });
+        newTransitions.push({ from: s, to: f, label: EPS });
         produced = { start: s, accept: f };
         stack.push(produced);
         break;
@@ -440,9 +461,29 @@ function buildNFA(postfix: Token[]): {
         rule = 'concatenation';
         const B = stack.pop()!;
         const A = stack.pop()!;
-        newTransitions.push({ from: A.accept, to: B.start, label: 'ε' });
-        produced = { start: A.start, accept: B.accept };
-        stack.push(produced);
+        if (concatenation === 'merge') {
+          mergedPair = { removed: B.start, into: A.accept };
+          // Delete B.start from allStates
+          const idx = allStates.indexOf(B.start);
+          if (idx !== -1) {
+            allStates.splice(idx, 1);
+          }
+          // Move outgoing transitions from B.start to A.accept
+          for (const t of allTransitions) {
+            if (t.from === B.start) {
+              t.from = A.accept;
+            }
+            if (t.to === B.start) {
+              t.to = A.accept;
+            }
+          }
+          produced = { start: A.start, accept: B.accept };
+          stack.push(produced);
+        } else {
+          newTransitions.push({ from: A.accept, to: B.start, label: EPS });
+          produced = { start: A.start, accept: B.accept };
+          stack.push(produced);
+        }
         break;
       }
       case 'UNION': {
@@ -453,10 +494,10 @@ function buildNFA(postfix: Token[]): {
         const f = nextStateId++;
         newStates.push(s, f);
         newTransitions.push(
-          { from: s, to: A.start, label: 'ε' },
-          { from: s, to: B.start, label: 'ε' },
-          { from: A.accept, to: f, label: 'ε' },
-          { from: B.accept, to: f, label: 'ε' }
+          { from: s, to: A.start, label: EPS },
+          { from: s, to: B.start, label: EPS },
+          { from: A.accept, to: f, label: EPS },
+          { from: B.accept, to: f, label: EPS }
         );
         produced = { start: s, accept: f };
         stack.push(produced);
@@ -469,10 +510,10 @@ function buildNFA(postfix: Token[]): {
         const f = nextStateId++;
         newStates.push(s, f);
         newTransitions.push(
-          { from: s, to: A.start, label: 'ε' },
-          { from: A.accept, to: f, label: 'ε' },
-          { from: s, to: f, label: 'ε' },
-          { from: A.accept, to: A.start, label: 'ε' }
+          { from: s, to: A.start, label: EPS },
+          { from: A.accept, to: f, label: EPS },
+          { from: s, to: f, label: EPS },
+          { from: A.accept, to: A.start, label: EPS }
         );
         produced = { start: s, accept: f };
         stack.push(produced);
@@ -485,9 +526,9 @@ function buildNFA(postfix: Token[]): {
         const f = nextStateId++;
         newStates.push(s, f);
         newTransitions.push(
-          { from: s, to: A.start, label: 'ε' },
-          { from: A.accept, to: f, label: 'ε' },
-          { from: A.accept, to: A.start, label: 'ε' }
+          { from: s, to: A.start, label: EPS },
+          { from: A.accept, to: f, label: EPS },
+          { from: A.accept, to: A.start, label: EPS }
         );
         produced = { start: s, accept: f };
         stack.push(produced);
@@ -500,9 +541,9 @@ function buildNFA(postfix: Token[]): {
         const f = nextStateId++;
         newStates.push(s, f);
         newTransitions.push(
-          { from: s, to: A.start, label: 'ε' },
-          { from: A.accept, to: f, label: 'ε' },
-          { from: s, to: f, label: 'ε' }
+          { from: s, to: A.start, label: EPS },
+          { from: A.accept, to: f, label: EPS },
+          { from: s, to: f, label: EPS }
         );
         produced = { start: s, accept: f };
         stack.push(produced);
@@ -529,7 +570,8 @@ function buildNFA(postfix: Token[]): {
       result: { start: produced.start, accept: produced.accept },
       stackAfter: stackSnapshot,
       stackDepthAfter: stackSnapshot.length,
-      position: token.position
+      position: token.position,
+      ...(mergedPair ? { mergedPair, merged: mergedPair } : {})
     });
   }
 
@@ -558,6 +600,43 @@ function inferAlphabet(tokens: Token[]): string[] {
     }
   }
   return alphabet;
+}
+
+export function validateAlphabet(
+  alphabet: string[],
+  requiredSymbols: string[]
+): { ok: true; alphabet: string[] } | { ok: false; message: string } {
+  const disallowed = new Set(['@', 'ε', '#', '∅']);
+  for (const sym of alphabet) {
+    if (disallowed.has(sym)) {
+      return {
+        ok: false,
+        message: `'${sym}' is not allowed in the alphabet`
+      };
+    }
+  }
+
+  const alphaSet = new Set(alphabet);
+  for (const req of requiredSymbols) {
+    if (!alphaSet.has(req)) {
+      return {
+        ok: false,
+        message: `Cannot remove symbol '${req}' used in expression`
+      };
+    }
+  }
+
+  // Deduplicate while preserving order
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+  for (const sym of alphabet) {
+    if (!seen.has(sym)) {
+      seen.add(sym);
+      deduped.push(sym);
+    }
+  }
+
+  return { ok: true, alphabet: deduped };
 }
 
 function computeTransitionTable(
@@ -596,7 +675,7 @@ function computeEpsilonClosure(startStates: number[], transitions: Transition[])
   while (queue.length > 0) {
     const current = queue.shift()!;
     for (const t of transitions) {
-      if (t.from === current && t.label === 'ε') {
+      if (t.from === current && t.label === EPS) {
         if (!closure.has(t.to)) {
           closure.add(t.to);
           queue.push(t.to);
@@ -625,7 +704,7 @@ export function checkInvariants(nfa: NFA): InvariantsResult {
       noDanglingEdges = false;
     }
     if (outgoing[t.from]) {
-      if (t.label === 'ε') {
+      if (t.label === EPS) {
         outgoing[t.from].epsilon++;
       } else {
         outgoing[t.from].symbol++;
@@ -696,6 +775,7 @@ function astFromPostfix(postfix: Token[]): ParseNode {
 
 export function analyze(source: string, options: AnalyzeOptions = {}): AnalysisResult {
   const notation = options.notation ?? 'standard';
+  const concatenation = options.concatenation ?? 'epsilon-link';
   const tokens = tokenize(source, notation);
 
   if (tokens.length === 0) {
@@ -713,7 +793,7 @@ export function analyze(source: string, options: AnalyzeOptions = {}): AnalysisR
     };
   }
 
-  const validationError = validateTokens(tokens);
+  const validationError = validateTokens(tokens, notation);
   if (validationError) {
     return {
       ok: false,
@@ -727,8 +807,28 @@ export function analyze(source: string, options: AnalyzeOptions = {}): AnalysisR
 
   const tokensWithConcat = insertImplicitConcat(tokens);
   const postfix = toPostfix(tokensWithConcat);
-  const { steps, nfa } = buildNFA(postfix);
-  const alphabet = inferAlphabet(tokens);
+  const { steps, nfa } = buildNFA(postfix, concatenation);
+  const inferredAlphabet = inferAlphabet(tokens);
+  let alphabet = inferredAlphabet;
+
+  if (options.alphabet !== undefined) {
+    const alphaRes = validateAlphabet(options.alphabet, inferredAlphabet);
+    if (!alphaRes.ok) {
+      return {
+        ok: false,
+        code: 'INVALID_ALPHABET',
+        message: alphaRes.message,
+        hint: 'Alphabet must include all symbols used in the expression and cannot contain ε or ∅',
+        error: {
+          code: 'INVALID_ALPHABET',
+          message: alphaRes.message,
+          hint: 'Alphabet must include all symbols used in the expression and cannot contain ε or ∅'
+        }
+      };
+    }
+    alphabet = alphaRes.alphabet;
+  }
+
   const transitionTable = computeTransitionTable(nfa.states, nfa.transitions);
   const initialClosure = computeEpsilonClosure([nfa.start], nfa.transitions);
   const invariants = checkInvariants(nfa);
@@ -780,7 +880,7 @@ export function run(nfa: NFA, alphabet: string[], input: string): RunResult {
     const moveTargets = new Set<number>();
     for (const s of current) {
       for (const t of nfa.transitions) {
-        if (t.from === s && t.label !== 'ε' && t.label === symbol) {
+        if (t.from === s && t.label !== EPS && t.label === symbol) {
           moveTargets.add(t.to);
         }
       }

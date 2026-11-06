@@ -1,10 +1,19 @@
 /// <reference types="vite/client" />
-import { analyze, runLines, RunResult, AnalysisSuccess, ParseNode, Token } from '../engine/index';
+import {
+  analyze,
+  runLines,
+  RunResult,
+  AnalysisSuccess,
+  ParseNode,
+  Token,
+  validateAlphabet
+} from '../engine/index';
 import { toDot, VizRenderer } from '../diagram/index';
 import InlineWorker from './worker.ts?worker&inline';
 
 const renderer = new VizRenderer();
 let currentAnalysis: AnalysisSuccess | null = null;
+let userEditedAlphabet: string[] | null = null;
 
 // Setup inline worker
 try {
@@ -24,6 +33,12 @@ try {
 
 const inputEl = document.getElementById('regex-input') as HTMLInputElement | null;
 const buttonEl = document.getElementById('build-button') as HTMLButtonElement | null;
+const notationSelectEl = document.getElementById('notation-select') as HTMLSelectElement | null;
+const concatSelectEl = document.getElementById('concat-select') as HTMLSelectElement | null;
+const insertEpsBtn = document.getElementById('insert-eps') as HTMLButtonElement | null;
+const insertEmptyBtn = document.getElementById('insert-empty') as HTMLButtonElement | null;
+const alphabetInputEl = document.getElementById('alphabet-input') as HTMLInputElement | null;
+const alphabetMessageEl = document.getElementById('alphabet-message');
 const statsEl = document.getElementById('stats');
 const canvasEl = document.getElementById('canvas');
 const tokenListEl = document.getElementById('token-list');
@@ -124,11 +139,48 @@ function codePointToUtf16Range(source: string, codePointIndex: number): { start:
   return { start, end: start + len };
 }
 
+function parseAlphabetInput(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  if (trimmed.includes(',')) {
+    return trimmed.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  if (/\s/.test(trimmed)) {
+    return trimmed.split(/\s+/).filter(Boolean);
+  }
+  return Array.from(trimmed);
+}
+
+function insertAtCursor(char: string): void {
+  if (!inputEl) return;
+  const start = inputEl.selectionStart ?? inputEl.value.length;
+  const end = inputEl.selectionEnd ?? inputEl.value.length;
+  const val = inputEl.value;
+  inputEl.value = val.substring(0, start) + char + val.substring(end);
+  const nextPos = start + char.length;
+  inputEl.focus();
+  inputEl.setSelectionRange(nextPos, nextPos);
+}
+
 async function handleBuild() {
   if (!inputEl) return;
   const source = inputEl.value;
 
-  const analysis = analyze(source);
+  const notation = notationSelectEl?.value === 'textbook' ? 'textbook' : 'standard';
+  const concatenation = concatSelectEl?.value === 'merge' ? 'merge' : 'epsilon-link';
+
+  let analysis = analyze(source, {
+    notation,
+    concatenation,
+    ...(userEditedAlphabet ? { alphabet: userEditedAlphabet } : {})
+  });
+
+  // If a previously edited alphabet lacks a symbol required by the new expression, reset it
+  if (!analysis.ok && analysis.code === 'INVALID_ALPHABET' && userEditedAlphabet) {
+    userEditedAlphabet = null;
+    analysis = analyze(source, { notation, concatenation });
+  }
+
   if (!analysis.ok) {
     if (errorEl) {
       if (analysis.code === 'EMPTY_INPUT') {
@@ -166,6 +218,14 @@ async function handleBuild() {
   inputEl.removeAttribute('data-error-position');
 
   currentAnalysis = analysis;
+
+  if (alphabetInputEl) {
+    alphabetInputEl.value = analysis.alphabet.join(', ');
+  }
+  if (alphabetMessageEl) {
+    alphabetMessageEl.textContent = '';
+    alphabetMessageEl.className = '';
+  }
 
   if (statsEl) {
     statsEl.textContent = `States: ${analysis.stats.states}, Transitions: ${analysis.stats.transitions}`;
@@ -258,7 +318,13 @@ function renderTrace(container: HTMLElement, results: RunResult[], lines: string
 function handleRun() {
   if (!currentAnalysis) {
     if (inputEl && inputEl.value) {
-      const res = analyze(inputEl.value);
+      const notation = notationSelectEl?.value === 'textbook' ? 'textbook' : 'standard';
+      const concatenation = concatSelectEl?.value === 'merge' ? 'merge' : 'epsilon-link';
+      const res = analyze(inputEl.value, {
+        notation,
+        concatenation,
+        ...(userEditedAlphabet ? { alphabet: userEditedAlphabet } : {})
+      });
       if (res.ok) {
         currentAnalysis = res;
       } else {
@@ -271,7 +337,8 @@ function handleRun() {
 
   const text = testInputEl ? testInputEl.value : '';
   const lines = text.split(/\r\n|\r|\n/);
-  const results = runLines(currentAnalysis.nfa, currentAnalysis.alphabet, text);
+  const activeAlphabet = userEditedAlphabet ?? currentAnalysis.alphabet;
+  const results = runLines(currentAnalysis.nfa, activeAlphabet, text);
 
   if (verdictEl) {
     verdictEl.textContent = results.map((r) => r.verdict).join('\n');
@@ -292,6 +359,48 @@ if (runButtonEl) {
   runButtonEl.addEventListener('click', handleRun);
 }
 
+if (notationSelectEl) {
+  notationSelectEl.addEventListener('change', handleBuild);
+}
+
+if (concatSelectEl) {
+  concatSelectEl.addEventListener('change', handleBuild);
+}
+
+if (insertEpsBtn) {
+  insertEpsBtn.addEventListener('click', () => insertAtCursor('ε'));
+}
+
+if (insertEmptyBtn) {
+  insertEmptyBtn.addEventListener('click', () => insertAtCursor('∅'));
+}
+
+if (alphabetInputEl) {
+  alphabetInputEl.addEventListener('change', () => {
+    if (!currentAnalysis) return;
+    const newAlpha = parseAlphabetInput(alphabetInputEl.value);
+    const required = currentAnalysis.tokens
+      .filter((t) => t.type === 'SYMBOL' && t.symbol !== undefined)
+      .map((t) => t.symbol!);
+    const valRes = validateAlphabet(newAlpha, required);
+    if (!valRes.ok) {
+      if (alphabetMessageEl) {
+        alphabetMessageEl.textContent = valRes.message;
+        alphabetMessageEl.className = 'error';
+      }
+      // Restore valid alphabet in input
+      alphabetInputEl.value = (userEditedAlphabet ?? currentAnalysis.alphabet).join(', ');
+    } else {
+      if (alphabetMessageEl) {
+        alphabetMessageEl.textContent = '';
+        alphabetMessageEl.className = '';
+      }
+      userEditedAlphabet = valRes.alphabet;
+      currentAnalysis.alphabet = valRes.alphabet;
+      alphabetInputEl.value = valRes.alphabet.join(', ');
+    }
+  });
+}
 
 if (inputEl) {
   inputEl.addEventListener('keydown', (e) => {

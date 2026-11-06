@@ -10,7 +10,22 @@
     <h1>RE → NFA (Thompson) Simulator</h1>
     <div class="controls">
       <input id="regex-input" type="text" placeholder="Enter regular expression" value="" />
+      <button id="insert-eps" data-testid="insert-eps" type="button" title="Insert ε">ε</button>
+      <button id="insert-empty" data-testid="insert-empty" type="button" title="Insert ∅">∅</button>
+      <select id="notation-select" data-testid="notation-select">
+        <option value="standard">Standard (| is union)</option>
+        <option value="textbook">Textbook (+ is union)</option>
+      </select>
+      <select id="concat-select" data-testid="concat-select">
+        <option value="epsilon-link">ε-link</option>
+        <option value="merge">Merge</option>
+      </select>
       <button id="build-button">Build</button>
+    </div>
+    <div class="alphabet-controls">
+      <label for="alphabet-input">Alphabet:</label>
+      <input id="alphabet-input" data-testid="alphabet-input" type="text" placeholder="Inferred alphabet" />
+      <div id="alphabet-message" data-testid="alphabet-message"></div>
     </div>
     <div id="error-message" data-testid="error-message"></div>
     <div id="stats" data-testid="stats"></div>

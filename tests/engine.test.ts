@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { analyze, run, runLines, AnalysisResult, AnalysisSuccess } from '../src/engine/index';
+import { analyze, run, runLines, EPS, AnalysisResult, AnalysisSuccess } from '../src/engine/index';
 import { parseRD } from './oracles';
 
 function assertSuccess(result: AnalysisResult): asserts result is AnalysisSuccess {
@@ -463,14 +463,8 @@ test('UNBALANCED_LPAREN reported at first unclosed ( scanning left-to-right', ()
 const errorCasesFixturePath = resolve(__dirname, '../.agents/skills/thompson-rules/fixtures/error-cases.json');
 const errorCasesFixture = JSON.parse(readFileSync(errorCasesFixturePath, 'utf-8'));
 
-test('error-case fixture cases return expected code and position (ticket 06 textbook cases still disabled)', () => {
+test('error-case fixture cases return expected code and position', () => {
   for (const c of errorCasesFixture.cases) {
-    // Note: Cases requiring textbook notation are enabled by ticket 06
-    if (c.notation === 'textbook') {
-      // Skipped: enabled by ticket 06 (settings, notation, merge, alphabet)
-      continue;
-    }
-
     const res = analyze(c.source, { notation: c.notation });
     expect(res.ok).toBe(false);
     if (!res.ok) {
@@ -706,3 +700,315 @@ test('[T05-5] parseTree matches Oracle 4 with left-nested binary operators and c
   assertSuccess(rClassic);
   expect(rClassic.parseTree).toEqual(parseRD('(a|b)*a'));
 });
+
+// ---- Ticket 06: Settings: textbook notation, merge mode, ε/∅ input, alphabet ----
+
+test('[T06-1] Textbook notation: "+" is union, one-or-more unavailable, "+a" gives MISSING_OPERAND at pos 0', () => {
+  const res = analyze('a+b', { notation: 'textbook' });
+  assertSuccess(res);
+  expect(res.tokens.map((t) => t.type)).toEqual(['SYMBOL', 'UNION', 'SYMBOL']);
+  expect(res.postfix.map((t) => t.type)).toEqual(['SYMBOL', 'SYMBOL', 'UNION']);
+  expect(res.parseTree).toEqual({
+    k: 'union',
+    l: { k: 'sym', v: 'a' },
+    r: { k: 'sym', v: 'b' }
+  });
+  expect(res.stats.states).toBe(6);
+  expect(res.stats.transitions).toBe(6);
+
+  // In textbook mode, '+' is not one-or-more; '+a' has missing operand before '+' at pos 0
+  const resMissing = analyze('+a', { notation: 'textbook' });
+  expect(resMissing.ok).toBe(false);
+  if (!resMissing.ok) {
+    expect(resMissing.code).toBe('MISSING_OPERAND');
+    expect(resMissing.position).toBe(0);
+    expect(resMissing.message).toContain('+');
+  }
+});
+
+test('[T06-2] Textbook notation: "|" gives NOT_AN_OPERATOR with hint at exact position, not an alphabet symbol', () => {
+  const res = analyze('a|b', { notation: 'textbook' });
+  expect(res.ok).toBe(false);
+  if (!res.ok) {
+    expect(res.code).toBe('NOT_AN_OPERATOR');
+    expect(res.position).toBe(1);
+    expect(res.message).toContain('|');
+    expect(res.hint).toBe("Use '+' for union in textbook mode");
+  }
+
+  // Position with spaces: '  a  |  b' -> '|' at code-point index 5
+  const resSpaces = analyze('  a  |  b', { notation: 'textbook' });
+  expect(resSpaces.ok).toBe(false);
+  if (!resSpaces.ok) {
+    expect(resSpaces.code).toBe('NOT_AN_OPERATOR');
+    expect(resSpaces.position).toBe(5);
+  }
+});
+
+test('[T06-3] Textbook notation supports "?" and "*" as unary operators and passes all error-case fixture cases', () => {
+  // 'a?' in textbook mode
+  const resOpt = analyze('a?', { notation: 'textbook' });
+  assertSuccess(resOpt);
+  expect(resOpt.stats.states).toBe(4);
+  expect(resOpt.stats.transitions).toBe(4);
+  expect(resOpt.parseTree).toEqual({ k: 'opt', c: { k: 'sym', v: 'a' } });
+
+  // '(a+b)?' in textbook mode
+  const resUnionOpt = analyze('(a+b)?', { notation: 'textbook' });
+  assertSuccess(resUnionOpt);
+  expect(resUnionOpt.parseTree).toEqual({
+    k: 'opt',
+    c: {
+      k: 'union',
+      l: { k: 'sym', v: 'a' },
+      r: { k: 'sym', v: 'b' }
+    }
+  });
+
+  // Verify simulation of (a+b)? accepts "", "a", "b", rejects "ab"
+  expect(run(resUnionOpt.nfa, resUnionOpt.alphabet, '').accepted).toBe(true);
+  expect(run(resUnionOpt.nfa, resUnionOpt.alphabet, 'a').accepted).toBe(true);
+  expect(run(resUnionOpt.nfa, resUnionOpt.alphabet, 'b').accepted).toBe(true);
+  expect(run(resUnionOpt.nfa, resUnionOpt.alphabet, 'ab').accepted).toBe(false);
+});
+
+test('[T06-4] Textbook golden cases "(a+b)*a" and "(a+b)*abb" match standard notation semantics and sizes', () => {
+  const resTextbook = analyze('(a+b)*a', { notation: 'textbook' });
+  const resStandard = analyze('(a|b)*a', { notation: 'standard' });
+  assertSuccess(resTextbook);
+  assertSuccess(resStandard);
+
+  expect(resTextbook.stats).toEqual(resStandard.stats);
+  expect(resTextbook.nfa.states).toEqual(resStandard.nfa.states);
+  expect(resTextbook.nfa.transitions).toEqual(resStandard.nfa.transitions);
+  expect(resTextbook.transitionTable).toEqual(resStandard.transitionTable);
+
+  for (const str of ['a', 'ba', 'bba', 'aba', '', 'b', 'ab']) {
+    expect(run(resTextbook.nfa, resTextbook.alphabet, str).accepted)
+      .toBe(run(resStandard.nfa, resStandard.alphabet, str).accepted);
+  }
+
+  // Classic abb in textbook notation
+  const resAbbTextbook = analyze('(a+b)*abb', { notation: 'textbook' });
+  assertSuccess(resAbbTextbook);
+  expect(resAbbTextbook.stats).toEqual({ states: 14, transitions: 16 });
+  for (const s of classicAbbFixture.accepts) {
+    expect(run(resAbbTextbook.nfa, resAbbTextbook.alphabet, s).accepted).toBe(true);
+  }
+  for (const s of classicAbbFixture.rejects) {
+    expect(run(resAbbTextbook.nfa, resAbbTextbook.alphabet, s).accepted).toBe(false);
+  }
+});
+
+test('[T06-5] Merge mode: "(a|b)*a" produces 9 states and 11 transitions, step 6 reports mergedPair {8, 7}, state ids keep gaps', () => {
+  const res = analyze('(a|b)*a', { concatenation: 'merge' });
+  assertSuccess(res);
+
+  // Expected counts from worked-example fixture: 9 states, 11 transitions
+  expect(res.stats.states).toBe(workedExample.mergeMode.states);
+  expect(res.stats.transitions).toBe(workedExample.mergeMode.transitions);
+
+  // State 8 deleted; states keep gaps in creation order without renumbering
+  expect(res.nfa.states).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 9]);
+  expect(res.nfa.start).toBe(6);
+  expect(res.nfa.accept).toBe(9);
+
+  // Step 6 (CONCAT) reports the merged pair matching worked-example fixture
+  const step6 = res.steps[5];
+  expect(step6.token).toBe('CONCAT');
+  expect(step6.rule).toBe('concatenation');
+  expect(step6.mergedPair).toEqual(workedExample.mergeMode.mergedAtStep6);
+  expect(step6.newStates).toEqual([]);
+  expect(step6.newTransitions).toEqual([]);
+
+  // Transition from state 8 (8 -a-> 9) was moved to leave state 7 (7 -a-> 9)
+  expect(res.nfa.transitions).toContainEqual({ from: 7, to: 9, label: 'a' });
+  expect(res.nfa.transitions.some((t) => t.from === 8 || t.to === 8)).toBe(false);
+
+  // Simulation preserves language
+  expect(run(res.nfa, res.alphabet, 'a').accepted).toBe(true);
+  expect(run(res.nfa, res.alphabet, 'ba').accepted).toBe(true);
+  expect(run(res.nfa, res.alphabet, 'ab').accepted).toBe(false);
+  expect(run(res.nfa, res.alphabet, '').accepted).toBe(false);
+});
+
+test('[T06-6] Merge mode on "(a|b)*abb" produces 11 states, 13 transitions, and accepts/rejects matching fixture', () => {
+  const res = analyze(classicAbbFixture.source, { concatenation: 'merge' });
+  assertSuccess(res);
+
+  // Classic abb merge fixture: 11 states, 13 transitions
+  expect(res.stats.states).toBe(classicAbbFixture.merge.states);
+  expect(res.stats.transitions).toBe(classicAbbFixture.merge.transitions);
+
+  // Invariants hold
+  expect(res.invariants).toEqual({
+    I1: true,
+    I2: true,
+    I3: true,
+    I4: true,
+    noDanglingEdges: true
+  });
+
+  // Verify concatenation steps have mergedPair recorded
+  const concatSteps = res.steps.filter((s) => s.token === 'CONCAT');
+  expect(concatSteps.length).toBe(3);
+  for (const s of concatSteps) {
+    expect(s.mergedPair).toBeDefined();
+    expect(typeof s.mergedPair?.removed).toBe('number');
+    expect(typeof s.mergedPair?.into).toBe('number');
+  }
+
+  // Language acceptance tests
+  for (const str of classicAbbFixture.accepts) {
+    expect(run(res.nfa, res.alphabet, str).accepted).toBe(true);
+  }
+  for (const str of classicAbbFixture.rejects) {
+    expect(run(res.nfa, res.alphabet, str).accepted).toBe(false);
+  }
+});
+
+test('[T06-7] Step-log replay in merge mode reproduces final NFA states and transitions exactly, invariants I1-I4 hold', () => {
+  for (const expr of ['(a|b)*a', '(a|b)*abb', 'ab', 'a(bc)', '(ab)c']) {
+    const res = analyze(expr, { concatenation: 'merge' });
+    assertSuccess(res);
+
+    // Invariants check
+    expect(res.invariants).toEqual({
+      I1: true,
+      I2: true,
+      I3: true,
+      I4: true,
+      noDanglingEdges: true
+    });
+
+    // Replay algorithm:
+    // 1. Add newStates
+    // 2. If mergedPair, remove `removed` from replayed states, and update transitions
+    // 3. Add newTransitions
+    const replayedStates: number[] = [];
+    const replayedTransitions: { from: number; to: number; label: string }[] = [];
+
+    for (const step of res.steps) {
+      replayedStates.push(...step.newStates);
+
+      if (step.mergedPair) {
+        const { removed, into } = step.mergedPair;
+        const idx = replayedStates.indexOf(removed);
+        if (idx !== -1) {
+          replayedStates.splice(idx, 1);
+        }
+        for (const t of replayedTransitions) {
+          if (t.from === removed) t.from = into;
+          if (t.to === removed) t.to = into;
+        }
+      }
+
+      for (const t of step.newTransitions) {
+        replayedTransitions.push({ ...t });
+      }
+    }
+
+    expect(replayedStates).toEqual(res.nfa.states);
+    expect(replayedTransitions).toEqual(res.nfa.transitions);
+    expect(res.steps[res.steps.length - 1].result.start).toBe(res.nfa.start);
+    expect(res.steps[res.steps.length - 1].result.accept).toBe(res.nfa.accept);
+  }
+});
+
+test('[T06-9] Sentinel EPS, ε/∅ aliases, whitespace ignored, and exclusion from alphabet', () => {
+  // Test EPS sentinel constant
+  expect(typeof EPS).toBe('string');
+  expect(EPS).toBe('ε');
+
+  // Input with ε, ∅, @, #, and whitespace
+  const resEps = analyze('  ε  ');
+  assertSuccess(resEps);
+  expect(resEps.tokens.map((t) => t.type)).toEqual(['EPSILON']);
+  expect(resEps.alphabet).toEqual([]);
+  expect(resEps.nfa.transitions).toEqual([{ from: 0, to: 1, label: EPS }]);
+
+  const resAt = analyze('@');
+  assertSuccess(resAt);
+  expect(resAt.tokens.map((t) => t.type)).toEqual(['EPSILON']);
+  expect(resAt.alphabet).toEqual([]);
+  expect(resAt.nfa.transitions).toEqual([{ from: 0, to: 1, label: EPS }]);
+
+  const resEmpty = analyze('  ∅  ');
+  assertSuccess(resEmpty);
+  expect(resEmpty.tokens.map((t) => t.type)).toEqual(['EMPTY']);
+  expect(resEmpty.alphabet).toEqual([]);
+  expect(resEmpty.nfa.transitions).toEqual([]);
+
+  const resHash = analyze('#');
+  assertSuccess(resHash);
+  expect(resHash.tokens.map((t) => t.type)).toEqual(['EMPTY']);
+  expect(resHash.alphabet).toEqual([]);
+
+  // Complex expression mixing symbols with ε and ∅:
+  // e.g. '(a | ε) (b | ∅)'
+  const resMixed = analyze('(a | ε) (b | ∅)');
+  assertSuccess(resMixed);
+  // Alphabet must contain only 'a' and 'b', NEVER 'ε', '@', '∅', '#'
+  expect(resMixed.alphabet).toEqual(['a', 'b']);
+  expect(resMixed.alphabet).not.toContain('ε');
+  expect(resMixed.alphabet).not.toContain('@');
+  expect(resMixed.alphabet).not.toContain('∅');
+  expect(resMixed.alphabet).not.toContain('#');
+});
+
+test('[T06-10] Alphabet inference, custom additions, and used-symbol removal protection', () => {
+  // Inferred alphabet
+  const resInferred = analyze('(a|b)*a');
+  assertSuccess(resInferred);
+  expect(resInferred.alphabet).toEqual(['a', 'b']);
+
+  // Extending alphabet with 'c' and 'd'
+  const resExtended = analyze('(a|b)*a', { alphabet: ['a', 'b', 'c', 'd'] });
+  assertSuccess(resExtended);
+  expect(resExtended.alphabet).toEqual(['a', 'b', 'c', 'd']);
+
+  // Refusing to remove a symbol used by the expression: omitting 'a'
+  const resMissing = analyze('(a|b)*a', { alphabet: ['b', 'c'] });
+  expect(resMissing.ok).toBe(false);
+  if (!resMissing.ok) {
+    expect(resMissing.code).toBe('INVALID_ALPHABET');
+    expect(resMissing.message).toContain("Cannot remove symbol 'a' used in expression");
+  }
+
+  // Refusing ε or ∅ sentinels in alphabet
+  const resEpsInAlpha = analyze('a', { alphabet: ['a', 'ε'] });
+  expect(resEpsInAlpha.ok).toBe(false);
+  if (!resEpsInAlpha.ok) {
+    expect(resEpsInAlpha.code).toBe('INVALID_ALPHABET');
+  }
+});
+
+test('[T06-11] Simulation with added alphabet symbol causes dead run, while unlisted symbol reports out_of_alphabet', () => {
+  const res = analyze('(a|b)*a', { alphabet: ['a', 'b', 'c'] });
+  assertSuccess(res);
+
+  // 'ac': 'a' is valid move, 'c' is in alphabet but unused in NFA -> dead run at position 1
+  const runDead = run(res.nfa, res.alphabet, 'ac');
+  expect(runDead.accepted).toBe(false);
+  expect(runDead.verdict).toBe('REJECT');
+  expect(runDead.status).toBe('dead');
+  expect(runDead.position).toBe(1);
+
+  // 'ad': 'd' is not in alphabet -> out_of_alphabet at position 1
+  const runOutOfAlpha = run(res.nfa, res.alphabet, 'ad');
+  expect(runOutOfAlpha.accepted).toBe(false);
+  expect(runOutOfAlpha.verdict).toBe('REJECT');
+  expect(runOutOfAlpha.status).toBe('out_of_alphabet');
+  expect(runOutOfAlpha.position).toBe(1);
+  expect(runOutOfAlpha.symbol).toBe('d');
+});
+
+
+
+
+
+
+
+
+
+
