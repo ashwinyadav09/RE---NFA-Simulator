@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { analyze, run, runLines, EPS, AnalysisResult, AnalysisSuccess } from '../src/engine/index';
+import { analyze, run, runLines, validateAlphabet, EPS, AnalysisResult, AnalysisSuccess } from '../src/engine/index';
 import { parseRD } from './oracles';
 
 function assertSuccess(result: AnalysisResult): asserts result is AnalysisSuccess {
@@ -915,6 +915,44 @@ test('[T06-7] Step-log replay in merge mode reproduces final NFA states and tran
   }
 });
 
+test('[T06-8] Merge mode on "(a*)*b": I1-I4 hold, replay equals live NFA, accepts "b" and "ab", rejects "a"', () => {
+  const res = analyze('(a*)*b', { concatenation: 'merge' });
+  assertSuccess(res);
+  expect(res.invariants).toEqual({
+    I1: true,
+    I2: true,
+    I3: true,
+    I4: true,
+    noDanglingEdges: true
+  });
+
+  const replayedStates: number[] = [];
+  const replayedTransitions: { from: number; to: number; label: string }[] = [];
+  for (const step of res.steps) {
+    for (const s of step.newStates) {
+      replayedStates.push(s);
+    }
+    if (step.mergedPair) {
+      const { removed, into } = step.mergedPair;
+      const idx = replayedStates.indexOf(removed);
+      if (idx !== -1) replayedStates.splice(idx, 1);
+      for (const t of replayedTransitions) {
+        if (t.from === removed) t.from = into;
+        if (t.to === removed) t.to = into;
+      }
+    }
+    for (const t of step.newTransitions) {
+      replayedTransitions.push({ ...t });
+    }
+  }
+
+  expect(replayedStates).toEqual(res.nfa.states);
+  expect(replayedTransitions).toEqual(res.nfa.transitions);
+  expect(run(res.nfa, res.alphabet, 'b').accepted).toBe(true);
+  expect(run(res.nfa, res.alphabet, 'ab').accepted).toBe(true);
+  expect(run(res.nfa, res.alphabet, 'a').accepted).toBe(false);
+});
+
 test('[T06-9] Sentinel EPS, ε/∅ aliases, whitespace ignored, and exclusion from alphabet', () => {
   // Test EPS sentinel constant
   expect(typeof EPS).toBe('string');
@@ -1002,6 +1040,38 @@ test('[T06-11] Simulation with added alphabet symbol causes dead run, while unli
   expect(runOutOfAlpha.position).toBe(1);
   expect(runOutOfAlpha.symbol).toBe('d');
 });
+
+test('[T06-12] validateAlphabet rejects entries that are not exactly one code point (empty or multi-character)', () => {
+  const resEmpty = validateAlphabet([''], ['a']);
+  expect(resEmpty.ok).toBe(false);
+  if (!resEmpty.ok) {
+    expect(resEmpty.message).toContain('must be exactly one code point');
+  }
+
+  const resMulti = validateAlphabet(['ab'], ['a']);
+  expect(resMulti.ok).toBe(false);
+  if (!resMulti.ok) {
+    expect(resMulti.message).toContain('must be exactly one code point');
+  }
+
+  const resEmoji = validateAlphabet(['🚀', 'a'], ['a']);
+  expect(resEmoji.ok).toBe(true);
+
+  const resAnalyzeEmpty = analyze('a', { alphabet: ['a', ''] });
+  expect(resAnalyzeEmpty.ok).toBe(false);
+  if (!resAnalyzeEmpty.ok) {
+    expect(resAnalyzeEmpty.code).toBe('INVALID_ALPHABET');
+    expect(resAnalyzeEmpty.message).toContain('must be exactly one code point');
+  }
+
+  const resAnalyzeMulti = analyze('a', { alphabet: ['a', 'bc'] });
+  expect(resAnalyzeMulti.ok).toBe(false);
+  if (!resAnalyzeMulti.ok) {
+    expect(resAnalyzeMulti.code).toBe('INVALID_ALPHABET');
+    expect(resAnalyzeMulti.message).toContain('must be exactly one code point');
+  }
+});
+
 
 
 

@@ -1,3 +1,7 @@
+// EPS is kept as a dedicated string constant ('ε') rather than a Symbol or null
+// so that all engine data (transitions, tables, steps) remains plain JSON-serialisable,
+// can be transferred to/from Web Workers without loss, matches golden fixtures,
+// and works cleanly as object keys in transition tables (Record<string, number[]>).
 export const EPS = 'ε';
 
 export type TokenType =
@@ -64,7 +68,6 @@ export interface Step {
   stackDepthAfter: number;
   position?: number;
   mergedPair?: { removed: number; into: number };
-  merged?: { removed: number; into: number };
 }
 
 export interface InvariantsResult {
@@ -463,6 +466,10 @@ function buildNFA(
         const A = stack.pop()!;
         if (concatenation === 'merge') {
           mergedPair = { removed: B.start, into: A.accept };
+          // Invariant I2 guarantees no transition enters B.start
+          if (allTransitions.some((tr) => tr.to === B.start)) {
+            throw new Error('I2 violated: transition enters B.start before merge');
+          }
           // Delete B.start from allStates
           const idx = allStates.indexOf(B.start);
           if (idx !== -1) {
@@ -472,9 +479,6 @@ function buildNFA(
           for (const t of allTransitions) {
             if (t.from === B.start) {
               t.from = A.accept;
-            }
-            if (t.to === B.start) {
-              t.to = A.accept;
             }
           }
           produced = { start: A.start, accept: B.accept };
@@ -571,7 +575,7 @@ function buildNFA(
       stackAfter: stackSnapshot,
       stackDepthAfter: stackSnapshot.length,
       position: token.position,
-      ...(mergedPair ? { mergedPair, merged: mergedPair } : {})
+      ...(mergedPair ? { mergedPair } : {})
     });
   }
 
@@ -608,6 +612,12 @@ export function validateAlphabet(
 ): { ok: true; alphabet: string[] } | { ok: false; message: string } {
   const disallowed = new Set(['@', 'ε', '#', '∅']);
   for (const sym of alphabet) {
+    if (Array.from(sym).length !== 1) {
+      return {
+        ok: false,
+        message: `'${sym}' must be exactly one code point`
+      };
+    }
     if (disallowed.has(sym)) {
       return {
         ok: false,

@@ -107,13 +107,13 @@ const assert = require('node:assert');
   const errorPosAttr = await page.getAttribute('#regex-input', 'data-error-position');
   assert.strictEqual(errorPosAttr, '2', 'regex-input must mark data-error-position="2"');
 
-  // Verify last good build stays on screen
+  // Verify diagram and stats are cleared after error
   const statsAfterError = await page.textContent('#stats');
-  assert(statsAfterError.includes('States: 10'), 'Previous stats must stay on screen after error');
+  assert.strictEqual(statsAfterError, '', 'Stats must be cleared after error');
   const hasSvgAfterError = await page.evaluate(() => !!document.querySelector('#canvas svg'));
-  assert(hasSvgAfterError, 'Previous canvas SVG must stay on screen after error');
+  assert.strictEqual(hasSvgAfterError, false, 'Canvas SVG must be cleared after error');
 
-  // 13. Empty input hint test directly after error: build '(a|)' -> attribute is '2'. Clear the input and build -> attribute is absent, hint is shown, last good build is still on screen.
+  // 13. Empty input hint test directly after error: build '(a|)' -> attribute is '2'. Clear the input and build -> attribute is absent, hint is shown, diagram/stats are cleared.
   await page.evaluate(() => { window.__buildDone = false; });
   await page.fill('#regex-input', '');
   await page.click('#build-button');
@@ -129,7 +129,7 @@ const assert = require('node:assert');
   assert.strictEqual(emptyPosAttr, null, 'regex-input data-error-position must be absent on empty input');
 
   const statsAfterEmpty = await page.textContent('#stats');
-  assert(statsAfterEmpty.includes('States: 10'), 'Previous build stats must stay on screen on empty input');
+  assert.strictEqual(statsAfterEmpty, '', 'Stats must be cleared on empty input');
 
   // Fix the error by building (a|b)*a
   await page.evaluate(() => { window.__buildDone = false; });
@@ -323,6 +323,46 @@ const assert = require('node:assert');
 
   const restoredAlpha = await page.inputValue('#alphabet-input');
   assert(restoredAlpha.includes('a'), 'Alphabet input must retain used symbol a');
+
+  // 21. Verify clearing on build failure:
+  // (a) build "a", then "(a|" -> Run "a" must not show ACCEPT
+  await page.selectOption('#notation-select', 'standard');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', 'a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  await page.evaluate(() => { window.__runDone = false; });
+  await page.fill('#test-input', 'a');
+  await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
+  const verdictAfterSyntaxError = await page.textContent('#verdict');
+  assert(!verdictAfterSyntaxError.includes('ACCEPT'), 'Run "a" must not show ACCEPT after syntax error');
+  assert.strictEqual(verdictAfterSyntaxError, '', 'Verdict must be empty when no NFA exists');
+
+  // (b) build "(a|b)*a", switch to textbook -> Run "ba" must not show ACCEPT
+  await page.selectOption('#notation-select', 'standard');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.selectOption('#notation-select', 'textbook');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  await page.evaluate(() => { window.__runDone = false; });
+  await page.fill('#test-input', 'ba');
+  await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
+  const verdictAfterTextbookSwitch = await page.textContent('#verdict');
+  assert(!verdictAfterTextbookSwitch.includes('ACCEPT'), 'Run "ba" must not show ACCEPT after switching to textbook with "|"');
+  assert.strictEqual(verdictAfterTextbookSwitch, '', 'Verdict must be empty when no NFA exists');
 
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
 

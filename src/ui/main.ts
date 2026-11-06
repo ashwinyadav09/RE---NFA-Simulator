@@ -182,6 +182,33 @@ async function handleBuild() {
   }
 
   if (!analysis.ok) {
+    currentAnalysis = null;
+    if (statsEl) {
+      statsEl.textContent = '';
+      statsEl.removeAttribute('data-states');
+      statsEl.removeAttribute('data-transitions');
+    }
+    if (canvasEl) {
+      canvasEl.innerHTML = '';
+    }
+    if (traceEl) {
+      traceEl.innerHTML = '';
+    }
+    if (verdictEl) {
+      verdictEl.textContent = '';
+    }
+    if (tableEl) {
+      tableEl.innerHTML = '';
+    }
+    if (tokenListEl) {
+      tokenListEl.textContent = '';
+    }
+    if (postfixEl) {
+      postfixEl.textContent = '';
+    }
+    if (treeViewEl) {
+      treeViewEl.textContent = '';
+    }
     if (errorEl) {
       if (analysis.code === 'EMPTY_INPUT') {
         errorEl.textContent = analysis.hint || analysis.message;
@@ -317,22 +344,14 @@ function renderTrace(container: HTMLElement, results: RunResult[], lines: string
 
 function handleRun() {
   if (!currentAnalysis) {
-    if (inputEl && inputEl.value) {
-      const notation = notationSelectEl?.value === 'textbook' ? 'textbook' : 'standard';
-      const concatenation = concatSelectEl?.value === 'merge' ? 'merge' : 'epsilon-link';
-      const res = analyze(inputEl.value, {
-        notation,
-        concatenation,
-        ...(userEditedAlphabet ? { alphabet: userEditedAlphabet } : {})
-      });
-      if (res.ok) {
-        currentAnalysis = res;
-      } else {
-        return;
-      }
-    } else {
-      return;
+    if (verdictEl) {
+      verdictEl.textContent = '';
     }
+    if (traceEl) {
+      traceEl.innerHTML = '';
+    }
+    (window as any).__runDone = true;
+    return;
   }
 
   const text = testInputEl ? testInputEl.value : '';
