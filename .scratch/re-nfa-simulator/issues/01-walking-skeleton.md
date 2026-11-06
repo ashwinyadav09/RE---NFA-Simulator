@@ -8,7 +8,7 @@
 
 - [x] `npm run check` runs typecheck, tests and the production build, and passes. Package versions are pinned exactly as in the verified smoke setup. (`npm run check` passed: tsc, 7 vitest tests pass, vite singlefile build succeeds)
 - [x] At the Engine seam, analyzing `a` returns an NFA with two states, one `a` transition, a start and an accept; a test proves it. (`tests/engine.test.ts`)
-- [x] At the Diagram seam, that NFA becomes DOT text with an id on every node and edge, a double-circle accept state and a start arrow; a test proves it. (`tests/diagram.test.ts`)
+- [x] At the Diagram seam, that NFA becomes DOT text with an id on every node and edge, a double-circle accept state and a start arrow; a test proves it. (Re-verified in tests/diagram.test.ts asserting ids on all node and edge statements, including start-node and start-edge)
 - [x] The Viz.js call sits behind a one-method renderer port with two adapters (Viz.js and an in-memory fake). Invalid DOT comes back as an error value, never as an exception; a test proves it with both adapters. (`tests/diagram.test.ts`)
 - [x] The production build is one HTML file with Viz.js inlined. `npm run e2e` opens it from `file://` with no network, types `a`, presses Build and sees 2 states and 1 transition (`stats`, `canvas`). (`npm run e2e`)
 - [x] A worker imported inline runs a round trip inside that same built file from `file://`, and the smoke test checks it. (`npm run e2e` asserts `workerResult.pong === 'hello'`)
