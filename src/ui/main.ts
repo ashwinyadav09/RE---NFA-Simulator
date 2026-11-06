@@ -269,26 +269,20 @@ function renderStepLog(container: HTMLElement, steps: Step[]): void {
   container.appendChild(list);
 }
 
-function attachStateHoverListeners(container: HTMLElement, steps: Step[]): void {
+function attachStateHoverListeners(container: HTMLElement): void {
   const nodes = container.querySelectorAll('g.node');
   nodes.forEach((node) => {
-    const id = node.id;
-    const match = /^n(\d+)$/.exec(id);
-    if (match) {
-      const q = Number(match[1]);
-      const creator = steps.find((s) => s.newStates.includes(q));
-      if (creator) {
-        const text = `Created by step ${creator.index}: ${creator.rule}`;
-        node.setAttribute('data-created-by-step', String(creator.index));
-        node.setAttribute('title', text);
-        let titleEl = node.querySelector('title') as Element | null;
-        if (titleEl) {
-          titleEl.textContent = text;
-        } else {
-          const newTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-          newTitle.textContent = text;
-          node.appendChild(newTitle);
-        }
+    const aEl = node.querySelector('a');
+    const tooltip = aEl?.getAttribute('xlink:title') || aEl?.getAttribute('title') || '';
+    if (tooltip) {
+      node.setAttribute('title', tooltip);
+      const titleEl = node.querySelector('title') as Element | null;
+      if (titleEl) {
+        titleEl.textContent = tooltip;
+      }
+      const match = /Created by step (\d+)/.exec(tooltip);
+      if (match) {
+        node.setAttribute('data-created-by-step', match[1]);
       }
     }
   });
@@ -359,7 +353,7 @@ async function navigateToStep(stepIndex: number): Promise<void> {
     canvasEl.setAttribute('data-current-step', String(targetStep));
     if (result.ok) {
       canvasEl.innerHTML = result.svg;
-      attachStateHoverListeners(canvasEl, currentAnalysis.steps);
+      attachStateHoverListeners(canvasEl);
     } else {
       canvasEl.innerHTML = '';
       if (result.error) {
@@ -410,6 +404,7 @@ function stopPlayback(): void {
 
 async function handleBuild() {
   if (!inputEl) return;
+  stopPlayback();
   const gen = ++buildGeneration;
   const source = inputEl.value;
 

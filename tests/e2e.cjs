@@ -129,6 +129,56 @@ const assert = require('node:assert');
   const pauseText = await page.textContent('#step-play');
   assert.strictEqual(pauseText, 'Play', 'Play button text must become Play after pause');
 
+  // FIX 1 TEST: Stop playback on new build or settings change
+  // Case 1: Build (a|b)*a, click #step-play, assert Pause.
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  await page.selectOption('#step-speed', '300');
+  await page.click('#step-play');
+  const playButtonTextWhilePlaying = await page.textContent('#step-play');
+  assert.strictEqual(playButtonTextWhilePlaying, 'Pause', 'Play button must read Pause while running');
+
+  // While playing, build 'a'
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', 'a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  // Wait longer than one playback interval (e.g. 500ms > 300ms)
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  const playButtonTextAfterNewBuild = await page.textContent('#step-play');
+  assert.strictEqual(playButtonTextAfterNewBuild, 'Play', '#step-play must read Play after new build stops playback');
+  const counterAfterNewBuild = await page.textContent('#step-counter');
+  assert.strictEqual(counterAfterNewBuild, 'step 1 / 1', '#step-counter must read "step 1 / 1" and not advance');
+
+  // Case 2: Start playback, switch concatenation to merge, assert playback stopped
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  await page.click('#step-play');
+  const playButtonTextWhilePlaying2 = await page.textContent('#step-play');
+  assert.strictEqual(playButtonTextWhilePlaying2, 'Pause', 'Play button must read Pause while running before concat switch');
+
+  // Switch concatenation to merge (which triggers change -> handleBuild)
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.selectOption('#concat-select', 'merge');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  const playButtonTextAfterConcatSwitch = await page.textContent('#step-play');
+  assert.strictEqual(playButtonTextAfterConcatSwitch, 'Play', '#step-play must read Play after concatenation switch stops playback');
+
+  // Restore concat to epsilon-link and rebuild (a|b)*a for subsequent tests
+  await page.selectOption('#concat-select', 'epsilon-link');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+
   // Clicking postfix token jumps to step
   await page.click('#postfix-view .postfix-token[data-step-index="3"]');
   await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 3 / 6'));
@@ -141,7 +191,11 @@ const assert = require('node:assert');
     return node ? (node.getAttribute('title') || node.querySelector('title')?.textContent || '') : '';
   });
   console.log('State 4 hover title:', state4Title);
-  assert(state4Title.includes('Created by step 3'), 'Hovering state 4 must indicate step 3 created it');
+  assert.strictEqual(
+    state4Title,
+    'Created by step 3: union',
+    'State 4 hover text must equal "Created by step 3: union"'
+  );
 
   // Jump to step 6 / 6 for simulation
   await page.click('#step-last');

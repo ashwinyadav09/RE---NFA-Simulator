@@ -65,6 +65,7 @@ test('step-by-step construction for "(a|b)*a" matches worked-example fixture exa
     expect(actualStep.newTransitions).toEqual(expectedStep.newTransitions);
     expect(actualStep.result).toEqual(expectedStep.result);
     expect(actualStep.stackDepthAfter).toBe(expectedStep.stackDepthAfter);
+    expect(actualStep.stackAfter).toEqual(expectedStep.stackAfter);
   }
 });
 
@@ -1087,8 +1088,8 @@ test('[T07-2] Engine seam: merge mode step description shows both states and wha
   const result = analyze('(a|b)*a', { concatenation: 'merge' });
   assertSuccess(result);
   const step6 = result.steps[5];
-  expect(step6.rule).toBe('concatenation');
-  expect(step6.mergedPair).toEqual({ removed: 8, into: 7 });
+  expect(step6.rule).toBe(workedExample.steps[5].rule);
+  expect(step6.mergedPair).toEqual(workedExample.mergeMode.mergedAtStep6);
   expect(step6.description).toBe('concatenation of fragments 6→7 and 8→9 (merged states 7 and 8 into 7)');
 });
 
@@ -1097,17 +1098,20 @@ test('[T07-3] Engine seam: getStepSnapshot returns replayed fragments on stack, 
   assertSuccess(result);
   const snap2 = getStepSnapshot(result.steps, 2);
   expect(snap2.stepIndex).toBe(2);
-  expect(snap2.stack).toEqual([
-    { start: 0, accept: 1 },
-    { start: 2, accept: 3 }
-  ]);
-  expect(snap2.states).toEqual([0, 1, 2, 3]);
-  expect(snap2.transitions).toEqual([
-    { from: 0, to: 1, label: 'a' },
-    { from: 2, to: 3, label: 'b' }
-  ]);
-  expect(snap2.newStates).toEqual([2, 3]);
-  expect(snap2.newTransitions).toEqual([{ from: 2, to: 3, label: 'b' }]);
+  expect(snap2.stack).toEqual(workedExample.steps[1].stackAfter);
+  expect(snap2.newStates).toEqual(workedExample.steps[1].newStates);
+  expect(snap2.newTransitions).toEqual(workedExample.steps[1].newTransitions);
+
+  const expectedStates = [
+    ...workedExample.steps[0].newStates,
+    ...workedExample.steps[1].newStates
+  ];
+  const expectedTransitions = [
+    ...workedExample.steps[0].newTransitions,
+    ...workedExample.steps[1].newTransitions
+  ];
+  expect(snap2.states).toEqual(expectedStates);
+  expect(snap2.transitions).toEqual(expectedTransitions);
 });
 
 test('[T07-4] Engine seam: getStepSnapshot in merge mode reflects merged state removal and transition remapping', () => {
@@ -1116,15 +1120,34 @@ test('[T07-4] Engine seam: getStepSnapshot in merge mode reflects merged state r
   const snap6 = getStepSnapshot(result.steps, 6);
   expect(snap6.stepIndex).toBe(6);
   expect(snap6.states).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 9]);
-  expect(snap6.states).not.toContain(8);
-  expect(snap6.stack).toEqual([{ start: 6, accept: 9 }]);
-  expect(snap6.mergedPair).toEqual({ removed: 8, into: 7 });
-  expect(snap6.newStates).toEqual([]);
+  expect(snap6.states).not.toContain(workedExample.mergeMode.mergedAtStep6.removed);
+  expect(snap6.stack).toEqual(workedExample.steps[5].stackAfter);
+  expect(snap6.mergedPair).toEqual(workedExample.mergeMode.mergedAtStep6);
+  expect(snap6.newStates).toEqual(workedExample.steps[5].newStates);
   expect(snap6.newTransitions).toEqual([]);
-  expect(snap6.transitions.length).toBe(11);
+  expect(snap6.transitions.length).toBe(workedExample.mergeMode.transitions);
   const remapped = snap6.transitions.find((t) => t.to === 9);
   expect(remapped).toEqual({ from: 7, to: 9, label: 'a' });
 });
+
+test('EXTRA: (a|b)(c|d) in merge mode merges state 10 into 5 at step 7 with outgoing transitions to 6 and 8', () => {
+  const result = analyze('(a|b)(c|d)', { concatenation: 'merge' });
+  assertSuccess(result);
+  const snap7 = getStepSnapshot(result.steps, 7);
+  expect(snap7.stepIndex).toBe(7);
+  expect(snap7.mergedPair).toEqual({ removed: 10, into: 5 });
+  expect(snap7.states).not.toContain(10);
+  expect(snap7.states).toContain(5);
+
+  const outgoingFrom5 = snap7.transitions.filter((t) => t.from === 5);
+  expect(outgoingFrom5).toHaveLength(2);
+  const targets = outgoingFrom5.map((t) => ({ to: t.to, label: t.label })).sort((a, b) => a.to - b.to);
+  expect(targets).toEqual([
+    { to: 6, label: EPS },
+    { to: 8, label: EPS }
+  ]);
+});
+
 
 
 

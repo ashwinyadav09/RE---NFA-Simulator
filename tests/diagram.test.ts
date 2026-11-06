@@ -355,6 +355,7 @@ test('[T07-8] toDot includes tooltip attribute on nodes for state hovering', asy
   expect(res.ok).toBe(true);
   if (res.ok) {
     expect(res.svg).toContain('Created by step 3: union');
+    expect(res.svg).toContain('Created by step 1: symbol');
   }
 });
 
