@@ -56,7 +56,7 @@ export function toDot(nfa: NFA): string {
     '  rankdir=LR;',
     '  node [shape=circle, fontname="Helvetica"];',
     '  edge [fontname="Helvetica"];',
-    '  __start [shape=point, label="", width=0.1];'
+    '  __start [id="start-node", shape=point, label="", width=0.1];'
   ];
 
   for (const q of [...nfa.states].sort((a, b) => a - b)) {
@@ -68,7 +68,7 @@ export function toDot(nfa: NFA): string {
   }
 
   if (nfa.states.includes(nfa.start)) {
-    lines.push(`  __start -> q${nfa.start};`);
+    lines.push(`  __start -> q${nfa.start} [id="start-edge"];`);
   }
 
   nfa.transitions.forEach((t, i) => {

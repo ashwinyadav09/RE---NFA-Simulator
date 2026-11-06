@@ -52,4 +52,27 @@ test('VizRenderer returns ok with SVG for valid DOT and error for invalid DOT wi
   }
 });
 
+test('every node and edge statement in DOT has an id attribute, including start-node and start-edge', () => {
+  const nfa = {
+    states: [0, 1],
+    start: 0,
+    accept: 1,
+    transitions: [{ from: 0, to: 1, label: 'a' }]
+  };
+  const dot = toDot(nfa);
+
+  expect(dot).toMatch(/__start\s*\[[^\]]*id="start-node"/);
+  expect(dot).toMatch(/__start\s*->\s*q0\s*\[[^\]]*id="start-edge"/);
+
+  const lines = dot.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+  for (const line of lines) {
+    if (line.includes('->')) {
+      expect(line).toMatch(/id="[^"]+"/);
+    } else if (/^(__start|q\d+)\s*\[/.test(line)) {
+      expect(line).toMatch(/id="[^"]+"/);
+    }
+  }
+});
+
+
 
