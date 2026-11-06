@@ -1,3 +1,21 @@
+export type TokenType =
+  | 'SYMBOL'
+  | 'EPSILON'
+  | 'EMPTY'
+  | 'UNION'
+  | 'CONCAT'
+  | 'STAR'
+  | 'PLUS'
+  | 'OPT'
+  | 'LPAREN'
+  | 'RPAREN';
+
+export interface Token {
+  type: TokenType;
+  symbol?: string;
+  position: number;
+}
+
 export interface Transition {
   from: number;
   to: number;
@@ -16,24 +34,464 @@ export interface AnalysisStats {
   transitions: number;
 }
 
+export interface Fragment {
+  start: number;
+  accept: number;
+}
+
+export interface Step {
+  index: number;
+  token: string;
+  rule: string;
+  newStates: number[];
+  newTransitions: Transition[];
+  result: Fragment;
+  stackAfter: Fragment[];
+  stackDepthAfter: number;
+  position?: number;
+}
+
+export interface InvariantsResult {
+  I1: boolean;
+  I2: boolean;
+  I3: boolean;
+  I4: boolean;
+  noDanglingEdges: boolean;
+}
+
 export interface AnalysisResult {
+  tokens: Token[];
+  postfix: Token[];
+  steps: Step[];
   nfa: NFA;
   alphabet: string[];
   stats: AnalysisStats;
+  transitionTable: Record<number, Record<string, number[]>>;
+  initialClosure: number[];
+  invariants: InvariantsResult;
 }
 
-export function analyze(source: string): AnalysisResult {
-  return {
-    nfa: {
-      states: [0, 1],
-      start: 0,
-      accept: 1,
-      transitions: [{ from: 0, to: 1, label: source }]
-    },
-    alphabet: [source],
-    stats: {
-      states: 2,
-      transitions: 1
+export interface AnalyzeOptions {
+  notation?: 'standard' | 'textbook';
+  concatenation?: 'epsilon-link' | 'merge';
+}
+
+function tokenize(source: string, notation: 'standard' | 'textbook' = 'standard'): Token[] {
+  const codePoints = Array.from(source);
+  const rawTokens: Token[] = [];
+
+  for (let i = 0; i < codePoints.length; i++) {
+    const char = codePoints[i];
+    if (/\s/.test(char)) {
+      continue;
     }
+
+    if (char === '(') {
+      rawTokens.push({ type: 'LPAREN', position: i });
+    } else if (char === ')') {
+      rawTokens.push({ type: 'RPAREN', position: i });
+    } else if (char === '|') {
+      if (notation === 'textbook') {
+        throw new Error('NOT_AN_OPERATOR: | is not allowed in textbook mode');
+      }
+      rawTokens.push({ type: 'UNION', position: i });
+    } else if (char === '+') {
+      if (notation === 'textbook') {
+        rawTokens.push({ type: 'UNION', position: i });
+      } else {
+        rawTokens.push({ type: 'PLUS', position: i });
+      }
+    } else if (char === '*') {
+      rawTokens.push({ type: 'STAR', position: i });
+    } else if (char === '?') {
+      rawTokens.push({ type: 'OPT', position: i });
+    } else if (char === '@' || char === 'ε') {
+      rawTokens.push({ type: 'EPSILON', position: i });
+    } else if (char === '#' || char === '∅') {
+      rawTokens.push({ type: 'EMPTY', position: i });
+    } else {
+      rawTokens.push({ type: 'SYMBOL', symbol: char, position: i });
+    }
+  }
+
+  return rawTokens;
+}
+
+function canEndOperand(token: Token): boolean {
+  return (
+    token.type === 'SYMBOL' ||
+    token.type === 'EPSILON' ||
+    token.type === 'EMPTY' ||
+    token.type === 'RPAREN' ||
+    token.type === 'STAR' ||
+    token.type === 'PLUS' ||
+    token.type === 'OPT'
+  );
+}
+
+function canBeginOperand(token: Token): boolean {
+  return (
+    token.type === 'SYMBOL' ||
+    token.type === 'EPSILON' ||
+    token.type === 'EMPTY' ||
+    token.type === 'LPAREN'
+  );
+}
+
+function insertImplicitConcat(tokens: Token[]): Token[] {
+  const result: Token[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    result.push(tokens[i]);
+    if (i + 1 < tokens.length) {
+      if (canEndOperand(tokens[i]) && canBeginOperand(tokens[i + 1])) {
+        result.push({
+          type: 'CONCAT',
+          position: tokens[i + 1].position
+        });
+      }
+    }
+  }
+  return result;
+}
+
+function toPostfix(tokensWithConcat: Token[]): Token[] {
+  const postfix: Token[] = [];
+  const opStack: Token[] = [];
+
+  const precedence: Record<string, number> = {
+    UNION: 1,
+    CONCAT: 2
+  };
+
+  for (const token of tokensWithConcat) {
+    if (
+      token.type === 'SYMBOL' ||
+      token.type === 'EPSILON' ||
+      token.type === 'EMPTY'
+    ) {
+      postfix.push(token);
+    } else if (
+      token.type === 'STAR' ||
+      token.type === 'PLUS' ||
+      token.type === 'OPT'
+    ) {
+      // Postfix unary operators bind tightest and apply to the immediately preceding operand
+      postfix.push(token);
+    } else if (token.type === 'CONCAT' || token.type === 'UNION') {
+      const prec = precedence[token.type] ?? 0;
+      while (opStack.length > 0) {
+        const top = opStack[opStack.length - 1];
+        if (top.type === 'LPAREN') break;
+        const topPrec = precedence[top.type] ?? 0;
+        if (topPrec >= prec) {
+          postfix.push(opStack.pop()!);
+        } else {
+          break;
+        }
+      }
+      opStack.push(token);
+    } else if (token.type === 'LPAREN') {
+      opStack.push(token);
+    } else if (token.type === 'RPAREN') {
+      while (opStack.length > 0 && opStack[opStack.length - 1].type !== 'LPAREN') {
+        postfix.push(opStack.pop()!);
+      }
+      if (opStack.length > 0 && opStack[opStack.length - 1].type === 'LPAREN') {
+        opStack.pop();
+      }
+    }
+  }
+
+  while (opStack.length > 0) {
+    postfix.push(opStack.pop()!);
+  }
+
+  return postfix;
+}
+
+function buildNFA(postfix: Token[]): {
+  steps: Step[];
+  nfa: NFA;
+  allStates: number[];
+  allTransitions: Transition[];
+} {
+  let nextStateId = 0;
+  const stack: Fragment[] = [];
+  const steps: Step[] = [];
+  const allStates: number[] = [];
+  const allTransitions: Transition[] = [];
+
+  for (let i = 0; i < postfix.length; i++) {
+    const token = postfix[i];
+    let rule = '';
+    const newStates: number[] = [];
+    const newTransitions: Transition[] = [];
+    let produced: Fragment;
+
+    switch (token.type) {
+      case 'SYMBOL': {
+        rule = 'symbol';
+        const s = nextStateId++;
+        const f = nextStateId++;
+        newStates.push(s, f);
+        newTransitions.push({ from: s, to: f, label: token.symbol! });
+        produced = { start: s, accept: f };
+        stack.push(produced);
+        break;
+      }
+      case 'EPSILON': {
+        rule = 'epsilon';
+        const s = nextStateId++;
+        const f = nextStateId++;
+        newStates.push(s, f);
+        newTransitions.push({ from: s, to: f, label: 'ε' });
+        produced = { start: s, accept: f };
+        stack.push(produced);
+        break;
+      }
+      case 'EMPTY': {
+        rule = 'empty';
+        const s = nextStateId++;
+        const f = nextStateId++;
+        newStates.push(s, f);
+        produced = { start: s, accept: f };
+        stack.push(produced);
+        break;
+      }
+      case 'CONCAT': {
+        rule = 'concatenation';
+        const B = stack.pop()!;
+        const A = stack.pop()!;
+        newTransitions.push({ from: A.accept, to: B.start, label: 'ε' });
+        produced = { start: A.start, accept: B.accept };
+        stack.push(produced);
+        break;
+      }
+      case 'UNION': {
+        rule = 'union';
+        const B = stack.pop()!;
+        const A = stack.pop()!;
+        const s = nextStateId++;
+        const f = nextStateId++;
+        newStates.push(s, f);
+        newTransitions.push(
+          { from: s, to: A.start, label: 'ε' },
+          { from: s, to: B.start, label: 'ε' },
+          { from: A.accept, to: f, label: 'ε' },
+          { from: B.accept, to: f, label: 'ε' }
+        );
+        produced = { start: s, accept: f };
+        stack.push(produced);
+        break;
+      }
+      case 'STAR': {
+        rule = 'star';
+        const A = stack.pop()!;
+        const s = nextStateId++;
+        const f = nextStateId++;
+        newStates.push(s, f);
+        newTransitions.push(
+          { from: s, to: A.start, label: 'ε' },
+          { from: A.accept, to: f, label: 'ε' },
+          { from: s, to: f, label: 'ε' },
+          { from: A.accept, to: A.start, label: 'ε' }
+        );
+        produced = { start: s, accept: f };
+        stack.push(produced);
+        break;
+      }
+      case 'PLUS': {
+        rule = 'plus';
+        const A = stack.pop()!;
+        const s = nextStateId++;
+        const f = nextStateId++;
+        newStates.push(s, f);
+        newTransitions.push(
+          { from: s, to: A.start, label: 'ε' },
+          { from: A.accept, to: f, label: 'ε' },
+          { from: A.accept, to: A.start, label: 'ε' }
+        );
+        produced = { start: s, accept: f };
+        stack.push(produced);
+        break;
+      }
+      case 'OPT': {
+        rule = 'optional';
+        const A = stack.pop()!;
+        const s = nextStateId++;
+        const f = nextStateId++;
+        newStates.push(s, f);
+        newTransitions.push(
+          { from: s, to: A.start, label: 'ε' },
+          { from: A.accept, to: f, label: 'ε' },
+          { from: s, to: f, label: 'ε' }
+        );
+        produced = { start: s, accept: f };
+        stack.push(produced);
+        break;
+      }
+      default:
+        throw new Error(`Unexpected token in postfix: ${token.type}`);
+    }
+
+    allStates.push(...newStates);
+    allTransitions.push(...newTransitions);
+
+    const stackSnapshot: Fragment[] = stack.map((frag) => ({
+      start: frag.start,
+      accept: frag.accept
+    }));
+
+    steps.push({
+      index: i + 1,
+      token: token.type,
+      rule,
+      newStates: [...newStates],
+      newTransitions: newTransitions.map((t) => ({ ...t })),
+      result: { start: produced.start, accept: produced.accept },
+      stackAfter: stackSnapshot,
+      stackDepthAfter: stackSnapshot.length,
+      position: token.position
+    });
+  }
+
+  const finalFragment = stack.length > 0 ? stack[stack.length - 1] : { start: 0, accept: 0 };
+
+  return {
+    steps,
+    nfa: {
+      states: [...allStates],
+      start: finalFragment.start,
+      accept: finalFragment.accept,
+      transitions: allTransitions.map((t) => ({ ...t }))
+    },
+    allStates,
+    allTransitions
+  };
+}
+
+function inferAlphabet(tokens: Token[]): string[] {
+  const seen = new Set<string>();
+  const alphabet: string[] = [];
+  for (const token of tokens) {
+    if (token.type === 'SYMBOL' && token.symbol !== undefined && !seen.has(token.symbol)) {
+      seen.add(token.symbol);
+      alphabet.push(token.symbol);
+    }
+  }
+  return alphabet;
+}
+
+function computeTransitionTable(
+  states: number[],
+  transitions: Transition[]
+): Record<number, Record<string, number[]>> {
+  const table: Record<number, Record<string, number[]>> = {};
+  for (const state of states) {
+    table[state] = {};
+  }
+
+  for (const t of transitions) {
+    if (!table[t.from]) {
+      table[t.from] = {};
+    }
+    if (!table[t.from][t.label]) {
+      table[t.from][t.label] = [];
+    }
+    table[t.from][t.label].push(t.to);
+  }
+
+  // Ensure targets are sorted for stability
+  for (const state of states) {
+    for (const label of Object.keys(table[state])) {
+      table[state][label].sort((a, b) => a - b);
+    }
+  }
+
+  return table;
+}
+
+function computeEpsilonClosure(startStates: number[], transitions: Transition[]): number[] {
+  const closure = new Set<number>(startStates);
+  const queue = [...startStates];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const t of transitions) {
+      if (t.from === current && t.label === 'ε') {
+        if (!closure.has(t.to)) {
+          closure.add(t.to);
+          queue.push(t.to);
+        }
+      }
+    }
+  }
+
+  return Array.from(closure).sort((a, b) => a - b);
+}
+
+export function checkInvariants(nfa: NFA): InvariantsResult {
+  const stateSet = new Set(nfa.states);
+  const I1 = nfa.start !== nfa.accept && stateSet.has(nfa.start) && stateSet.has(nfa.accept);
+  const I2 = nfa.transitions.every((t) => t.to !== nfa.start);
+  const I3 = nfa.transitions.every((t) => t.from !== nfa.accept);
+
+  const outgoing: Record<number, { symbol: number; epsilon: number }> = {};
+  for (const s of nfa.states) {
+    outgoing[s] = { symbol: 0, epsilon: 0 };
+  }
+
+  let noDanglingEdges = true;
+  for (const t of nfa.transitions) {
+    if (!stateSet.has(t.from) || !stateSet.has(t.to)) {
+      noDanglingEdges = false;
+    }
+    if (outgoing[t.from]) {
+      if (t.label === 'ε') {
+        outgoing[t.from].epsilon++;
+      } else {
+        outgoing[t.from].symbol++;
+      }
+    }
+  }
+
+  let I4 = true;
+  for (const s of nfa.states) {
+    const out = outgoing[s];
+    const isSingleSymbol = out.symbol === 1 && out.epsilon === 0;
+    const isEpsilonBranch = out.symbol === 0 && out.epsilon <= 2;
+    if (!isSingleSymbol && !isEpsilonBranch) {
+      I4 = false;
+      break;
+    }
+  }
+
+  return { I1, I2, I3, I4, noDanglingEdges };
+}
+
+export function analyze(source: string, options: AnalyzeOptions = {}): AnalysisResult {
+  const notation = options.notation ?? 'standard';
+  const tokens = tokenize(source, notation);
+  const tokensWithConcat = insertImplicitConcat(tokens);
+  const postfix = toPostfix(tokensWithConcat);
+  const { steps, nfa } = buildNFA(postfix);
+  const alphabet = inferAlphabet(tokens);
+  const transitionTable = computeTransitionTable(nfa.states, nfa.transitions);
+  const initialClosure = computeEpsilonClosure([nfa.start], nfa.transitions);
+  const invariants = checkInvariants(nfa);
+
+  return {
+    tokens,
+    postfix,
+    steps,
+    nfa,
+    alphabet,
+    stats: {
+      states: nfa.states.length,
+      transitions: nfa.transitions.length
+    },
+    transitionTable,
+    initialClosure,
+    invariants
   };
 }

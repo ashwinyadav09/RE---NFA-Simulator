@@ -26,8 +26,8 @@ const assert = require('node:assert');
   console.log('Worker result:', workerResult);
   assert.strictEqual(workerResult.pong, 'hello', 'Inline worker must return pong');
 
-  // 3. Type 'a' into #regex-input
-  await page.fill('#regex-input', 'a');
+  // 3. Type '(a|b)*a' into #regex-input
+  await page.fill('#regex-input', '(a|b)*a');
 
   // 4. Click #build-button
   await page.click('#build-button');
@@ -38,18 +38,32 @@ const assert = require('node:assert');
   // 6. Check #stats
   const statsText = await page.textContent('#stats');
   console.log('Stats text:', statsText);
-  assert(statsText.includes('States: 2'), 'Stats must report 2 states');
-  assert(statsText.includes('Transitions: 1'), 'Stats must report 1 transition');
+  assert(statsText.includes('States: 10'), 'Stats must report 10 states');
+  assert(statsText.includes('Transitions: 12'), 'Stats must report 12 transitions');
 
-  // 7. Check #canvas contains rendered SVG with nodes and edge
+  // 7. Check #postfix-view
+  const postfixText = await page.textContent('#postfix-view');
+  console.log('Postfix text:', postfixText);
+  assert(postfixText.includes('UNION'), 'Postfix must contain UNION');
+  assert(postfixText.includes('STAR'), 'Postfix must contain STAR');
+  assert(postfixText.includes('CONCAT'), 'Postfix must contain CONCAT');
+
+  // 8. Check #transition-table
+  const tableRows = await page.evaluate(() => document.querySelectorAll('#transition-table tbody tr').length);
+  console.log('Transition table rows:', tableRows);
+  assert(tableRows >= 10, 'Transition table must contain rows for all 10 states');
+
+  // 9. Check #canvas contains rendered SVG with nodes and edges
   const hasSvg = await page.evaluate(() => !!document.querySelector('#canvas svg'));
   assert(hasSvg, 'Canvas must contain rendered SVG');
 
   const nodeCount = await page.evaluate(() => document.querySelectorAll('#canvas svg g.node').length);
   const edgeCount = await page.evaluate(() => document.querySelectorAll('#canvas svg g.edge').length);
   console.log(`Rendered SVG: ${nodeCount} nodes, ${edgeCount} edges`);
-  assert(nodeCount >= 2, 'SVG must contain at least 2 nodes');
-  assert(edgeCount >= 1, 'SVG must contain at least 1 edge');
+  // Graphviz renders 10 NFA state nodes + 1 start pseudo-node = 11 nodes
+  assert(nodeCount >= 10, 'SVG must contain at least 10 state nodes');
+  // 12 NFA transitions + 1 start arrow = 13 edges
+  assert(edgeCount >= 12, 'SVG must contain at least 12 edges');
 
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
 

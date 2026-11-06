@@ -4,12 +4,12 @@
 
 **Blocked by:** 01: Walking skeleton
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Analyze returns the tokens, the postfix form, one step per postfix token, the final NFA and statistics for expressions built from symbols, ε, ∅, union, implicit concatenation, star and parentheses.
-- [ ] For `(a|b)*a`, every step's new states, new transitions and produced fragment, the final transition table and the initial ε-closure equal the worked-example fixture.
-- [ ] Each step stores copies and the stack of fragments after it. Replaying the step log reproduces the final NFA exactly.
-- [ ] For the fixture expressions the size formulas for states and transitions and invariants I1–I4 hold. `(a|b)*abb` has 14 states and 16 transitions.
-- [ ] Structural edge cases build: `#` is two states and no transition; `@` is two states and one ε-transition; nested and stacked groups work.
-- [ ] The page shows `postfix-view`, `canvas`, `transition-table` and `stats`. The browser smoke builds `(a|b)*a` and sees 10 states and 12 transitions.
-- [ ] Simulation is not part of this ticket.
+- [x] Analyze returns the tokens, the postfix form, one step per postfix token, the final NFA and statistics for expressions built from symbols, ε, ∅, union, implicit concatenation, star and parentheses. (`tests/engine.test.ts`)
+- [x] For `(a|b)*a`, every step's new states, new transitions and produced fragment, the final transition table and the initial ε-closure equal the worked-example fixture. (`tests/engine.test.ts` matching `worked-example.json`)
+- [x] Each step stores copies and the stack of fragments after it. Replaying the step log reproduces the final NFA exactly. (`tests/engine.test.ts`)
+- [x] For the fixture expressions the size formulas for states and transitions and invariants I1–I4 hold. `(a|b)*abb` has 14 states and 16 transitions. (`tests/engine.test.ts` matching `classic-abb.json`)
+- [x] Structural edge cases build: `#` is two states and no transition; `@` is two states and one ε-transition; nested and stacked groups work. (`tests/engine.test.ts`)
+- [x] The page shows `postfix-view`, `canvas`, `transition-table` and `stats`. The browser smoke builds `(a|b)*a` and sees 10 states and 12 transitions. (`tests/e2e.cjs`)
+- [x] Simulation is not part of this ticket.

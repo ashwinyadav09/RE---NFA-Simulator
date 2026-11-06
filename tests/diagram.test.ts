@@ -117,6 +117,52 @@ test('VizRenderer renders NFAs with labels containing quotes and backslashes suc
   }
 });
 
+test('toDot generates valid DOT with dashed epsilon edges and ids for 10-state worked-example NFA', async () => {
+  const workedExampleNfa = {
+    states: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    start: 6,
+    accept: 9,
+    transitions: [
+      { from: 0, to: 1, label: 'a' },
+      { from: 2, to: 3, label: 'b' },
+      { from: 4, to: 0, label: 'ε' },
+      { from: 4, to: 2, label: 'ε' },
+      { from: 1, to: 5, label: 'ε' },
+      { from: 3, to: 5, label: 'ε' },
+      { from: 6, to: 4, label: 'ε' },
+      { from: 5, to: 7, label: 'ε' },
+      { from: 6, to: 7, label: 'ε' },
+      { from: 5, to: 4, label: 'ε' },
+      { from: 8, to: 9, label: 'a' },
+      { from: 7, to: 8, label: 'ε' }
+    ]
+  };
+
+  const dot = toDot(workedExampleNfa);
+
+  // Nodes check
+  for (let i = 0; i <= 9; i++) {
+    expect(dot).toContain(`id="n${i}"`);
+  }
+
+  // Accept shape on q9
+  expect(dot).toMatch(/q9\s*\[[^\]]*shape=doublecircle/);
+
+  // Start arrow to q6
+  expect(dot).toContain('__start -> q6 [id="start-edge"]');
+
+  // Dashed style on epsilon transitions
+  expect(dot).toContain('label="ε", style=dashed');
+
+  // Renders successfully via VizRenderer
+  const renderer = new VizRenderer();
+  const res = await renderer.render(dot);
+  expect(res.ok).toBe(true);
+  if (res.ok) {
+    expect(res.svg).toContain('<svg');
+  }
+});
+
 
 
 

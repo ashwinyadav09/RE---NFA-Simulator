@@ -25,6 +25,41 @@ const inputEl = document.getElementById('regex-input') as HTMLInputElement | nul
 const buttonEl = document.getElementById('build-button') as HTMLButtonElement | null;
 const statsEl = document.getElementById('stats');
 const canvasEl = document.getElementById('canvas');
+const postfixEl = document.getElementById('postfix-view');
+const tableEl = document.getElementById('transition-table');
+
+function renderTransitionTable(analysis: ReturnType<typeof analyze>): string {
+  const { nfa, transitionTable } = analysis;
+  const rows: string[] = [];
+
+  for (const q of nfa.states) {
+    const isStart = q === nfa.start ? ' (start)' : '';
+    const isAccept = q === nfa.accept ? ' (accept)' : '';
+    const stateLabel = `q${q}${isStart}${isAccept}`;
+    const transitions = transitionTable[q] || {};
+    const labels = Object.keys(transitions);
+
+    if (labels.length === 0) {
+      rows.push(`<tr data-state="${q}"><td>${stateLabel}</td><td>-</td><td>-</td></tr>`);
+    } else {
+      for (const label of labels) {
+        const targets = transitions[label].map((dest) => `q${dest}`).join(', ');
+        rows.push(`<tr data-state="${q}"><td>${stateLabel}</td><td>${label}</td><td>${targets}</td></tr>`);
+      }
+    }
+  }
+
+  return `
+    <table>
+      <thead>
+        <tr><th>State</th><th>Symbol</th><th>Next State(s)</th></tr>
+      </thead>
+      <tbody>
+        ${rows.join('\n')}
+      </tbody>
+    </table>
+  `;
+}
 
 async function handleBuild() {
   if (!inputEl) return;
@@ -37,6 +72,16 @@ async function handleBuild() {
     statsEl.textContent = `States: ${analysis.stats.states}, Transitions: ${analysis.stats.transitions}`;
     statsEl.setAttribute('data-states', String(analysis.stats.states));
     statsEl.setAttribute('data-transitions', String(analysis.stats.transitions));
+  }
+
+  if (postfixEl) {
+    postfixEl.textContent = analysis.postfix
+      .map((t) => (t.type === 'SYMBOL' ? t.symbol ?? 'SYMBOL' : t.type))
+      .join(' ');
+  }
+
+  if (tableEl) {
+    tableEl.innerHTML = renderTransitionTable(analysis);
   }
 
   const dot = toDot(analysis.nfa);
