@@ -16,7 +16,14 @@
     <div id="postfix-view" data-testid="postfix-view"></div>
     <div id="canvas" data-testid="canvas"></div>
     <div id="transition-table" data-testid="transition-table"></div>
+    <div class="simulation-controls">
+      <textarea id="test-input" data-testid="test-input" placeholder="Enter test strings, one per line"></textarea>
+      <button id="run-button" data-testid="run-button">Run</button>
+    </div>
+    <pre id="verdict" data-testid="verdict"></pre>
+    <div id="trace" data-testid="trace"></div>
     <div id="worker-status" data-testid="worker-status"></div>
+
   </div>
   <script type="module" src="/src/ui/main.ts"></script>
 </body>

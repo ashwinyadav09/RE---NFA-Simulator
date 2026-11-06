@@ -71,6 +71,21 @@ export interface AnalysisResult {
   invariants: InvariantsResult;
 }
 
+export type SimulationVerdict = 'ACCEPT' | 'REJECT';
+export type RunStatus = 'ok' | 'dead' | 'out_of_alphabet';
+
+export interface RunResult {
+  accepted: boolean;
+  verdict: SimulationVerdict;
+  status: RunStatus;
+  initialClosure: number[];
+  afterEachSymbol: number[][];
+  trace: number[][];
+  position?: number;
+  symbol?: string;
+}
+
+
 export interface AnalyzeOptions {
   notation?: 'standard' | 'textbook';
   concatenation?: 'epsilon-link' | 'merge';
@@ -495,3 +510,72 @@ export function analyze(source: string, options: AnalyzeOptions = {}): AnalysisR
     invariants
   };
 }
+
+export function run(nfa: NFA, alphabet: string[], input: string): RunResult {
+  const initialClosure = computeEpsilonClosure([nfa.start], nfa.transitions);
+  let current = initialClosure;
+  const afterEachSymbol: number[][] = [];
+  const trace: number[][] = [initialClosure];
+  const codePoints = Array.from(input);
+
+  const alphabetSet = new Set(alphabet);
+
+  for (let i = 0; i < codePoints.length; i++) {
+    const symbol = codePoints[i];
+
+    if (!alphabetSet.has(symbol)) {
+      return {
+        accepted: false,
+        verdict: 'REJECT',
+        status: 'out_of_alphabet',
+        initialClosure,
+        afterEachSymbol,
+        trace,
+        position: i,
+        symbol
+      };
+    }
+
+    const moveTargets = new Set<number>();
+    for (const s of current) {
+      for (const t of nfa.transitions) {
+        if (t.from === s && t.label === symbol) {
+          moveTargets.add(t.to);
+        }
+      }
+    }
+
+    current = computeEpsilonClosure(Array.from(moveTargets), nfa.transitions);
+    afterEachSymbol.push(current);
+    trace.push(current);
+
+    if (current.length === 0) {
+      return {
+        accepted: false,
+        verdict: 'REJECT',
+        status: 'dead',
+        initialClosure,
+        afterEachSymbol,
+        trace,
+        position: i
+      };
+    }
+  }
+
+  const accepted = current.includes(nfa.accept);
+  return {
+    accepted,
+    verdict: accepted ? 'ACCEPT' : 'REJECT',
+    status: 'ok',
+    initialClosure,
+    afterEachSymbol,
+    trace
+  };
+}
+
+export function runLines(nfa: NFA, alphabet: string[], text: string): RunResult[] {
+  const lines = text.split(/\r?\n/);
+  return lines.map((line) => run(nfa, alphabet, line));
+}
+
+

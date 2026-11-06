@@ -1,9 +1,10 @@
 /// <reference types="vite/client" />
-import { analyze } from '../engine/index';
+import { analyze, runLines, RunResult } from '../engine/index';
 import { toDot, VizRenderer } from '../diagram/index';
 import InlineWorker from './worker.ts?worker&inline';
 
 const renderer = new VizRenderer();
+let currentAnalysis: ReturnType<typeof analyze> | null = null;
 
 // Setup inline worker
 try {
@@ -27,6 +28,10 @@ const statsEl = document.getElementById('stats');
 const canvasEl = document.getElementById('canvas');
 const postfixEl = document.getElementById('postfix-view');
 const tableEl = document.getElementById('transition-table');
+const testInputEl = document.getElementById('test-input') as HTMLTextAreaElement | null;
+const runButtonEl = document.getElementById('run-button') as HTMLButtonElement | null;
+const verdictEl = document.getElementById('verdict');
+const traceEl = document.getElementById('trace');
 
 function renderTransitionTable(analysis: ReturnType<typeof analyze>): string {
   const { nfa, transitionTable } = analysis;
@@ -67,6 +72,7 @@ async function handleBuild() {
   if (!source) return;
 
   const analysis = analyze(source);
+  currentAnalysis = analysis;
 
   if (statsEl) {
     statsEl.textContent = `States: ${analysis.stats.states}, Transitions: ${analysis.stats.transitions}`;
@@ -98,9 +104,62 @@ async function handleBuild() {
   (window as any).__buildDone = true;
 }
 
+function renderTrace(results: RunResult[], lines: string[]): string {
+  return results
+    .map((res, lineIdx) => {
+      const line = lines[lineIdx];
+      const codePoints = Array.from(line);
+      const steps = [
+        `<div class="trace-step" data-step="0">Initial: {${res.initialClosure.join(', ')}}</div>`,
+        ...res.afterEachSymbol.map((set, idx) => {
+          const char = codePoints[idx] ?? '';
+          return `<div class="trace-step" data-step="${idx + 1}" data-states="${set.join(',')}">After '${char}': {${set.join(', ')}}</div>`;
+        })
+      ];
+
+      if (res.status === 'dead') {
+        steps.push(`<div class="trace-status dead">Dead at position ${res.position}</div>`);
+      } else if (res.status === 'out_of_alphabet') {
+        steps.push(`<div class="trace-status error">Symbol '${res.symbol}' at position ${res.position} outside alphabet</div>`);
+      }
+
+      return `<div class="trace-line" data-line="${lineIdx}"><div><strong>String: "${line}"</strong></div>${steps.join('\n')}</div>`;
+    })
+    .join('\n');
+}
+
+function handleRun() {
+  if (!currentAnalysis) {
+    if (inputEl && inputEl.value) {
+      currentAnalysis = analyze(inputEl.value);
+    } else {
+      return;
+    }
+  }
+
+  const text = testInputEl ? testInputEl.value : '';
+  const lines = text.split(/\r?\n/);
+  const results = runLines(currentAnalysis.nfa, currentAnalysis.alphabet, text);
+
+  if (verdictEl) {
+    verdictEl.textContent = results.map((r) => r.verdict).join('\n');
+  }
+
+  if (traceEl) {
+    traceEl.innerHTML = renderTrace(results, lines);
+  }
+
+  (window as any).__runDone = true;
+}
+
 if (buttonEl) {
   buttonEl.addEventListener('click', handleBuild);
 }
+
+if (runButtonEl) {
+  runButtonEl.addEventListener('click', handleRun);
+}
+
 
 if (inputEl) {
   inputEl.addEventListener('keydown', (e) => {

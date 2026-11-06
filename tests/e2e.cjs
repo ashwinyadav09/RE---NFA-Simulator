@@ -65,7 +65,22 @@ const assert = require('node:assert');
   // 12 NFA transitions + 1 start arrow = 13 edges
   assert(edgeCount >= 12, 'SVG must contain at least 12 edges');
 
+  // 10. Simulation test: enter 'ba', click #run-button, verify ACCEPT and the two sets
+  await page.fill('#test-input', 'ba');
+  await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
+
+  const verdictText = await page.textContent('#verdict');
+  console.log('Verdict text:', verdictText);
+  assert(verdictText.includes('ACCEPT'), 'Verdict must report ACCEPT for "ba"');
+
+  const traceText = await page.textContent('#trace');
+  console.log('Trace text:', traceText);
+  assert(traceText.includes('0, 2, 3, 4, 5, 7, 8'), 'Trace must show the active set after b: {0, 2, 3, 4, 5, 7, 8}');
+  assert(traceText.includes('0, 1, 2, 4, 5, 7, 8, 9'), 'Trace must show the active set after a: {0, 1, 2, 4, 5, 7, 8, 9}');
+
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
+
 
   await browser.close();
   console.log('E2E test passed successfully!');

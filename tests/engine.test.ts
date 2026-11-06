@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { analyze } from '../src/engine/index';
+import { analyze, run, runLines } from '../src/engine/index';
 
 const fixturePath = resolve(__dirname, '../.agents/skills/thompson-rules/fixtures/worked-example.json');
 const workedExample = JSON.parse(readFileSync(fixturePath, 'utf-8'));
@@ -183,3 +183,114 @@ test('structural edge cases build correctly: #, @, nested groups, and stacked op
   // a: 2 states, 1 tr. a*: 2+2=4 states, 1+4=5 tr. a**: 4+2=6 states, 5+4=9 tr.
   expect(resStacked.stats).toEqual({ states: 6, transitions: 9 });
 });
+
+test('simulation on "(a|b)*a" produces traces and verdicts matching worked-example fixture', () => {
+  const analysis = analyze('(a|b)*a');
+  const testInputs = ['ba', 'ab', 'a', ''];
+
+  for (const input of testInputs) {
+    const expected = workedExample.traces[input];
+    const result = run(analysis.nfa, analysis.alphabet, input);
+
+    expect(result.initialClosure).toEqual(workedExample.initialClosure);
+    expect(result.afterEachSymbol).toEqual(expected.afterEachSymbol);
+    expect(result.accepted).toBe(expected.accepted);
+    expect(result.verdict).toBe(expected.accepted ? 'ACCEPT' : 'REJECT');
+  }
+});
+
+test('dead active set is reported with position and simulation terminates early', () => {
+  const analysis = analyze('(a|b)*a');
+  const extendedAlphabet = ['a', 'b', 'c'];
+
+  // Test 'cab': 'c' empties the set at index 0, so 'a' and 'b' must not be processed
+  const resCab = run(analysis.nfa, extendedAlphabet, 'cab');
+  expect(resCab.status).toBe('dead');
+  expect(resCab.position).toBe(0);
+  expect(resCab.accepted).toBe(false);
+  expect(resCab.verdict).toBe('REJECT');
+  expect(resCab.afterEachSymbol).toEqual([[]]);
+  expect(resCab.trace).toEqual([workedExample.initialClosure, []]);
+
+  // Test 'bc': 'b' transitions normally, 'c' empties set at index 1
+  const resBc = run(analysis.nfa, extendedAlphabet, 'bc');
+  expect(resBc.status).toBe('dead');
+  expect(resBc.position).toBe(1);
+  expect(resBc.accepted).toBe(false);
+  expect(resBc.verdict).toBe('REJECT');
+  expect(resBc.afterEachSymbol).toEqual([
+    workedExample.traces['ba'].afterEachSymbol[0],
+    []
+  ]);
+  expect(resBc.trace).toEqual([
+    workedExample.initialClosure,
+    workedExample.traces['ba'].afterEachSymbol[0],
+    []
+  ]);
+});
+
+test('symbol outside alphabet is reported at its position with the trace so far', () => {
+  const analysis = analyze('(a|b)*a');
+  const inferredAlphabet = analysis.alphabet; // ['a', 'b']
+
+  // 'bx' where 'x' is not in alphabet at position 1
+  const resBx = run(analysis.nfa, inferredAlphabet, 'bx');
+  expect(resBx.status).toBe('out_of_alphabet');
+  expect(resBx.position).toBe(1);
+  expect(resBx.symbol).toBe('x');
+  expect(resBx.accepted).toBe(false);
+  expect(resBx.verdict).toBe('REJECT');
+  expect(resBx.afterEachSymbol).toEqual([workedExample.traces['ba'].afterEachSymbol[0]]);
+  expect(resBx.trace).toEqual([workedExample.initialClosure, workedExample.traces['ba'].afterEachSymbol[0]]);
+
+  // 'x' directly where 'x' is not in alphabet at position 0
+  const resX = run(analysis.nfa, inferredAlphabet, 'x');
+  expect(resX.status).toBe('out_of_alphabet');
+  expect(resX.position).toBe(0);
+  expect(resX.symbol).toBe('x');
+  expect(resX.accepted).toBe(false);
+  expect(resX.afterEachSymbol).toEqual([]);
+  expect(resX.trace).toEqual([workedExample.initialClosure]);
+});
+
+test('strings and positions are processed by code point for non-BMP symbols', () => {
+  // 🚀 is U+1F680, taking 2 UTF-16 code units (surrogate pair)
+  const analysis = analyze('🚀');
+  expect(analysis.alphabet).toEqual(['🚀']);
+
+  // '🚀' accepted
+  const resAccept = run(analysis.nfa, analysis.alphabet, '🚀');
+  expect(resAccept.accepted).toBe(true);
+  expect(resAccept.verdict).toBe('ACCEPT');
+  expect(resAccept.afterEachSymbol.length).toBe(1);
+
+  // '🚀🚀' rejected
+  const resReject = run(analysis.nfa, analysis.alphabet, '🚀🚀');
+  expect(resReject.accepted).toBe(false);
+  expect(resReject.verdict).toBe('REJECT');
+
+  // '🚀x' where 'x' is outside alphabet: position must be 1 (code point index), not 2 (UTF-16 index)
+  const resError = run(analysis.nfa, analysis.alphabet, '🚀x');
+  expect(resError.status).toBe('out_of_alphabet');
+  expect(resError.position).toBe(1);
+  expect(resError.symbol).toBe('x');
+});
+
+test('runLines returns one result and verdict per line for multi-line inputs', () => {
+  const analysis = analyze('(a|b)*a');
+  const multiLineInput = 'ba\nab\na\n';
+  // 4 lines: 'ba', 'ab', 'a', ''
+  const results = runLines(analysis.nfa, analysis.alphabet, multiLineInput);
+
+  expect(results.length).toBe(4);
+  expect(results.map((r) => r.verdict)).toEqual(['ACCEPT', 'REJECT', 'ACCEPT', 'REJECT']);
+  expect(results[0].afterEachSymbol).toEqual(workedExample.traces['ba'].afterEachSymbol);
+  expect(results[1].afterEachSymbol).toEqual(workedExample.traces['ab'].afterEachSymbol);
+  expect(results[2].afterEachSymbol).toEqual(workedExample.traces['a'].afterEachSymbol);
+  expect(results[3].afterEachSymbol).toEqual(workedExample.traces[''].afterEachSymbol);
+});
+
+
+
+
+
