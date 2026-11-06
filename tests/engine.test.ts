@@ -194,6 +194,7 @@ test('simulation on "(a|b)*a" produces traces and verdicts matching worked-examp
 
     expect(result.initialClosure).toEqual(workedExample.initialClosure);
     expect(result.afterEachSymbol).toEqual(expected.afterEachSymbol);
+    expect(result.trace).toEqual([workedExample.initialClosure, ...expected.afterEachSymbol]);
     expect(result.accepted).toBe(expected.accepted);
     expect(result.verdict).toBe(expected.accepted ? 'ACCEPT' : 'REJECT');
   }
