@@ -10,6 +10,17 @@ export type TokenType =
   | 'LPAREN'
   | 'RPAREN';
 
+// Parse tree node types (built from postfix form; binary operators are left-nested)
+export type ParseNode =
+  | { k: 'sym'; v: string }
+  | { k: 'eps' }
+  | { k: 'empty' }
+  | { k: 'star'; c: ParseNode }
+  | { k: 'plus'; c: ParseNode }
+  | { k: 'opt'; c: ParseNode }
+  | { k: 'union'; l: ParseNode; r: ParseNode }
+  | { k: 'cat'; l: ParseNode; r: ParseNode };
+
 export interface Token {
   type: TokenType;
   symbol?: string;
@@ -70,6 +81,7 @@ export interface AnalysisSuccess {
   ok: true;
   tokens: Token[];
   postfix: Token[];
+  parseTree: ParseNode;
   steps: Step[];
   nfa: NFA;
   alphabet: string[];
@@ -635,6 +647,53 @@ export function checkInvariants(nfa: NFA): InvariantsResult {
   return { I1, I2, I3, I4, noDanglingEdges };
 }
 
+// Build a parse tree from the postfix token list.
+// Binary operators (CONCAT, UNION) are left-nested (left-associative).
+function astFromPostfix(postfix: Token[]): ParseNode {
+  const stack: ParseNode[] = [];
+  for (const t of postfix) {
+    switch (t.type) {
+      case 'SYMBOL':
+        stack.push({ k: 'sym', v: t.symbol! });
+        break;
+      case 'EPSILON':
+        stack.push({ k: 'eps' });
+        break;
+      case 'EMPTY':
+        stack.push({ k: 'empty' });
+        break;
+      case 'STAR': {
+        const c = stack.pop()!;
+        stack.push({ k: 'star', c });
+        break;
+      }
+      case 'PLUS': {
+        const c = stack.pop()!;
+        stack.push({ k: 'plus', c });
+        break;
+      }
+      case 'OPT': {
+        const c = stack.pop()!;
+        stack.push({ k: 'opt', c });
+        break;
+      }
+      case 'UNION': {
+        const r = stack.pop()!;
+        const l = stack.pop()!;
+        stack.push({ k: 'union', l, r });
+        break;
+      }
+      case 'CONCAT': {
+        const r = stack.pop()!;
+        const l = stack.pop()!;
+        stack.push({ k: 'cat', l, r });
+        break;
+      }
+    }
+  }
+  return stack[0];
+}
+
 export function analyze(source: string, options: AnalyzeOptions = {}): AnalysisResult {
   const notation = options.notation ?? 'standard';
   const tokens = tokenize(source, notation);
@@ -673,11 +732,13 @@ export function analyze(source: string, options: AnalyzeOptions = {}): AnalysisR
   const transitionTable = computeTransitionTable(nfa.states, nfa.transitions);
   const initialClosure = computeEpsilonClosure([nfa.start], nfa.transitions);
   const invariants = checkInvariants(nfa);
+  const parseTree = astFromPostfix(postfix);
 
   return {
     ok: true,
     tokens,
     postfix,
+    parseTree,
     steps,
     nfa,
     alphabet,

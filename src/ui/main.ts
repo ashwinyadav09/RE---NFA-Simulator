@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { analyze, runLines, RunResult, AnalysisSuccess } from '../engine/index';
+import { analyze, runLines, RunResult, AnalysisSuccess, ParseNode, Token } from '../engine/index';
 import { toDot, VizRenderer } from '../diagram/index';
 import InlineWorker from './worker.ts?worker&inline';
 
@@ -26,7 +26,9 @@ const inputEl = document.getElementById('regex-input') as HTMLInputElement | nul
 const buttonEl = document.getElementById('build-button') as HTMLButtonElement | null;
 const statsEl = document.getElementById('stats');
 const canvasEl = document.getElementById('canvas');
+const tokenListEl = document.getElementById('token-list');
 const postfixEl = document.getElementById('postfix-view');
+const treeViewEl = document.getElementById('tree-view');
 const tableEl = document.getElementById('transition-table');
 const testInputEl = document.getElementById('test-input') as HTMLTextAreaElement | null;
 const runButtonEl = document.getElementById('run-button') as HTMLButtonElement | null;
@@ -82,6 +84,33 @@ function renderTransitionTable(container: HTMLElement, analysis: AnalysisSuccess
   }
   table.appendChild(tbody);
   container.appendChild(table);
+}
+
+function renderTokenList(container: HTMLElement, tokens: Token[]): void {
+  container.textContent = '';
+  const spans: string[] = tokens.map((t) => {
+    const label = t.type === 'SYMBOL' ? `SYMBOL(${t.symbol})` : t.type;
+    return `[${label}@${t.position}]`;
+  });
+  container.textContent = spans.join(' ');
+}
+
+function renderTreeView(container: HTMLElement, tree: ParseNode): void {
+  container.textContent = '';
+  function nodeToText(node: ParseNode, depth: number): string {
+    const indent = '  '.repeat(depth);
+    switch (node.k) {
+      case 'sym':   return `${indent}sym(${node.v})`;
+      case 'eps':   return `${indent}eps`;
+      case 'empty': return `${indent}empty`;
+      case 'star':  return `${indent}star\n${nodeToText(node.c, depth + 1)}`;
+      case 'plus':  return `${indent}plus\n${nodeToText(node.c, depth + 1)}`;
+      case 'opt':   return `${indent}opt\n${nodeToText(node.c, depth + 1)}`;
+      case 'union': return `${indent}union\n${nodeToText(node.l, depth + 1)}\n${nodeToText(node.r, depth + 1)}`;
+      case 'cat':   return `${indent}cat\n${nodeToText(node.l, depth + 1)}\n${nodeToText(node.r, depth + 1)}`;
+    }
+  }
+  container.textContent = nodeToText(tree, 0);
 }
 
 
@@ -144,10 +173,18 @@ async function handleBuild() {
     statsEl.setAttribute('data-transitions', String(analysis.stats.transitions));
   }
 
+  if (tokenListEl) {
+    renderTokenList(tokenListEl, analysis.tokens);
+  }
+
   if (postfixEl) {
     postfixEl.textContent = analysis.postfix
       .map((t) => (t.type === 'SYMBOL' ? t.symbol ?? 'SYMBOL' : t.type))
       .join(' ');
+  }
+
+  if (treeViewEl) {
+    renderTreeView(treeViewEl, analysis.parseTree);
   }
 
   if (tableEl) {
