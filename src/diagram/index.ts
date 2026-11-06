@@ -9,12 +9,48 @@ export interface DiagramRenderer {
   render(dot: string): Promise<RenderResult>;
 }
 
+/**
+ * In-memory fake renderer for testing.
+ * Uses a documented heuristic to detect malformed DOT syntax without invoking Graphviz:
+ * 1. Must begin with "digraph" or "graph" (optionally preceded by "strict").
+ * 2. Braces must be balanced with at least one matching pair.
+ * 3. Edges must have both source and target (no orphan arrows like "-> ;", "-> }", or "{ ->").
+ */
 export class FakeRenderer implements DiagramRenderer {
   async render(dot: string): Promise<RenderResult> {
     const trimmed = dot.trim();
-    if (!trimmed.startsWith('digraph') || !trimmed.endsWith('}') || trimmed.includes('-> }')) {
-      return { ok: false, error: 'Invalid DOT syntax' };
+
+    // 1. Must start with (strict )?(di)?graph
+    if (!/^(?:strict\s+)?(?:di)?graph\b/.test(trimmed)) {
+      return { ok: false, error: 'Invalid DOT syntax: missing graph or digraph header' };
     }
+
+    // 2. Braces must be balanced with at least one pair
+    let braceCount = 0;
+    let hasOpenBrace = false;
+    for (const char of trimmed) {
+      if (char === '{') {
+        braceCount++;
+        hasOpenBrace = true;
+      } else if (char === '}') {
+        braceCount--;
+        if (braceCount < 0) {
+          return { ok: false, error: 'Invalid DOT syntax: unexpected closing brace' };
+        }
+      }
+    }
+    if (!hasOpenBrace || braceCount !== 0) {
+      return { ok: false, error: 'Invalid DOT syntax: unbalanced braces' };
+    }
+
+    // 3. Edges must have a target and source (no orphan arrows)
+    if (/(?:->|--)\s*[;}\]]/.test(trimmed)) {
+      return { ok: false, error: 'Invalid DOT syntax: edge arrow without target' };
+    }
+    if (/[{;]\s*(?:->|--)/.test(trimmed)) {
+      return { ok: false, error: 'Invalid DOT syntax: edge arrow without source' };
+    }
+
     return {
       ok: true,
       svg: `<svg xmlns="http://www.w3.org/2000/svg"><g id="fake-graph">${dot}</g></svg>`

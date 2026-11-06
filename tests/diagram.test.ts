@@ -22,6 +22,14 @@ test('toDot produces DOT text with id on every node and edge, start arrow, and d
   expect(dot).toContain('label="a"');
 });
 
+const invalidDotSamples = [
+  'digraph { a -> }',
+  'digraph { a -> ; }',
+  'digraph { -> b; }',
+  'digraph { a -> b',
+  'not a dot graph'
+];
+
 test('FakeRenderer returns ok for valid DOT and error for invalid DOT without throwing', async () => {
   const fake = new FakeRenderer();
   const valid = await fake.render('digraph { a -> b; }');
@@ -30,10 +38,12 @@ test('FakeRenderer returns ok for valid DOT and error for invalid DOT without th
     expect(valid.svg).toContain('<svg');
   }
 
-  const invalid = await fake.render('digraph { a -> }');
-  expect(invalid.ok).toBe(false);
-  if (!invalid.ok) {
-    expect(typeof invalid.error).toBe('string');
+  for (const invalid of invalidDotSamples) {
+    const res = await fake.render(invalid);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(typeof res.error).toBe('string');
+    }
   }
 });
 
@@ -45,12 +55,15 @@ test('VizRenderer returns ok with SVG for valid DOT and error for invalid DOT wi
     expect(valid.svg).toContain('<svg');
   }
 
-  const invalid = await renderer.render('digraph { a -> }');
-  expect(invalid.ok).toBe(false);
-  if (!invalid.ok) {
-    expect(typeof invalid.error).toBe('string');
+  for (const invalid of invalidDotSamples) {
+    const res = await renderer.render(invalid);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(typeof res.error).toBe('string');
+    }
   }
 });
+
 
 test('every node and edge statement in DOT has an id attribute, including start-node and start-edge', () => {
   const nfa = {
