@@ -1,0 +1,12 @@
+  toolchain-smoke@ /tmp/toolchain
+  +-- @fast-check/vitest@0.5.0
+  +-- @types/node@26.6.6
+  +-- @viz-js/viz@3.31.0
+  +-- fast-check@4.10.2
+  +-- typescript@7.0.2
+  +-- vite-plugin-singlefile@2.3.4
+  +-- vite@8.3.5
+  `-- vitest@5.1.0
+  
+node v22.22.2, V8 12.4.254.21-node.39
+playwright (global, used for e2e): 1.56.0

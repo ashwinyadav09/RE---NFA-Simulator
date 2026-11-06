@@ -1,0 +1,22 @@
+{
+  "_about": "Classic textbook example. Merge mode gives the 11-state figure used in Dragon-book style lecture notes; epsilon-link gives 14.",
+  "source": "(a|b)*abb",
+  "epsilonLink": {
+    "states": 14,
+    "transitions": 16
+  },
+  "merge": {
+    "states": 11,
+    "transitions": 13
+  },
+  "accepts": [
+    "abb",
+    "aabb",
+    "babb"
+  ],
+  "rejects": [
+    "abab",
+    "ab",
+    ""
+  ]
+}

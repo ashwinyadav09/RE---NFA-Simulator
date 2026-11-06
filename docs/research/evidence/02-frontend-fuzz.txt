@@ -1,0 +1,5 @@
+standard notation: tested 1411110; validity disagreements 0 []; AST disagreements on valid inputs 0 []; crashes 0 []
+   among 1276166 invalid inputs: error-code differs 917278 (71.9%), position differs 640713 (50.2%), pipeline gave NO position 3
+textbook notation: tested 747870; validity disagreements 0 []; AST disagreements on valid inputs 0 []; crashes 0 []
+   among 675902 invalid inputs: error-code differs 451566 (66.8%), position differs 321334 (47.5%), pipeline gave NO position 3
+(36.5s)

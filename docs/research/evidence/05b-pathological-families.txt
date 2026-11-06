@@ -1,0 +1,7 @@
+(A) 5000 random expressions through V8's RegExp (strings <= 6): finished 4999, TIMED OUT >2000 ms: 1; wrong answers 0; slowest finished 334 ms; pathological examples: ["((a|a)?|(#|a*)+)+++  [13 nodes]"]
+
+(B) V8 12.4.254.21-node.39: JS RegExp (worker, 6 s cap) vs Thompson NFA, same string
+  Cox  (a?)^n a^n   on a^n         n=12: 0.2 ms, n=16: 0.3 ms, n=20: 0.5 ms, n=22: 0.5 ms, n=24: 0.5 ms, n=26: 0.5 ms, n=28: 0.6 ms, n=30: 0.6 ms   | NFA (180 states) on length-1000 string: 8.8 ms
+  (a*)*b            on a^n         n=12: 0.3 ms, n=16: 4.6 ms, n=20: 72.1 ms, n=22: 294.6 ms, n=24: 1300.7 ms, n=26: 4937.9 ms, n=28: >6000 ms   | NFA (8 states) on length-1000 string: 5.3 ms
+  (a+)+             on a^n b       n=12: 0.2 ms, n=16: 2.8 ms, n=20: 42.0 ms, n=22: 167.4 ms, n=24: 718.0 ms, n=26: 3003.6 ms, n=28: >6000 ms   | NFA (6 states) on length-1000 string: 0.6 ms
+  (a|aa)+           on a^n b       n=12: 0.1 ms, n=16: 0.2 ms, n=20: 1.1 ms, n=22: 2.7 ms, n=24: 7.1 ms, n=26: 18.4 ms, n=28: 48.9 ms, n=30: 125.5 ms   | NFA (10 states) on length-1000 string: 0.8 ms

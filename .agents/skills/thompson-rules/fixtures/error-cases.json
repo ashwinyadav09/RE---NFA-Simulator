@@ -1,0 +1,148 @@
+{
+  "_about": "PROPOSED golden cases for the error taxonomy in docs/SPEC.md (needs approval). Rule: report the first violation scanning left to right, always pointing at the offending token. End-of-input checks run in this order: missing right operand, then unclosed parenthesis.",
+  "cases": [
+    {
+      "source": "()",
+      "notation": "standard",
+      "code": "EMPTY_GROUP",
+      "pos": 0
+    },
+    {
+      "source": "a|",
+      "notation": "standard",
+      "code": "MISSING_OPERAND",
+      "pos": 1
+    },
+    {
+      "source": "|a",
+      "notation": "standard",
+      "code": "MISSING_OPERAND",
+      "pos": 0
+    },
+    {
+      "source": "a||b",
+      "notation": "standard",
+      "code": "MISSING_OPERAND",
+      "pos": 1
+    },
+    {
+      "source": "(a|)",
+      "notation": "standard",
+      "code": "MISSING_OPERAND",
+      "pos": 2
+    },
+    {
+      "source": "(|a)",
+      "notation": "standard",
+      "code": "MISSING_OPERAND",
+      "pos": 1
+    },
+    {
+      "source": "*a",
+      "notation": "standard",
+      "code": "NOTHING_TO_REPEAT",
+      "pos": 0
+    },
+    {
+      "source": "a|*b",
+      "notation": "standard",
+      "code": "NOTHING_TO_REPEAT",
+      "pos": 2
+    },
+    {
+      "source": "(*)",
+      "notation": "standard",
+      "code": "NOTHING_TO_REPEAT",
+      "pos": 1
+    },
+    {
+      "source": "+a",
+      "notation": "standard",
+      "code": "NOTHING_TO_REPEAT",
+      "pos": 0
+    },
+    {
+      "source": "+a",
+      "notation": "textbook",
+      "code": "MISSING_OPERAND",
+      "pos": 0
+    },
+    {
+      "source": "a(",
+      "notation": "standard",
+      "code": "UNBALANCED_LPAREN",
+      "pos": 1
+    },
+    {
+      "source": "(a",
+      "notation": "standard",
+      "code": "UNBALANCED_LPAREN",
+      "pos": 0
+    },
+    {
+      "source": "((a)",
+      "notation": "standard",
+      "code": "UNBALANCED_LPAREN",
+      "pos": 0
+    },
+    {
+      "source": "(a|",
+      "notation": "standard",
+      "code": "MISSING_OPERAND",
+      "pos": 2
+    },
+    {
+      "source": "a)",
+      "notation": "standard",
+      "code": "UNBALANCED_RPAREN",
+      "pos": 1
+    },
+    {
+      "source": ")a",
+      "notation": "standard",
+      "code": "UNBALANCED_RPAREN",
+      "pos": 0
+    },
+    {
+      "source": "(a))",
+      "notation": "standard",
+      "code": "UNBALANCED_RPAREN",
+      "pos": 3
+    },
+    {
+      "source": "(()a)",
+      "notation": "standard",
+      "code": "EMPTY_GROUP",
+      "pos": 1
+    },
+    {
+      "source": "a|()",
+      "notation": "standard",
+      "code": "EMPTY_GROUP",
+      "pos": 2
+    },
+    {
+      "source": "a(|b)c",
+      "notation": "standard",
+      "code": "MISSING_OPERAND",
+      "pos": 2
+    },
+    {
+      "source": "a|b",
+      "notation": "textbook",
+      "code": "NOT_AN_OPERATOR",
+      "pos": 1
+    }
+  ],
+  "valid": [
+    "a**",
+    "a+?",
+    "a?*",
+    "@*",
+    "#",
+    "a#",
+    "(a)(b)",
+    "a b",
+    "((a|b)*)*"
+  ]
+}

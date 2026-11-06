@@ -1,0 +1,23 @@
+1500 random expressions (median 3 nodes, max 57), all strings over {a,b} up to length 6, 0.6s:
+  JS RegExp finished within 2000 ms: 1500; TIMED OUT (>2000 ms, worker killed): 0  e.g. []; slowest finished 158 ms
+  wrapped translator wrong on 0/1500; naive paste: SyntaxError 407/1500, compiled but different language 21/1500 e.g. ["a+?","a+?|a","(b((#a)+?(a*b))|b)*","(@a|a+?)+"]
+translator escapes '.': ".b" -> true, "ab" -> false
+non-BMP symbol 😀: "😀😀" matches without u flag true, with u flag true; "😀😀".length = 4 UTF-16 units but 2 code points
+
+stress  (a?)^n a^n  vs  a^n   JS RegExp (worker thread, 8 s cap)   |   Thompson NFA simulation (prototype)
+n=10  0.2 ms (match=true)        | NFA 60 states, build 0.12 ms, run 0.21 ms, accepted=true
+n=14  0.2 ms (match=true)  x1.6  | NFA 84 states, build 0.17 ms, run 0.29 ms, accepted=true
+n=18  0.3 ms (match=true)  x1.4  | NFA 108 states, build 0.20 ms, run 0.39 ms, accepted=true
+n=20  0.4 ms (match=true)  x1.3  | NFA 120 states, build 0.17 ms, run 0.41 ms, accepted=true
+n=22  0.5 ms (match=true)  x1.1  | NFA 132 states, build 0.23 ms, run 0.19 ms, accepted=true
+n=24  0.5 ms (match=true)  x1.0  | NFA 144 states, build 0.25 ms, run 0.22 ms, accepted=true
+n=26  0.6 ms (match=true)  x1.2  | NFA 156 states, build 0.20 ms, run 0.24 ms, accepted=true
+n=28  0.6 ms (match=true)  x1.0  | NFA 168 states, build 0.32 ms, run 0.36 ms, accepted=true
+n=30  0.7 ms (match=true)  x1.2  | NFA 180 states, build 0.29 ms, run 0.33 ms, accepted=true
+NFA scaling:
+  n=25   states 150   run     0.25 ms
+  n=50   states 300   run     0.79 ms  x3.2 for 2x n
+  n=100  states 600   run     4.25 ms  x5.4 for 2x n
+  n=200  states 1200  run    17.74 ms  x4.2 for 2x n
+  n=400  states 2400  run   104.46 ms  x5.9 for 2x n
+  n=800  states 4800  run   342.41 ms  x3.3 for 2x n

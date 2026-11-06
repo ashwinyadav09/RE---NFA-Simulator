@@ -1,0 +1,11 @@
+node v22.22.2, V8 12.4.254.21-node.39
+pair | JS RegExp (language over a^0..a^4)        | M1 reading (language over a^0..a^4)       | same language?
+a**  | SyntaxError (Nothing to repeat)           | {ε,a,aa,aaa,aaaa}                         | n/a
+a*+  | SyntaxError (Nothing to repeat)           | {ε,a,aa,aaa,aaaa}                         | n/a
+a*?  | {ε,a,aa,aaa,aaaa}                         | {ε,a,aa,aaa,aaaa}                         | true
+a+*  | SyntaxError (Nothing to repeat)           | {ε,a,aa,aaa,aaaa}                         | n/a
+a++  | SyntaxError (Nothing to repeat)           | {a,aa,aaa,aaaa}                           | n/a
+a+?  | {a,aa,aaa,aaaa}                           | {ε,a,aa,aaa,aaaa}                         | false
+a?*  | SyntaxError (Nothing to repeat)           | {ε,a,aa,aaa,aaaa}                         | n/a
+a?+  | SyntaxError (Nothing to repeat)           | {ε,a,aa,aaa,aaaa}                         | n/a
+a??  | {ε,a}                                     | {ε,a}                                     | true

@@ -1,0 +1,20 @@
+generator depthSize 'small': nodes median 3, p90 8, max 18   |   'large': nodes median 3, p90 22, max 63
+
+mutant                  | layer     | invariants+size+replay | language vs enumerator | parse-tree check | language, SMALL generator | smallest counterexample (language check)
+star-no-back            | builder   | survive                | KILL@7                 | survive          | KILL@7                    | (a|#)*|a
+star-no-skip            | builder   | survive                | KILL@6                 | survive          | KILL@7                    | a|#*|a
+union-no-b-exit         | builder   | survive                | KILL@1                 | survive          | KILL@6                    | (a|(a|b*))*
+plus-skip               | builder   | survive                | KILL@17                | survive          | KILL@1                    | (aa+)*
+opt-no-skip             | builder   | survive                | KILL@2                 | survive          | KILL@2                    | (aa?)**
+eps-as-empty            | builder   | survive                | KILL@16                | survive          | KILL@19                   | ((a|a)@)*
+empty-as-eps            | builder   | survive                | KILL@9                 | survive          | KILL@9                    | #
+merge-no-move           | builder   | KILL@1                 | KILL@1                 | survive          | KILL@6                    | (a|aa)*
+assoc-right             | parser    | survive                | survive                | KILL@1           | survive                   | (tree) (a|#|@)*
+prec-swap               | parser    | survive                | KILL@7                 | KILL@1           | KILL@7                    | (a|aa)*|a
+closure-one-step        | simulator | survive                | KILL@1                 | survive          | KILL@1                    | (a|@)*
+no-initial-closure      | simulator | survive                | KILL@1                 | survive          | KILL@1                    | a*
+no-closure-after-move   | simulator | survive                | KILL@1                 | survive          | KILL@1                    | a*
+(2.6s)  baseline (no mutation) re-check on the large generator:
+  invariants: PASS (1500 runs)
+  language: PASS (800 runs)
+  parse tree: PASS (1500 runs)

@@ -1,0 +1,390 @@
+{
+  "_about": "Hand-solved example from the M1 design document section 4.5, reproduced by the research prototype (35/35 literal checks). Epsilon-link concatenation, standard notation. State ids are creation order.",
+  "source": "(a|b)*a",
+  "notation": "standard",
+  "concatenation": "epsilon-link",
+  "postfix": [
+    "SYMBOL",
+    "SYMBOL",
+    "UNION",
+    "STAR",
+    "SYMBOL",
+    "CONCAT"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "token": "SYMBOL",
+      "rule": "symbol",
+      "newStates": [
+        0,
+        1
+      ],
+      "newTransitions": [
+        {
+          "from": 0,
+          "to": 1,
+          "label": "a"
+        }
+      ],
+      "result": {
+        "start": 0,
+        "accept": 1
+      },
+      "stackDepthAfter": 1
+    },
+    {
+      "index": 2,
+      "token": "SYMBOL",
+      "rule": "symbol",
+      "newStates": [
+        2,
+        3
+      ],
+      "newTransitions": [
+        {
+          "from": 2,
+          "to": 3,
+          "label": "b"
+        }
+      ],
+      "result": {
+        "start": 2,
+        "accept": 3
+      },
+      "stackDepthAfter": 2
+    },
+    {
+      "index": 3,
+      "token": "UNION",
+      "rule": "union",
+      "newStates": [
+        4,
+        5
+      ],
+      "newTransitions": [
+        {
+          "from": 4,
+          "to": 0,
+          "label": "ε"
+        },
+        {
+          "from": 4,
+          "to": 2,
+          "label": "ε"
+        },
+        {
+          "from": 1,
+          "to": 5,
+          "label": "ε"
+        },
+        {
+          "from": 3,
+          "to": 5,
+          "label": "ε"
+        }
+      ],
+      "result": {
+        "start": 4,
+        "accept": 5
+      },
+      "stackDepthAfter": 1
+    },
+    {
+      "index": 4,
+      "token": "STAR",
+      "rule": "star",
+      "newStates": [
+        6,
+        7
+      ],
+      "newTransitions": [
+        {
+          "from": 6,
+          "to": 4,
+          "label": "ε"
+        },
+        {
+          "from": 5,
+          "to": 7,
+          "label": "ε"
+        },
+        {
+          "from": 6,
+          "to": 7,
+          "label": "ε"
+        },
+        {
+          "from": 5,
+          "to": 4,
+          "label": "ε"
+        }
+      ],
+      "result": {
+        "start": 6,
+        "accept": 7
+      },
+      "stackDepthAfter": 1
+    },
+    {
+      "index": 5,
+      "token": "SYMBOL",
+      "rule": "symbol",
+      "newStates": [
+        8,
+        9
+      ],
+      "newTransitions": [
+        {
+          "from": 8,
+          "to": 9,
+          "label": "a"
+        }
+      ],
+      "result": {
+        "start": 8,
+        "accept": 9
+      },
+      "stackDepthAfter": 2
+    },
+    {
+      "index": 6,
+      "token": "CONCAT",
+      "rule": "concatenation",
+      "newStates": [],
+      "newTransitions": [
+        {
+          "from": 7,
+          "to": 8,
+          "label": "ε"
+        }
+      ],
+      "result": {
+        "start": 6,
+        "accept": 9
+      },
+      "stackDepthAfter": 1
+    }
+  ],
+  "nfa": {
+    "states": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "start": 6,
+    "accept": 9,
+    "transitions": [
+      {
+        "from": 0,
+        "to": 1,
+        "label": "a"
+      },
+      {
+        "from": 2,
+        "to": 3,
+        "label": "b"
+      },
+      {
+        "from": 4,
+        "to": 0,
+        "label": "ε"
+      },
+      {
+        "from": 4,
+        "to": 2,
+        "label": "ε"
+      },
+      {
+        "from": 1,
+        "to": 5,
+        "label": "ε"
+      },
+      {
+        "from": 3,
+        "to": 5,
+        "label": "ε"
+      },
+      {
+        "from": 6,
+        "to": 4,
+        "label": "ε"
+      },
+      {
+        "from": 5,
+        "to": 7,
+        "label": "ε"
+      },
+      {
+        "from": 6,
+        "to": 7,
+        "label": "ε"
+      },
+      {
+        "from": 5,
+        "to": 4,
+        "label": "ε"
+      },
+      {
+        "from": 8,
+        "to": 9,
+        "label": "a"
+      },
+      {
+        "from": 7,
+        "to": 8,
+        "label": "ε"
+      }
+    ]
+  },
+  "transitionTable": {
+    "0": {
+      "a": [
+        1
+      ]
+    },
+    "1": {
+      "ε": [
+        5
+      ]
+    },
+    "2": {
+      "b": [
+        3
+      ]
+    },
+    "3": {
+      "ε": [
+        5
+      ]
+    },
+    "4": {
+      "ε": [
+        0,
+        2
+      ]
+    },
+    "5": {
+      "ε": [
+        4,
+        7
+      ]
+    },
+    "6": {
+      "ε": [
+        4,
+        7
+      ]
+    },
+    "7": {
+      "ε": [
+        8
+      ]
+    },
+    "8": {
+      "a": [
+        9
+      ]
+    },
+    "9": {}
+  },
+  "initialClosure": [
+    0,
+    2,
+    4,
+    6,
+    7,
+    8
+  ],
+  "traces": {
+    "ba": {
+      "afterEachSymbol": [
+        [
+          0,
+          2,
+          3,
+          4,
+          5,
+          7,
+          8
+        ],
+        [
+          0,
+          1,
+          2,
+          4,
+          5,
+          7,
+          8,
+          9
+        ]
+      ],
+      "accepted": true
+    },
+    "ab": {
+      "afterEachSymbol": [
+        [
+          0,
+          1,
+          2,
+          4,
+          5,
+          7,
+          8,
+          9
+        ],
+        [
+          0,
+          2,
+          3,
+          4,
+          5,
+          7,
+          8
+        ]
+      ],
+      "accepted": false
+    },
+    "a": {
+      "afterEachSymbol": [
+        [
+          0,
+          1,
+          2,
+          4,
+          5,
+          7,
+          8,
+          9
+        ]
+      ],
+      "accepted": true
+    },
+    "": {
+      "afterEachSymbol": [],
+      "accepted": false
+    }
+  },
+  "invariants": {
+    "I1": true,
+    "I2": true,
+    "I3": true,
+    "I4": true,
+    "noDanglingEdges": true
+  },
+  "mergeMode": {
+    "states": 9,
+    "transitions": 11,
+    "mergedAtStep6": {
+      "removed": 8,
+      "into": 7
+    }
+  }
+}

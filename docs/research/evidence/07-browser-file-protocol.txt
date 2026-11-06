@@ -1,0 +1,2 @@
+single-file build via file://  => {"svgNodes":2,"svgInDom":true,"dashed":1,"worker":{"ms":20.899999999999636,"ok":false},"wasm":"object","origin":"file:"} ready in 258 ms console: []
+plain external worker via file:// => throw SecurityError []

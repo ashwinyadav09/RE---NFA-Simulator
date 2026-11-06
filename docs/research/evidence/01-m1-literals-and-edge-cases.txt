@@ -1,0 +1,36 @@
+
+[1+2] literal checks vs M1 doc: 35 passed, 0 failed
+
+source        | M1 pipeline (A1-A3)                          | recursive-descent parser            | validity agrees | same error code | same pos
+""            | INVALID_EXPRESSION@undefined                 | MISSING_OPERAND@0                   | true            | false           | false
+"   "         | INVALID_EXPRESSION@undefined                 | MISSING_OPERAND@0                   | true            | false           | false
+"()"          | INVALID_EXPRESSION@undefined                 | EMPTY_GROUP@0                       | true            | false           | false
+"a|"          | MISSING_OPERAND@1                            | MISSING_OPERAND@2                   | true            | true            | false
+"|a"          | MISSING_OPERAND@0                            | MISSING_OPERAND@0                   | true            | true            | true
+"*a"          | MISSING_OPERAND@0                            | NOTHING_TO_REPEAT@0                 | true            | false           | true
+"a||b"        | MISSING_OPERAND@1                            | MISSING_OPERAND@2                   | true            | true            | false
+"(a|)"        | MISSING_OPERAND@2                            | MISSING_OPERAND@3                   | true            | true            | false
+"(|a)"        | MISSING_OPERAND@1                            | MISSING_OPERAND@1                   | true            | true            | true
+"a("          | UNBALANCED_LPAREN@1                          | UNBALANCED_LPAREN@1                 | true            | true            | true
+")a"          | UNBALANCED_RPAREN@0                          | MISSING_OPERAND@0                   | true            | false           | true
+"(a"          | UNBALANCED_LPAREN@0                          | UNBALANCED_LPAREN@0                 | true            | true            | true
+"a)"          | UNBALANCED_RPAREN@1                          | UNBALANCED_RPAREN@1                 | true            | true            | true
+"a|*b"        | MISSING_OPERAND@1                            | NOTHING_TO_REPEAT@2                 | true            | false           | false
+"+a"          | MISSING_OPERAND@0                            | NOTHING_TO_REPEAT@0                 | true            | false           | true
+"a**"         | OK                                           | OK                                  | true            | -               | -
+"a+?"         | OK                                           | OK                                  | true            | -               | -
+"a?*"         | OK                                           | OK                                  | true            | -               | -
+"@*"          | OK                                           | OK                                  | true            | -               | -
+"#"           | OK                                           | OK                                  | true            | -               | -
+"a#"          | OK                                           | OK                                  | true            | -               | -
+"(a)(b)"      | OK                                           | OK                                  | true            | -               | -
+"a b"         | OK                                           | OK                                  | true            | -               | -
+"((a)"        | UNBALANCED_LPAREN@0                          | UNBALANCED_LPAREN@0                 | true            | true            | true
+"(a))"        | UNBALANCED_RPAREN@3                          | UNBALANCED_RPAREN@3                 | true            | true            | true
+"(()a)"       | MISSING_OPERAND@3                            | EMPTY_GROUP@1                       | true            | false           | false
+"a|()"        | MISSING_OPERAND@1                            | EMPTY_GROUP@2                       | true            | false           | false
+"(*)"         | MISSING_OPERAND@1                            | NOTHING_TO_REPEAT@1                 | true            | false           | true
+"a(|b)c"      | MISSING_OPERAND@1                            | MISSING_OPERAND@2                   | true            | true            | false
+
+validity disagreements: 0; among invalid inputs: error-code disagreements 10, position disagreements 10
+AST agreement checks included above: totals 42 passed, 0 failed

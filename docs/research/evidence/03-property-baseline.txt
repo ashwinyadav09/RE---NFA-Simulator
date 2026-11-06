@@ -1,0 +1,8 @@
+generator: nodes per expression min 1, median 3, p90 8, max 19; strings per expression: 127 (all strings over {a,b} up to length 6)
+node kinds: {"cat":876,"sym":2878,"opt":578,"plus":611,"union":940,"empty":472,"star":626,"eps":466}
+expressions whose root is a stacked unary operator (e.g. a**, a+?): 218/2000
+PASS  oracles agree with each other (enumerator = derivatives = JS RegExp)  (2500 runs, 0.4s)
+PASS  structural invariants I1-I4 + size formula + step-log replay, both concat modes  (4000 runs, 0.3s)
+PASS  parse tree from shunting-yard == printed AST  (4000 runs, 0.1s)
+PASS  NFA language == enumerator over all strings, both concat modes  (2500 runs, 1.0s)
+total 1.8s; fast-check seed 1

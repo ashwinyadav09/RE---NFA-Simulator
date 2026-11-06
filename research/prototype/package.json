@@ -1,0 +1,7 @@
+{
+  "name": "re-nfa-research-prototype",
+  "private": true,
+  "type": "module",
+  "description": "THROWAWAY research prototype. Reference for oracles and experiments only; do not copy its structure into src/.",
+  "dependencies": { "@viz-js/viz": "3.31.0", "fast-check": "4.10.2" }
+}

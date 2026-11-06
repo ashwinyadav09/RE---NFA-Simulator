@@ -1,0 +1,28 @@
+Viz.instance() init: 27 ms; Graphviz 16.1.0; engines circo,dot,fdp,neato,nop,nop1,nop2,osage,patchwork,sfdp,twopi; formats(subset) dot,json,plain,svg
+final NFA of (a|b)*abb: SVG 11969 chars, 15 nodes (+1 start marker), 17 edges; ids honoured: node n0 true, edge e0 true; ε glyph true; dashed edges 11; accept node drawn as 2 ellipses 2
+renderSVGElement exists (needs DOM; not run in Node)
+renderJSON: 15 objects, bb=0,0,996.02,167.78, sample "221.76,149.78"
+
+step | nodes | max drift vs final layout (points):  plain dot per step | neato with pinned positions
+   1 |     2 |      4.0   | 0.0 svg ok
+   2 |     4 |     83.8   | 0.0 svg ok
+   3 |     6 |     54.1   | 0.0 svg ok
+   4 |     8 |      4.0   | 0.0 svg ok
+   5 |    10 |    344.8   | 0.0 svg ok
+   6 |    10 |      4.0   | 0.0 svg ok
+   7 |    12 |    399.1   | 0.0 svg ok
+   8 |    12 |      4.0   | 0.0 svg ok
+   9 |    14 |    573.7   | 0.0 svg ok
+  10 |    14 |      0.0   | 0.0 svg ok
+
+collapsed-fragment record node with ports renders: true (4031 chars)
+cluster-per-fragment renders: true
+invalid DOT throws: syntax error in line 1 near '}'
+viz.render() on invalid DOT returns status=failure, errors[0]={"message":"syntax error in line 1 near '}'","level":"error"}
+
+render time vs size (median of 5, dot, rankdir=LR):
+     10 postfix tokens,    14 states,    16 transitions:      6 ms, SVG 12 KB
+     54 postfix tokens,    70 states,    84 transitions:     18 ms, SVG 57 KB
+    219 postfix tokens,   280 states,   339 transitions:     49 ms, SVG 232 KB
+    549 postfix tokens,   700 states,   849 transitions:    147 ms, SVG 585 KB
+   1099 postfix tokens,  1400 states,  1699 transitions:    516 ms, SVG 1180 KB
