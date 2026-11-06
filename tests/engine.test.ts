@@ -291,6 +291,16 @@ test('runLines returns one result and verdict per line for multi-line inputs', (
   expect(results[3].afterEachSymbol).toEqual(workedExample.traces[''].afterEachSymbol);
 });
 
+test('symbol step never follows an ε-transition even if alphabet includes ε', () => {
+  const analysis = analyze('a*');
+  const result = run(analysis.nfa, ['a', 'ε'], 'ε');
+
+  expect(result.status).toBe('dead');
+  expect(result.position).toBe(0);
+  expect(result.accepted).toBe(false);
+});
+
+
 
 
 

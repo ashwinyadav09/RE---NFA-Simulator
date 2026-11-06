@@ -539,7 +539,7 @@ export function run(nfa: NFA, alphabet: string[], input: string): RunResult {
     const moveTargets = new Set<number>();
     for (const s of current) {
       for (const t of nfa.transitions) {
-        if (t.from === s && t.label === symbol) {
+        if (t.from === s && t.label !== 'ε' && t.label === symbol) {
           moveTargets.add(t.to);
         }
       }
@@ -574,7 +574,7 @@ export function run(nfa: NFA, alphabet: string[], input: string): RunResult {
 }
 
 export function runLines(nfa: NFA, alphabet: string[], text: string): RunResult[] {
-  const lines = text.split(/\r?\n/);
+  const lines = text.split(/\r\n|\r|\n/);
   return lines.map((line) => run(nfa, alphabet, line));
 }
 

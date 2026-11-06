@@ -33,10 +33,22 @@ const runButtonEl = document.getElementById('run-button') as HTMLButtonElement |
 const verdictEl = document.getElementById('verdict');
 const traceEl = document.getElementById('trace');
 
-function renderTransitionTable(analysis: ReturnType<typeof analyze>): string {
+function renderTransitionTable(container: HTMLElement, analysis: ReturnType<typeof analyze>): void {
   const { nfa, transitionTable } = analysis;
-  const rows: string[] = [];
+  container.textContent = '';
 
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const trHead = document.createElement('tr');
+  for (const header of ['State', 'Symbol', 'Next State(s)']) {
+    const th = document.createElement('th');
+    th.textContent = header;
+    trHead.appendChild(th);
+  }
+  thead.appendChild(trHead);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
   for (const q of nfa.states) {
     const isStart = q === nfa.start ? ' (start)' : '';
     const isAccept = q === nfa.accept ? ' (accept)' : '';
@@ -45,26 +57,32 @@ function renderTransitionTable(analysis: ReturnType<typeof analyze>): string {
     const labels = Object.keys(transitions);
 
     if (labels.length === 0) {
-      rows.push(`<tr data-state="${q}"><td>${stateLabel}</td><td>-</td><td>-</td></tr>`);
+      const tr = document.createElement('tr');
+      tr.setAttribute('data-state', String(q));
+      for (const val of [stateLabel, '-', '-']) {
+        const td = document.createElement('td');
+        td.textContent = val;
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
     } else {
       for (const label of labels) {
         const targets = transitions[label].map((dest) => `q${dest}`).join(', ');
-        rows.push(`<tr data-state="${q}"><td>${stateLabel}</td><td>${label}</td><td>${targets}</td></tr>`);
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-state', String(q));
+        for (const val of [stateLabel, label, targets]) {
+          const td = document.createElement('td');
+          td.textContent = val;
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
       }
     }
   }
-
-  return `
-    <table>
-      <thead>
-        <tr><th>State</th><th>Symbol</th><th>Next State(s)</th></tr>
-      </thead>
-      <tbody>
-        ${rows.join('\n')}
-      </tbody>
-    </table>
-  `;
+  table.appendChild(tbody);
+  container.appendChild(table);
 }
+
 
 async function handleBuild() {
   if (!inputEl) return;
@@ -87,7 +105,7 @@ async function handleBuild() {
   }
 
   if (tableEl) {
-    tableEl.innerHTML = renderTransitionTable(analysis);
+    renderTransitionTable(tableEl, analysis);
   }
 
   const dot = toDot(analysis.nfa);
@@ -104,28 +122,54 @@ async function handleBuild() {
   (window as any).__buildDone = true;
 }
 
-function renderTrace(results: RunResult[], lines: string[]): string {
-  return results
-    .map((res, lineIdx) => {
-      const line = lines[lineIdx];
-      const codePoints = Array.from(line);
-      const steps = [
-        `<div class="trace-step" data-step="0">Initial: {${res.initialClosure.join(', ')}}</div>`,
-        ...res.afterEachSymbol.map((set, idx) => {
-          const char = codePoints[idx] ?? '';
-          return `<div class="trace-step" data-step="${idx + 1}" data-states="${set.join(',')}">After '${char}': {${set.join(', ')}}</div>`;
-        })
-      ];
+function renderTrace(container: HTMLElement, results: RunResult[], lines: string[]): void {
+  container.textContent = '';
+  for (let lineIdx = 0; lineIdx < results.length; lineIdx++) {
+    const res = results[lineIdx];
+    const line = lines[lineIdx];
+    const codePoints = Array.from(line);
 
-      if (res.status === 'dead') {
-        steps.push(`<div class="trace-status dead">Dead at position ${res.position}</div>`);
-      } else if (res.status === 'out_of_alphabet') {
-        steps.push(`<div class="trace-status error">Symbol '${res.symbol}' at position ${res.position} outside alphabet</div>`);
-      }
+    const lineEl = document.createElement('div');
+    lineEl.className = 'trace-line';
+    lineEl.setAttribute('data-line', String(lineIdx));
 
-      return `<div class="trace-line" data-line="${lineIdx}"><div><strong>String: "${line}"</strong></div>${steps.join('\n')}</div>`;
-    })
-    .join('\n');
+    const stringDiv = document.createElement('div');
+    const strong = document.createElement('strong');
+    strong.textContent = `String: "${line}"`;
+    stringDiv.appendChild(strong);
+    lineEl.appendChild(stringDiv);
+
+    const initialDiv = document.createElement('div');
+    initialDiv.className = 'trace-step';
+    initialDiv.setAttribute('data-step', '0');
+    initialDiv.textContent = `Initial: {${res.initialClosure.join(', ')}}`;
+    lineEl.appendChild(initialDiv);
+
+    for (let idx = 0; idx < res.afterEachSymbol.length; idx++) {
+      const set = res.afterEachSymbol[idx];
+      const char = codePoints[idx] ?? '';
+      const stepDiv = document.createElement('div');
+      stepDiv.className = 'trace-step';
+      stepDiv.setAttribute('data-step', String(idx + 1));
+      stepDiv.setAttribute('data-states', set.join(','));
+      stepDiv.textContent = `After '${char}': {${set.join(', ')}}`;
+      lineEl.appendChild(stepDiv);
+    }
+
+    if (res.status === 'dead') {
+      const deadDiv = document.createElement('div');
+      deadDiv.className = 'trace-status dead';
+      deadDiv.textContent = `Dead at position ${res.position}`;
+      lineEl.appendChild(deadDiv);
+    } else if (res.status === 'out_of_alphabet') {
+      const errDiv = document.createElement('div');
+      errDiv.className = 'trace-status error';
+      errDiv.textContent = `Symbol '${res.symbol}' at position ${res.position} outside alphabet`;
+      lineEl.appendChild(errDiv);
+    }
+
+    container.appendChild(lineEl);
+  }
 }
 
 function handleRun() {
@@ -138,7 +182,7 @@ function handleRun() {
   }
 
   const text = testInputEl ? testInputEl.value : '';
-  const lines = text.split(/\r?\n/);
+  const lines = text.split(/\r\n|\r|\n/);
   const results = runLines(currentAnalysis.nfa, currentAnalysis.alphabet, text);
 
   if (verdictEl) {
@@ -146,7 +190,7 @@ function handleRun() {
   }
 
   if (traceEl) {
-    traceEl.innerHTML = renderTrace(results, lines);
+    renderTrace(traceEl, results, lines);
   }
 
   (window as any).__runDone = true;

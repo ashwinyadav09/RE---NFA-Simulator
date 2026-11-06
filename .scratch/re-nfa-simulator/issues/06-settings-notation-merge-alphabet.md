@@ -11,3 +11,7 @@
 - [ ] `@` or `ε`, and `#` or `∅`, are accepted. The buttons insert them at the cursor. They never become alphabet symbols. Whitespace is ignored.
 - [ ] The alphabet is inferred and editable. Added symbols can be simulated. Removing a symbol the expression uses is refused with a message.
 - [ ] `notation-select` and `concat-select` work, and changing either rebuilds.
+
+## Notes
+- make EPS a dedicated sentinel, not the string 'ε'
+

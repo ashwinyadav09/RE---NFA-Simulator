@@ -79,6 +79,19 @@ const assert = require('node:assert');
   assert(traceText.includes('0, 2, 3, 4, 5, 7, 8'), 'Trace must show the active set after b: {0, 2, 3, 4, 5, 7, 8}');
   assert(traceText.includes('0, 1, 2, 4, 5, 7, 8, 9'), 'Trace must show the active set after a: {0, 1, 2, 4, 5, 7, 8, 9}');
 
+  // 11. HTML escaping test: enter test string '<b>& ', click Run, verify #trace has no <b> element and textContent contains literal '<b>&'
+  await page.evaluate(() => { window.__runDone = false; });
+  await page.fill('#test-input', '<b>& ');
+  await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
+
+  const hasBElement = await page.evaluate(() => document.querySelector('#trace b') !== null);
+  assert.strictEqual(hasBElement, false, '#trace must have no <b> child element');
+
+  const traceEscapedText = await page.textContent('#trace');
+  console.log('Trace escaped text:', traceEscapedText);
+  assert(traceEscapedText.includes('<b>&'), 'Trace textContent must contain the literal "<b>&"');
+
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
 
 
