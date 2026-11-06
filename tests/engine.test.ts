@@ -2,6 +2,7 @@ import { test, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { analyze, run, runLines, AnalysisResult, AnalysisSuccess } from '../src/engine/index';
+import { parseRD } from './oracles';
 
 function assertSuccess(result: AnalysisResult): asserts result is AnalysisSuccess {
   if (!result.ok) {
@@ -641,87 +642,67 @@ test('[T05-3] Stacked unary: "a+?" is (a+)?, "a**" is (a*)*, both have correct s
   expect(run(resAStar2.nfa, resAStar2.alphabet, 'aa').accepted).toBe(true);
 });
 
-test('[T05-4] analyze returns a parseTree built from the postfix form for atoms and unary operators', () => {
+test('[T05-4] analyze returns a parseTree matching Oracle 4 for atoms and unary operators', () => {
   // Atom: sym, eps, empty
   const rSym = analyze('a');
   assertSuccess(rSym);
-  expect((rSym as any).parseTree).toEqual({ k: 'sym', v: 'a' });
+  expect(rSym.parseTree).toEqual(parseRD('a'));
 
   const rEps = analyze('@');
   assertSuccess(rEps);
-  expect((rEps as any).parseTree).toEqual({ k: 'eps' });
+  expect(rEps.parseTree).toEqual(parseRD('@'));
 
   const rEmpty = analyze('#');
   assertSuccess(rEmpty);
-  expect((rEmpty as any).parseTree).toEqual({ k: 'empty' });
+  expect(rEmpty.parseTree).toEqual(parseRD('#'));
 
   // Unary operators
   const rStar = analyze('a*');
   assertSuccess(rStar);
-  expect((rStar as any).parseTree).toEqual({ k: 'star', c: { k: 'sym', v: 'a' } });
+  expect(rStar.parseTree).toEqual(parseRD('a*'));
 
   const rPlus = analyze('a+');
   assertSuccess(rPlus);
-  expect((rPlus as any).parseTree).toEqual({ k: 'plus', c: { k: 'sym', v: 'a' } });
+  expect(rPlus.parseTree).toEqual(parseRD('a+'));
 
   const rOpt = analyze('a?');
   assertSuccess(rOpt);
-  expect((rOpt as any).parseTree).toEqual({ k: 'opt', c: { k: 'sym', v: 'a' } });
+  expect(rOpt.parseTree).toEqual(parseRD('a?'));
 
   // Stacked: a+? = opt(plus(a))
   const rPlusOpt = analyze('a+?');
   assertSuccess(rPlusOpt);
-  expect((rPlusOpt as any).parseTree).toEqual({ k: 'opt', c: { k: 'plus', c: { k: 'sym', v: 'a' } } });
+  expect(rPlusOpt.parseTree).toEqual(parseRD('a+?'));
 
   // Stacked: a** = star(star(a))
   const rStarStar = analyze('a**');
   assertSuccess(rStarStar);
-  expect((rStarStar as any).parseTree).toEqual({ k: 'star', c: { k: 'star', c: { k: 'sym', v: 'a' } } });
+  expect(rStarStar.parseTree).toEqual(parseRD('a**'));
 });
 
-test('[T05-5] parseTree is left-nested for binary operators and respects concat-over-union precedence', () => {
+test('[T05-5] parseTree matches Oracle 4 with left-nested binary operators and concat-over-union precedence', () => {
   // Left-nested concatenation: abc = cat(cat(a,b),c)
   const rABC = analyze('abc');
   assertSuccess(rABC);
-  expect(rABC.parseTree).toEqual({
-    k: 'cat',
-    l: { k: 'cat', l: { k: 'sym', v: 'a' }, r: { k: 'sym', v: 'b' } },
-    r: { k: 'sym', v: 'c' }
-  });
+  expect(rABC.parseTree).toEqual(parseRD('abc'));
 
   // Left-nested union: a|b|c = union(union(a,b),c)
   const rABC2 = analyze('a|b|c');
   assertSuccess(rABC2);
-  expect(rABC2.parseTree).toEqual({
-    k: 'union',
-    l: { k: 'union', l: { k: 'sym', v: 'a' }, r: { k: 'sym', v: 'b' } },
-    r: { k: 'sym', v: 'c' }
-  });
+  expect(rABC2.parseTree).toEqual(parseRD('a|b|c'));
 
   // Concat binds tighter than union: a|bc = union(a, cat(b,c))
   const rABC3 = analyze('a|bc');
   assertSuccess(rABC3);
-  expect(rABC3.parseTree).toEqual({
-    k: 'union',
-    l: { k: 'sym', v: 'a' },
-    r: { k: 'cat', l: { k: 'sym', v: 'b' }, r: { k: 'sym', v: 'c' } }
-  });
+  expect(rABC3.parseTree).toEqual(parseRD('a|bc'));
 
   // ab|c = union(cat(a,b), c)
   const rABC4 = analyze('ab|c');
   assertSuccess(rABC4);
-  expect(rABC4.parseTree).toEqual({
-    k: 'union',
-    l: { k: 'cat', l: { k: 'sym', v: 'a' }, r: { k: 'sym', v: 'b' } },
-    r: { k: 'sym', v: 'c' }
-  });
+  expect(rABC4.parseTree).toEqual(parseRD('ab|c'));
 
   // Classic (a|b)*a = cat(star(union(a,b)), a)
   const rClassic = analyze('(a|b)*a');
   assertSuccess(rClassic);
-  expect(rClassic.parseTree).toEqual({
-    k: 'cat',
-    l: { k: 'star', c: { k: 'union', l: { k: 'sym', v: 'a' }, r: { k: 'sym', v: 'b' } } },
-    r: { k: 'sym', v: 'a' }
-  });
+  expect(rClassic.parseTree).toEqual(parseRD('(a|b)*a'));
 });

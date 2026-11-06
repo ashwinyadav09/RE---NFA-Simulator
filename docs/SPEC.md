@@ -104,7 +104,7 @@ All algorithmic work happens in a pure TypeScript engine that also runs under No
 Vite, TypeScript, Vitest, fast-check, Viz.js, `vite-plugin-singlefile`, Playwright for the browser smoke test. Versions verified together on 3 Nov 2026: `@viz-js/viz` 3.31.0 (Graphviz 16.1.0), `typescript` 7.0.2, `vite` 8.3.5, `vitest` 5.1.0, `fast-check` 4.10.2, `@fast-check/vitest` 0.5.0, `vite-plugin-singlefile` 2.3.4. Pin exact versions. The single-file build is about 1.36 MB (490 KB gzipped) and worked from `file://` in headless Chromium.
 
 ### UI contract (stable test ids)
-`regex-input`, `build-button`, `notation-select`, `concat-select`, `error-message`, `postfix-view`, `tree-view`, `step-prev`, `step-next`, `step-play`, `step-counter`, `step-log`, `canvas`, `view-toggle`, `transition-table`, `stats`, `test-input`, `run-button`, `trace`, `verdict`, `inv-I1` … `inv-I4`, `inv-size`, `inv-replay`, `run-suite`, `suite-table`, `stress-run`, `stress-table`.
+`regex-input`, `build-button`, `notation-select`, `concat-select`, `error-message`, `token-list`, `postfix-view`, `tree-view`, `step-prev`, `step-next`, `step-play`, `step-counter`, `step-log`, `canvas`, `view-toggle`, `transition-table`, `stats`, `test-input`, `run-button`, `trace`, `verdict`, `inv-I1` … `inv-I4`, `inv-size`, `inv-replay`, `run-suite`, `suite-table`, `stress-run`, `stress-table`.
 
 ## Testing Decisions
 

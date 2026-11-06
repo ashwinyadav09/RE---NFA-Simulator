@@ -6,8 +6,8 @@
 
 **Status:** done
 
-- [x] Plus and optional follow the rules table as direct constructions. Sizes match the formulas and I1–I4 hold. (`tests/engine.test.ts` T05-1, T05-2)
-- [x] `a+?` means (a+)? and `a**` is a star of a star; both build. (`tests/engine.test.ts` T05-3)
-- [x] Analyze returns the parse tree built from the postfix form. Binary operators are left-nested (`abc` and `a|b|c`). (`tests/engine.test.ts` T05-4, T05-5)
-- [x] The page shows the token list, `postfix-view` and `tree-view`. (`tests/e2e.cjs` steps 15–18)
-- [x] The error-case fixture cases that need `+` are enabled and pass. (`tests/engine.test.ts` error-case fixture test, guard removed)
+- [x] Plus and optional follow the rules table as direct constructions. Sizes match the formulas and I1–I4 hold. (`tests/engine.test.ts` lines 563-618: T05-1, T05-2 pass)
+- [x] `a+?` means (a+)? and `a**` is a star of a star; both build. (`tests/engine.test.ts` lines 620-642: T05-3 pass)
+- [x] Analyze returns the parse tree built from the postfix form. Binary operators are left-nested (`abc` and `a|b|c`). (`tests/engine.test.ts` lines 644-708: T05-4, T05-5 pass against Oracle 4 `parseRD`)
+- [x] The page shows the token list, `postfix-view` and `tree-view`. (`tests/e2e.cjs` steps 15–18 pass: token list, postfix, tree view rendered and asserted)
+- [x] The error-case fixture cases that need `+` are enabled and pass. (`tests/engine.test.ts` lines 465-498 pass: standard `+a` error case and `a**`, `a+?`, `a?*` valid cases enabled)
