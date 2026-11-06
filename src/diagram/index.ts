@@ -50,6 +50,10 @@ export class VizRenderer implements DiagramRenderer {
   }
 }
 
+function escapeLabel(label: string): string {
+  return label.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 export function toDot(nfa: NFA): string {
   const lines: string[] = [
     'digraph NFA {',
@@ -72,7 +76,7 @@ export function toDot(nfa: NFA): string {
   }
 
   nfa.transitions.forEach((t, i) => {
-    const attrs = [`id="e${i}"`, `label="${t.label}"`];
+    const attrs = [`id="e${i}"`, `label="${escapeLabel(t.label)}"`];
     if (t.label === 'ε') {
       attrs.push('style=dashed');
     }

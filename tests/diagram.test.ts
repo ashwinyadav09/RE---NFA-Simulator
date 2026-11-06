@@ -74,5 +74,36 @@ test('every node and edge statement in DOT has an id attribute, including start-
   }
 });
 
+test('VizRenderer renders NFAs with labels containing quotes and backslashes successfully', async () => {
+  const renderer = new VizRenderer();
+
+  const nfaWithQuote = {
+    states: [0, 1],
+    start: 0,
+    accept: 1,
+    transitions: [{ from: 0, to: 1, label: '"' }]
+  };
+  const dotQuote = toDot(nfaWithQuote);
+  const resQuote = await renderer.render(dotQuote);
+  expect(resQuote.ok).toBe(true);
+  if (resQuote.ok) {
+    expect(resQuote.svg).toContain('<svg');
+  }
+
+  const nfaWithBackslash = {
+    states: [0, 1],
+    start: 0,
+    accept: 1,
+    transitions: [{ from: 0, to: 1, label: '\\' }]
+  };
+  const dotBackslash = toDot(nfaWithBackslash);
+  const resBackslash = await renderer.render(dotBackslash);
+  expect(resBackslash.ok).toBe(true);
+  if (resBackslash.ok) {
+    expect(resBackslash.svg).toContain('<svg');
+  }
+});
+
+
 
 
