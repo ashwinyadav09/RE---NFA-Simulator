@@ -53,19 +53,101 @@ const assert = require('node:assert');
   console.log('Transition table rows:', tableRows);
   assert(tableRows >= 10, 'Transition table must contain rows for all 10 states');
 
-  // 9. Check #canvas contains rendered SVG with nodes and edges
+  // 9. Check stepper controls and initial step 1 state
+  const stepCounterText = await page.textContent('#step-counter');
+  console.log('Initial step counter:', stepCounterText);
+  assert(stepCounterText.includes('step 1 / 6'), 'Stepper must start at step 1 / 6');
+
+  // Check step log
+  const stepLogItems = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#step-log .step-log-item')).map((el) => el.textContent)
+  );
+  console.log('Step log item count:', stepLogItems.length);
+  assert.strictEqual(stepLogItems.length, 6, 'Step log must list all 6 steps');
+  assert(
+    stepLogItems[2].includes('union of fragments 0→1 and 2→3'),
+    'Step 3 in step log must describe union of fragments 0→1 and 2→3'
+  );
+
+  // Initial step 1 canvas has fragment 0->1
+  const initialNodes = await page.evaluate(() => document.querySelectorAll('#canvas svg g.node').length);
+  console.log('Step 1 canvas nodes:', initialNodes);
+  assert(initialNodes >= 2, 'Step 1 must have at least 2 state nodes');
+
+  // Step through (a|b)*a to step 6 / 6
+  for (let s = 2; s <= 6; s++) {
+    await page.click('#step-next');
+    await page.waitForFunction(
+      (expected) => document.querySelector('#step-counter')?.textContent.includes(`step ${expected} / 6`),
+      s,
+      { timeout: 5000 }
+    );
+  }
+
+  const finalStepCounter = await page.textContent('#step-counter');
+  console.log('Final step counter:', finalStepCounter);
+  assert(finalStepCounter.includes('step 6 / 6'), 'Stepper must reach step 6 / 6');
+
+  // 10. Check #canvas contains rendered SVG with nodes and edges at step 6 / 6
   const hasSvg = await page.evaluate(() => !!document.querySelector('#canvas svg'));
   assert(hasSvg, 'Canvas must contain rendered SVG');
 
   const nodeCount = await page.evaluate(() => document.querySelectorAll('#canvas svg g.node').length);
   const edgeCount = await page.evaluate(() => document.querySelectorAll('#canvas svg g.edge').length);
-  console.log(`Rendered SVG: ${nodeCount} nodes, ${edgeCount} edges`);
+  console.log(`Rendered SVG at step 6 / 6: ${nodeCount} nodes, ${edgeCount} edges`);
   // Graphviz renders 10 NFA state nodes + 1 start pseudo-node = 11 nodes
-  assert(nodeCount >= 10, 'SVG must contain at least 10 state nodes');
+  assert(nodeCount >= 10, 'SVG must contain at least 10 state nodes at step 6');
   // 12 NFA transitions + 1 start arrow = 13 edges
-  assert(edgeCount >= 12, 'SVG must contain at least 12 edges');
+  assert(edgeCount >= 12, 'SVG must contain at least 12 edges at step 6');
 
-  // 10. Simulation test: enter 'ba', click #run-button, verify ACCEPT and the two sets
+  // 11. Test stepper navigation controls (Prev, First, Last, Arrow keys)
+  await page.click('#step-prev');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 5 / 6'));
+
+  await page.click('#step-first');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
+
+  await page.click('#step-last');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 6 / 6'));
+
+  // Arrow keys
+  await page.keyboard.press('ArrowLeft');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 5 / 6'));
+
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 6 / 6'));
+
+  // Play / Pause with speed
+  await page.selectOption('#step-speed', '300');
+  await page.click('#step-first');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
+  await page.click('#step-play');
+  const playText = await page.textContent('#step-play');
+  assert.strictEqual(playText, 'Pause', 'Play button text must become Pause while playing');
+  await new Promise((r) => setTimeout(r, 700));
+  await page.click('#step-play');
+  const pauseText = await page.textContent('#step-play');
+  assert.strictEqual(pauseText, 'Play', 'Play button text must become Play after pause');
+
+  // Clicking postfix token jumps to step
+  await page.click('#postfix-view .postfix-token[data-step-index="3"]');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 3 / 6'));
+  const activeTokenText = await page.textContent('#postfix-view .postfix-token.active');
+  assert.strictEqual(activeTokenText, 'UNION', 'Active postfix token must be UNION');
+
+  // Hovering a state shows creator step
+  const state4Title = await page.evaluate(() => {
+    const node = document.querySelector('#canvas svg g[id="n4"]');
+    return node ? (node.getAttribute('title') || node.querySelector('title')?.textContent || '') : '';
+  });
+  console.log('State 4 hover title:', state4Title);
+  assert(state4Title.includes('Created by step 3'), 'Hovering state 4 must indicate step 3 created it');
+
+  // Jump to step 6 / 6 for simulation
+  await page.click('#step-last');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 6 / 6'));
+
+  // 12. Simulation test: enter 'ba', click #run-button, verify ACCEPT and the two sets
   await page.fill('#test-input', 'ba');
   await page.click('#run-button');
   await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
@@ -387,7 +469,99 @@ const assert = require('node:assert');
   const verdictAfterRace = await page.textContent('#verdict');
   assert.strictEqual(verdictAfterRace, '', '#verdict must be empty');
 
+  // 23. Merge mode stepper test:
+  // Build "(a|b)*a" in merge mode, jump to step 6, assert step log shows both states and what they became,
+  // and state 8 is absent from canvas while state 7 is present.
+  await page.selectOption('#concat-select', 'merge');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  await page.click('#step-last');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 6 / 6'));
+
+  const mergeStep6Text = await page.evaluate(() => {
+    const item = document.querySelector('#step-log .step-log-item[data-step-index="6"]');
+    return item ? item.textContent : '';
+  });
+  console.log('Merge step 6 text:', mergeStep6Text);
+  assert(
+    mergeStep6Text.includes('merged states 7 and 8 into 7'),
+    'Merge step 6 must state "merged states 7 and 8 into 7"'
+  );
+
+  const hasNode8 = await page.evaluate(() => document.querySelector('#canvas svg g[id="n8"]') !== null);
+  assert.strictEqual(hasNode8, false, 'State 8 must be removed in merge mode step 6');
+  const hasNode7 = await page.evaluate(() => document.querySelector('#canvas svg g[id="n7"]') !== null);
+  assert.strictEqual(hasNode7, true, 'State 7 must be present in merge mode step 6');
+
+  // 24. clearResults() test: failed build must reset stepper controls, step log, and canvas
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const counterAfterFail = await page.textContent('#step-counter');
+  assert.strictEqual(counterAfterFail, 'step 0 / 0', 'Step counter must be "step 0 / 0" after failed build');
+
+  const stepLogAfterFail = await page.evaluate(() => document.getElementById('step-log')?.children.length || 0);
+  assert.strictEqual(stepLogAfterFail, 0, 'Step log must be empty after failed build');
+
+  const canvasSvgAfterFail = await page.evaluate(() => document.querySelector('#canvas svg') !== null);
+  assert.strictEqual(canvasSvgAfterFail, false, 'Canvas SVG must be cleared after failed build');
+
+  const areButtonsDisabled = await page.evaluate(() => {
+    const prev = document.getElementById('step-prev');
+    const next = document.getElementById('step-next');
+    const play = document.getElementById('step-play');
+    return prev.disabled && next.disabled && play.disabled;
+  });
+  assert.strictEqual(areButtonsDisabled, true, 'Stepper buttons must be disabled after failed build');
+
+  // 25. Deterministic stepGeneration race test:
+  // Rebuild "(a|b)*a". Set render delay for step 1 to 200ms.
+  // Navigate to step 1 then immediately step 2 in single task.
+  // Step 2 renders immediately, step 1 finishes later.
+  // The guard must prevent step 1 from overwriting step 2 in #canvas.
+  await page.selectOption('#concat-select', 'epsilon-link');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  // Ensure on step 3 first so both step 1 and step 2 navigation are active
+  await page.click('#step-next');
+  await page.click('#step-next');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 3 / 6'));
+
+  await page.evaluate(() => {
+    window.__testRenderDelay = { 1: 200, 2: 0 };
+  });
+
+  // Navigate to step 1 (delayed) then immediately step 2 (immediate) in the same tick
+  await page.evaluate(() => {
+    const tok1 = document.querySelector('#postfix-view .postfix-token[data-step-index="1"]');
+    const tok2 = document.querySelector('#postfix-view .postfix-token[data-step-index="2"]');
+    tok1.click(); // step 1 (in-flight with 200ms delay)
+    tok2.click(); // step 2 (immediate)
+  });
+
+  // Wait 400ms for both renders to settle
+  await new Promise((resolve) => setTimeout(resolve, 400));
+
+  const currentStepAttr = await page.evaluate(() => document.getElementById('canvas')?.getAttribute('data-current-step'));
+  console.log('Current step on canvas after race:', currentStepAttr);
+  assert.strictEqual(currentStepAttr, '2', 'Canvas must remain on step 2 after out-of-order step 1 completes');
+
+  const hasNode2AfterRace = await page.evaluate(() => document.querySelector('#canvas svg g[id="n2"]') !== null);
+  assert.strictEqual(hasNode2AfterRace, true, 'Canvas must contain state 2 from step 2 after out-of-order step 1 completes');
+
+  // Clear test delay hook
+  await page.evaluate(() => { window.__testRenderDelay = null; });
+
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
+
 
 
   await browser.close();

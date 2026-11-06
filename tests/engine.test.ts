@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { analyze, run, runLines, validateAlphabet, EPS, AnalysisResult, AnalysisSuccess } from '../src/engine/index';
+import { analyze, run, runLines, validateAlphabet, getStepSnapshot, EPS, AnalysisResult, AnalysisSuccess } from '../src/engine/index';
 import { parseRD } from './oracles';
 
 function assertSuccess(result: AnalysisResult): asserts result is AnalysisSuccess {
@@ -1071,6 +1071,63 @@ test('[T06-12] validateAlphabet rejects entries that are not exactly one code po
     expect(resAnalyzeMulti.message).toContain('must be exactly one code point');
   }
 });
+
+test('[T07-1] Engine seam: step descriptions formatted in words for (a|b)*a', () => {
+  const result = analyze('(a|b)*a');
+  assertSuccess(result);
+  expect(result.steps[0].description).toBe("symbol 'a' (fragment 0→1)");
+  expect(result.steps[1].description).toBe("symbol 'b' (fragment 2→3)");
+  expect(result.steps[2].description).toBe('union of fragments 0→1 and 2→3');
+  expect(result.steps[3].description).toBe('star of fragment 4→5');
+  expect(result.steps[4].description).toBe("symbol 'a' (fragment 8→9)");
+  expect(result.steps[5].description).toBe('concatenation of fragments 6→7 and 8→9');
+});
+
+test('[T07-2] Engine seam: merge mode step description shows both states and what they became', () => {
+  const result = analyze('(a|b)*a', { concatenation: 'merge' });
+  assertSuccess(result);
+  const step6 = result.steps[5];
+  expect(step6.rule).toBe('concatenation');
+  expect(step6.mergedPair).toEqual({ removed: 8, into: 7 });
+  expect(step6.description).toBe('concatenation of fragments 6→7 and 8→9 (merged states 7 and 8 into 7)');
+});
+
+test('[T07-3] Engine seam: getStepSnapshot returns replayed fragments on stack, states, and new elements', () => {
+  const result = analyze('(a|b)*a');
+  assertSuccess(result);
+  const snap2 = getStepSnapshot(result.steps, 2);
+  expect(snap2.stepIndex).toBe(2);
+  expect(snap2.stack).toEqual([
+    { start: 0, accept: 1 },
+    { start: 2, accept: 3 }
+  ]);
+  expect(snap2.states).toEqual([0, 1, 2, 3]);
+  expect(snap2.transitions).toEqual([
+    { from: 0, to: 1, label: 'a' },
+    { from: 2, to: 3, label: 'b' }
+  ]);
+  expect(snap2.newStates).toEqual([2, 3]);
+  expect(snap2.newTransitions).toEqual([{ from: 2, to: 3, label: 'b' }]);
+});
+
+test('[T07-4] Engine seam: getStepSnapshot in merge mode reflects merged state removal and transition remapping', () => {
+  const result = analyze('(a|b)*a', { concatenation: 'merge' });
+  assertSuccess(result);
+  const snap6 = getStepSnapshot(result.steps, 6);
+  expect(snap6.stepIndex).toBe(6);
+  expect(snap6.states).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 9]);
+  expect(snap6.states).not.toContain(8);
+  expect(snap6.stack).toEqual([{ start: 6, accept: 9 }]);
+  expect(snap6.mergedPair).toEqual({ removed: 8, into: 7 });
+  expect(snap6.newStates).toEqual([]);
+  expect(snap6.newTransitions).toEqual([]);
+  expect(snap6.transitions.length).toBe(11);
+  const remapped = snap6.transitions.find((t) => t.to === 9);
+  expect(remapped).toEqual({ from: 7, to: 9, label: 'a' });
+});
+
+
+
 
 
 

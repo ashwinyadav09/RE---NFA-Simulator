@@ -6,6 +6,8 @@ import {
   AnalysisSuccess,
   ParseNode,
   Token,
+  Step,
+  getStepSnapshot,
   validateAlphabet
 } from '../engine/index';
 import { toDot, VizRenderer } from '../diagram/index';
@@ -15,6 +17,9 @@ const renderer = new VizRenderer();
 let currentAnalysis: AnalysisSuccess | null = null;
 let userEditedAlphabet: string[] | null = null;
 let buildGeneration = 0;
+let stepGeneration = 0;
+let currentStepIndex = 1;
+let playbackTimer: ReturnType<typeof setInterval> | null = null;
 
 // Setup inline worker
 try {
@@ -51,6 +56,14 @@ const runButtonEl = document.getElementById('run-button') as HTMLButtonElement |
 const verdictEl = document.getElementById('verdict');
 const traceEl = document.getElementById('trace');
 const errorEl = document.getElementById('error-message');
+const stepFirstBtn = document.getElementById('step-first') as HTMLButtonElement | null;
+const stepPrevBtn = document.getElementById('step-prev') as HTMLButtonElement | null;
+const stepPlayBtn = document.getElementById('step-play') as HTMLButtonElement | null;
+const stepNextBtn = document.getElementById('step-next') as HTMLButtonElement | null;
+const stepLastBtn = document.getElementById('step-last') as HTMLButtonElement | null;
+const stepCounterEl = document.getElementById('step-counter');
+const stepSpeedSelect = document.getElementById('step-speed') as HTMLSelectElement | null;
+const stepLogEl = document.getElementById('step-log');
 
 function renderTransitionTable(container: HTMLElement, analysis: AnalysisSuccess): void {
   const { nfa, transitionTable } = analysis;
@@ -163,6 +176,238 @@ function insertAtCursor(char: string): void {
   inputEl.setSelectionRange(nextPos, nextPos);
 }
 
+function clearResults(): void {
+  stopPlayback();
+  currentStepIndex = 0;
+
+  if (statsEl) {
+    statsEl.textContent = '';
+    statsEl.removeAttribute('data-states');
+    statsEl.removeAttribute('data-transitions');
+  }
+  if (canvasEl) {
+    canvasEl.innerHTML = '';
+    canvasEl.removeAttribute('data-current-step');
+  }
+  if (traceEl) {
+    traceEl.innerHTML = '';
+  }
+  if (verdictEl) {
+    verdictEl.textContent = '';
+  }
+  if (tableEl) {
+    tableEl.innerHTML = '';
+  }
+  if (tokenListEl) {
+    tokenListEl.textContent = '';
+  }
+  if (postfixEl) {
+    postfixEl.textContent = '';
+  }
+  if (treeViewEl) {
+    treeViewEl.textContent = '';
+  }
+  if (stepLogEl) {
+    stepLogEl.textContent = '';
+  }
+  if (stepCounterEl) {
+    stepCounterEl.textContent = 'step 0 / 0';
+  }
+
+  if (stepFirstBtn) stepFirstBtn.disabled = true;
+  if (stepPrevBtn) stepPrevBtn.disabled = true;
+  if (stepPlayBtn) stepPlayBtn.disabled = true;
+  if (stepNextBtn) stepNextBtn.disabled = true;
+  if (stepLastBtn) stepLastBtn.disabled = true;
+
+  currentAnalysis = null;
+}
+
+function renderPostfixView(container: HTMLElement, tokens: Token[]): void {
+  container.textContent = '';
+  tokens.forEach((t, i) => {
+    const label = t.type === 'SYMBOL' ? t.symbol ?? 'SYMBOL' : t.type;
+    const span = document.createElement('span');
+    span.className = 'postfix-token';
+    span.setAttribute('data-step-index', String(i + 1));
+    span.textContent = label;
+    span.style.cursor = 'pointer';
+    span.style.marginRight = '6px';
+    span.style.padding = '2px 4px';
+    span.style.borderRadius = '3px';
+    span.addEventListener('click', () => {
+      stopPlayback();
+      navigateToStep(i + 1);
+    });
+    container.appendChild(span);
+    if (i < tokens.length - 1) {
+      container.appendChild(document.createTextNode(' '));
+    }
+  });
+}
+
+function renderStepLog(container: HTMLElement, steps: Step[]): void {
+  container.textContent = '';
+  const list = document.createElement('ol');
+  list.className = 'step-list';
+  list.style.paddingLeft = '20px';
+  steps.forEach((step) => {
+    const li = document.createElement('li');
+    li.className = 'step-log-item';
+    li.setAttribute('data-step-index', String(step.index));
+    li.textContent = `Step ${step.index}: ${step.description}`;
+    li.style.cursor = 'pointer';
+    li.style.padding = '2px 4px';
+    li.style.margin = '2px 0';
+    li.style.borderRadius = '3px';
+    li.addEventListener('click', () => {
+      stopPlayback();
+      navigateToStep(step.index);
+    });
+    list.appendChild(li);
+  });
+  container.appendChild(list);
+}
+
+function attachStateHoverListeners(container: HTMLElement, steps: Step[]): void {
+  const nodes = container.querySelectorAll('g.node');
+  nodes.forEach((node) => {
+    const id = node.id;
+    const match = /^n(\d+)$/.exec(id);
+    if (match) {
+      const q = Number(match[1]);
+      const creator = steps.find((s) => s.newStates.includes(q));
+      if (creator) {
+        const text = `Created by step ${creator.index}: ${creator.rule}`;
+        node.setAttribute('data-created-by-step', String(creator.index));
+        node.setAttribute('title', text);
+        let titleEl = node.querySelector('title') as Element | null;
+        if (titleEl) {
+          titleEl.textContent = text;
+        } else {
+          const newTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+          newTitle.textContent = text;
+          node.appendChild(newTitle);
+        }
+      }
+    }
+  });
+}
+
+async function navigateToStep(stepIndex: number): Promise<void> {
+  if (!currentAnalysis || currentAnalysis.steps.length === 0) return;
+  const totalSteps = currentAnalysis.steps.length;
+  const targetStep = Math.max(1, Math.min(stepIndex, totalSteps));
+  currentStepIndex = targetStep;
+
+  if (stepCounterEl) {
+    stepCounterEl.textContent = `step ${currentStepIndex} / ${totalSteps}`;
+  }
+
+  if (stepFirstBtn) stepFirstBtn.disabled = currentStepIndex === 1;
+  if (stepPrevBtn) stepPrevBtn.disabled = currentStepIndex === 1;
+  if (stepNextBtn) stepNextBtn.disabled = currentStepIndex === totalSteps;
+  if (stepLastBtn) stepLastBtn.disabled = currentStepIndex === totalSteps;
+
+  if (stepLogEl) {
+    const items = stepLogEl.querySelectorAll('.step-log-item');
+    items.forEach((item, idx) => {
+      if (idx + 1 === currentStepIndex) {
+        item.classList.add('active');
+        (item as HTMLElement).style.fontWeight = 'bold';
+        (item as HTMLElement).style.backgroundColor = '#eef';
+      } else {
+        item.classList.remove('active');
+        (item as HTMLElement).style.fontWeight = 'normal';
+        (item as HTMLElement).style.backgroundColor = 'transparent';
+      }
+    });
+  }
+
+  if (postfixEl) {
+    const tokens = postfixEl.querySelectorAll('.postfix-token');
+    tokens.forEach((tok, idx) => {
+      if (idx + 1 === currentStepIndex) {
+        tok.classList.add('active');
+        (tok as HTMLElement).style.backgroundColor = '#007acc';
+        (tok as HTMLElement).style.color = '#fff';
+      } else {
+        tok.classList.remove('active');
+        (tok as HTMLElement).style.backgroundColor = 'transparent';
+        (tok as HTMLElement).style.color = 'inherit';
+      }
+    });
+  }
+
+  const snapshot = getStepSnapshot(currentAnalysis.steps, targetStep);
+  const dot = toDot(snapshot);
+
+  const gen = ++stepGeneration;
+  const bGen = buildGeneration;
+
+  if ((window as any).__testRenderDelay && (window as any).__testRenderDelay[targetStep]) {
+    await new Promise((r) => setTimeout(r, (window as any).__testRenderDelay[targetStep]));
+  }
+
+  const result = await renderer.render(dot);
+
+  if (bGen !== buildGeneration || gen !== stepGeneration) {
+    return;
+  }
+
+  if (canvasEl) {
+    canvasEl.setAttribute('data-current-step', String(targetStep));
+    if (result.ok) {
+      canvasEl.innerHTML = result.svg;
+      attachStateHoverListeners(canvasEl, currentAnalysis.steps);
+    } else {
+      canvasEl.innerHTML = '';
+      if (result.error) {
+        canvasEl.textContent = `Error rendering diagram: ${result.error}`;
+      }
+    }
+  }
+}
+
+function togglePlayback(): void {
+  if (!currentAnalysis || currentAnalysis.steps.length === 0) return;
+  if (playbackTimer !== null) {
+    stopPlayback();
+  } else {
+    startPlayback();
+  }
+}
+
+function startPlayback(): void {
+  if (!currentAnalysis || currentAnalysis.steps.length === 0) return;
+  const totalSteps = currentAnalysis.steps.length;
+  if (currentStepIndex >= totalSteps) {
+    currentStepIndex = 1;
+    navigateToStep(1);
+  }
+  if (stepPlayBtn) {
+    stepPlayBtn.textContent = 'Pause';
+  }
+  const speed = Number(stepSpeedSelect?.value || 750);
+  playbackTimer = setInterval(() => {
+    if (currentStepIndex < totalSteps) {
+      navigateToStep(currentStepIndex + 1);
+    } else {
+      stopPlayback();
+    }
+  }, speed);
+}
+
+function stopPlayback(): void {
+  if (playbackTimer !== null) {
+    clearInterval(playbackTimer);
+    playbackTimer = null;
+  }
+  if (stepPlayBtn) {
+    stepPlayBtn.textContent = 'Play';
+  }
+}
+
 async function handleBuild() {
   if (!inputEl) return;
   const gen = ++buildGeneration;
@@ -184,33 +429,7 @@ async function handleBuild() {
   }
 
   if (!analysis.ok) {
-    currentAnalysis = null;
-    if (statsEl) {
-      statsEl.textContent = '';
-      statsEl.removeAttribute('data-states');
-      statsEl.removeAttribute('data-transitions');
-    }
-    if (canvasEl) {
-      canvasEl.innerHTML = '';
-    }
-    if (traceEl) {
-      traceEl.innerHTML = '';
-    }
-    if (verdictEl) {
-      verdictEl.textContent = '';
-    }
-    if (tableEl) {
-      tableEl.innerHTML = '';
-    }
-    if (tokenListEl) {
-      tokenListEl.textContent = '';
-    }
-    if (postfixEl) {
-      postfixEl.textContent = '';
-    }
-    if (treeViewEl) {
-      treeViewEl.textContent = '';
-    }
+    clearResults();
     if (errorEl) {
       if (analysis.code === 'EMPTY_INPUT') {
         errorEl.textContent = analysis.hint || analysis.message;
@@ -267,9 +486,7 @@ async function handleBuild() {
   }
 
   if (postfixEl) {
-    postfixEl.textContent = analysis.postfix
-      .map((t) => (t.type === 'SYMBOL' ? t.symbol ?? 'SYMBOL' : t.type))
-      .join(' ');
+    renderPostfixView(postfixEl, analysis.postfix);
   }
 
   if (treeViewEl) {
@@ -280,21 +497,17 @@ async function handleBuild() {
     renderTransitionTable(tableEl, analysis);
   }
 
-  const dot = toDot(analysis.nfa);
-  const result = await renderer.render(dot);
+  if (stepLogEl) {
+    renderStepLog(stepLogEl, analysis.steps);
+  }
+
+  if (stepPlayBtn) {
+    stepPlayBtn.disabled = false;
+  }
+
+  await navigateToStep(1);
 
   if (gen !== buildGeneration) return;
-
-  if (canvasEl) {
-    if (result.ok) {
-      canvasEl.innerHTML = result.svg;
-    } else {
-      canvasEl.innerHTML = '';
-      if (result.error) {
-        canvasEl.textContent = `Error rendering diagram: ${result.error}`;
-      }
-    }
-  }
 
   (window as any).__buildDone = true;
 }
@@ -435,5 +648,75 @@ if (inputEl) {
     }
   });
 }
+
+if (stepFirstBtn) {
+  stepFirstBtn.addEventListener('click', () => {
+    stopPlayback();
+    navigateToStep(1);
+  });
+}
+
+if (stepPrevBtn) {
+  stepPrevBtn.addEventListener('click', () => {
+    stopPlayback();
+    navigateToStep(currentStepIndex - 1);
+  });
+}
+
+if (stepPlayBtn) {
+  stepPlayBtn.addEventListener('click', togglePlayback);
+}
+
+if (stepNextBtn) {
+  stepNextBtn.addEventListener('click', () => {
+    stopPlayback();
+    navigateToStep(currentStepIndex + 1);
+  });
+}
+
+if (stepLastBtn) {
+  stepLastBtn.addEventListener('click', () => {
+    stopPlayback();
+    if (currentAnalysis) {
+      navigateToStep(currentAnalysis.steps.length);
+    }
+  });
+}
+
+if (stepSpeedSelect) {
+  stepSpeedSelect.addEventListener('change', () => {
+    if (playbackTimer !== null) {
+      stopPlayback();
+      startPlayback();
+    }
+  });
+}
+
+window.addEventListener('keydown', (e: KeyboardEvent) => {
+  const target = e.target as HTMLElement | null;
+  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) {
+    return;
+  }
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    stopPlayback();
+    if (currentStepIndex > 1) {
+      navigateToStep(currentStepIndex - 1);
+    }
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    stopPlayback();
+    if (currentAnalysis && currentStepIndex < currentAnalysis.steps.length) {
+      navigateToStep(currentStepIndex + 1);
+    }
+  }
+});
+
+// Initially disable stepper buttons until a build occurs
+if (stepFirstBtn) stepFirstBtn.disabled = true;
+if (stepPrevBtn) stepPrevBtn.disabled = true;
+if (stepPlayBtn) stepPlayBtn.disabled = true;
+if (stepNextBtn) stepNextBtn.disabled = true;
+if (stepLastBtn) stepLastBtn.disabled = true;
 
 (window as any).__ready = true;

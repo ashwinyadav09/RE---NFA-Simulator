@@ -32,6 +32,21 @@
     <div id="token-list" data-testid="token-list"></div>
     <div id="postfix-view" data-testid="postfix-view"></div>
     <div id="tree-view" data-testid="tree-view"></div>
+    <div class="stepper-controls" id="stepper-controls" data-testid="stepper-controls">
+      <button id="step-first" data-testid="step-first" title="First step">|◀</button>
+      <button id="step-prev" data-testid="step-prev" title="Previous step">◀</button>
+      <button id="step-play" data-testid="step-play" title="Play">Play</button>
+      <button id="step-next" data-testid="step-next" title="Next step">▶</button>
+      <button id="step-last" data-testid="step-last" title="Last step">▶|</button>
+      <span id="step-counter" data-testid="step-counter">step 0 / 0</span>
+      <label for="step-speed">Speed:</label>
+      <select id="step-speed" data-testid="step-speed">
+        <option value="1500">0.5x</option>
+        <option value="750" selected>1x</option>
+        <option value="300">2x</option>
+      </select>
+    </div>
+    <div id="step-log" data-testid="step-log"></div>
     <div id="canvas" data-testid="canvas"></div>
     <div id="transition-table" data-testid="transition-table"></div>
     <div class="simulation-controls">

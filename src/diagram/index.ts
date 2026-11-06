@@ -1,4 +1,4 @@
-import type { NFA } from '../engine/index';
+import type { NFA, StepSnapshot } from '../engine/index';
 import { instance, type Viz } from '@viz-js/viz';
 
 export type RenderResult =
@@ -90,29 +90,77 @@ function escapeLabel(label: string): string {
   return label.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
-export function toDot(nfa: NFA): string {
+export function toDot(input: NFA | StepSnapshot): string {
+  const isSnapshot = 'stack' in input;
+  const states = input.states;
+  const transitions = input.transitions;
+  const stack = isSnapshot
+    ? input.stack
+    : [{ start: (input as NFA).start, accept: (input as NFA).accept }];
+  const newStates = new Set(isSnapshot ? input.newStates ?? [] : []);
+  const newTransitions = isSnapshot ? input.newTransitions ?? [] : [];
+  const mergedPair = isSnapshot ? input.mergedPair : undefined;
+  const stateCreators = isSnapshot ? input.stateCreators : undefined;
+
   const lines: string[] = [
     'digraph NFA {',
     '  rankdir=LR;',
     '  node [shape=circle, fontname="Helvetica"];',
-    '  edge [fontname="Helvetica"];',
-    '  __start [id="start-node", shape=point, label="", width=0.1];'
+    '  edge [fontname="Helvetica"];'
   ];
 
-  for (const q of [...nfa.states].sort((a, b) => a - b)) {
-    const attrs = [`id="n${q}"`, `label="${q}"`];
-    if (q === nfa.accept) {
+  if (stack.length === 1) {
+    lines.push('  __start [id="start-node", shape=point, label="", width=0.1];');
+    if (states.includes(stack[0].start)) {
+      lines.push(`  __start -> q${stack[0].start} [id="start-edge"];`);
+    }
+  } else if (stack.length > 1) {
+    for (let idx = 0; idx < stack.length; idx++) {
+      const frag = stack[idx];
+      lines.push(`  __start_${idx} [id="start-node-${idx}", shape=point, label="", width=0.1];`);
+      if (states.includes(frag.start)) {
+        lines.push(`  __start_${idx} -> q${frag.start} [id="start-edge-${idx}"];`);
+      }
+    }
+  }
+
+  for (const q of [...states].sort((a, b) => a - b)) {
+    const isNew = newStates.has(q);
+    const isMerged = mergedPair !== undefined && mergedPair.into === q;
+    const attrs = [`id="n${q}"`];
+
+    if (isMerged) {
+      attrs.push(`label="${q} (merged ${mergedPair.into}, ${mergedPair.removed})"`, 'color="#d62728"', 'penwidth=2.5');
+    } else if (isNew) {
+      attrs.push(`label="${q} (new)"`, 'color="#d62728"', 'penwidth=2.5');
+    } else {
+      attrs.push(`label="${q}"`);
+    }
+
+    if (stateCreators && stateCreators[q]) {
+      const info = stateCreators[q];
+      attrs.push(`tooltip="Created by step ${info.step}: ${escapeLabel(info.rule)}"`);
+    }
+
+    if (stack.some((f) => f.accept === q)) {
       attrs.push('shape=doublecircle');
     }
     lines.push(`  q${q} [${attrs.join(', ')}];`);
   }
 
-  if (nfa.states.includes(nfa.start)) {
-    lines.push(`  __start -> q${nfa.start} [id="start-edge"];`);
-  }
+  transitions.forEach((t, i) => {
+    const isNew = newTransitions.some(
+      (nt) => nt.from === t.from && nt.to === t.to && nt.label === t.label
+    );
+    const attrs = [`id="e${i}"`];
+    const rawLabel = escapeLabel(t.label);
 
-  nfa.transitions.forEach((t, i) => {
-    const attrs = [`id="e${i}"`, `label="${escapeLabel(t.label)}"`];
+    if (isNew) {
+      attrs.push(`label="${rawLabel} (new)"`, 'color="#d62728"', 'penwidth=2.5');
+    } else {
+      attrs.push(`label="${rawLabel}"`);
+    }
+
     if (t.label === 'ε') {
       attrs.push('style=dashed');
     }
@@ -122,3 +170,4 @@ export function toDot(nfa: NFA): string {
   lines.push('}');
   return lines.join('\n');
 }
+

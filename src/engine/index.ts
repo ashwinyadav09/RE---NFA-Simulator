@@ -61,6 +61,7 @@ export interface Step {
   index: number;
   token: string;
   rule: string;
+  description: string;
   newStates: number[];
   newTransitions: Transition[];
   result: Fragment;
@@ -68,6 +69,17 @@ export interface Step {
   stackDepthAfter: number;
   position?: number;
   mergedPair?: { removed: number; into: number };
+}
+
+export interface StepSnapshot {
+  stepIndex: number;
+  states: number[];
+  transitions: Transition[];
+  stack: Fragment[];
+  newStates: number[];
+  newTransitions: Transition[];
+  mergedPair?: { removed: number; into: number };
+  stateCreators?: Record<number, { step: number; rule: string }>;
 }
 
 export interface InvariantsResult {
@@ -429,6 +441,7 @@ function buildNFA(
     const newTransitions: Transition[] = [];
     let mergedPair: { removed: number; into: number } | undefined;
     let produced: Fragment;
+    let description = '';
 
     switch (token.type) {
       case 'SYMBOL': {
@@ -438,6 +451,7 @@ function buildNFA(
         newStates.push(s, f);
         newTransitions.push({ from: s, to: f, label: token.symbol! });
         produced = { start: s, accept: f };
+        description = `symbol '${token.symbol}' (fragment ${s}→${f})`;
         stack.push(produced);
         break;
       }
@@ -448,6 +462,7 @@ function buildNFA(
         newStates.push(s, f);
         newTransitions.push({ from: s, to: f, label: EPS });
         produced = { start: s, accept: f };
+        description = `epsilon (fragment ${s}→${f})`;
         stack.push(produced);
         break;
       }
@@ -457,6 +472,7 @@ function buildNFA(
         const f = nextStateId++;
         newStates.push(s, f);
         produced = { start: s, accept: f };
+        description = `empty (fragment ${s}→${f})`;
         stack.push(produced);
         break;
       }
@@ -482,10 +498,12 @@ function buildNFA(
             }
           }
           produced = { start: A.start, accept: B.accept };
+          description = `concatenation of fragments ${A.start}→${A.accept} and ${B.start}→${B.accept} (merged states ${A.accept} and ${B.start} into ${A.accept})`;
           stack.push(produced);
         } else {
           newTransitions.push({ from: A.accept, to: B.start, label: EPS });
           produced = { start: A.start, accept: B.accept };
+          description = `concatenation of fragments ${A.start}→${A.accept} and ${B.start}→${B.accept}`;
           stack.push(produced);
         }
         break;
@@ -504,6 +522,7 @@ function buildNFA(
           { from: B.accept, to: f, label: EPS }
         );
         produced = { start: s, accept: f };
+        description = `union of fragments ${A.start}→${A.accept} and ${B.start}→${B.accept}`;
         stack.push(produced);
         break;
       }
@@ -520,6 +539,7 @@ function buildNFA(
           { from: A.accept, to: A.start, label: EPS }
         );
         produced = { start: s, accept: f };
+        description = `star of fragment ${A.start}→${A.accept}`;
         stack.push(produced);
         break;
       }
@@ -535,6 +555,7 @@ function buildNFA(
           { from: A.accept, to: A.start, label: EPS }
         );
         produced = { start: s, accept: f };
+        description = `plus of fragment ${A.start}→${A.accept}`;
         stack.push(produced);
         break;
       }
@@ -550,6 +571,7 @@ function buildNFA(
           { from: s, to: f, label: EPS }
         );
         produced = { start: s, accept: f };
+        description = `optional of fragment ${A.start}→${A.accept}`;
         stack.push(produced);
         break;
       }
@@ -569,6 +591,7 @@ function buildNFA(
       index: i + 1,
       token: token.type,
       rule,
+      description,
       newStates: [...newStates],
       newTransitions: newTransitions.map((t) => ({ ...t })),
       result: { start: produced.start, accept: produced.accept },
@@ -927,6 +950,46 @@ export function run(nfa: NFA, alphabet: string[], input: string): RunResult {
 export function runLines(nfa: NFA, alphabet: string[], text: string): RunResult[] {
   const lines = text.split(/\r\n|\r|\n/);
   return lines.map((line) => run(nfa, alphabet, line));
+}
+
+export function getStepSnapshot(steps: Step[], stepIndex: number): StepSnapshot {
+  if (stepIndex < 1 || stepIndex > steps.length) {
+    throw new Error(`Invalid stepIndex: ${stepIndex}. Expected between 1 and ${steps.length}`);
+  }
+
+  const replayedStates = new Set<number>();
+  let replayedTransitions: Transition[] = [];
+  const stateCreators: Record<number, { step: number; rule: string }> = {};
+
+  for (let i = 0; i < stepIndex; i++) {
+    const s = steps[i];
+    for (const q of s.newStates) {
+      replayedStates.add(q);
+      stateCreators[q] = { step: s.index, rule: s.rule };
+    }
+    if (s.mergedPair) {
+      replayedStates.delete(s.mergedPair.removed);
+      replayedTransitions = replayedTransitions.map((t) =>
+        t.from === s.mergedPair!.removed ? { ...t, from: s.mergedPair!.into } : t
+      );
+    }
+    for (const t of s.newTransitions) {
+      replayedTransitions.push({ ...t });
+    }
+  }
+
+  const currentStep = steps[stepIndex - 1];
+
+  return {
+    stepIndex,
+    states: Array.from(replayedStates).sort((a, b) => a - b),
+    transitions: replayedTransitions,
+    stack: currentStep.stackAfter.map((frag) => ({ ...frag })),
+    newStates: [...currentStep.newStates],
+    newTransitions: currentStep.newTransitions.map((t) => ({ ...t })),
+    stateCreators,
+    ...(currentStep.mergedPair ? { mergedPair: { ...currentStep.mergedPair } } : {})
+  };
 }
 
 
