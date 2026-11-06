@@ -1,7 +1,13 @@
 import { test, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { analyze, run, runLines } from '../src/engine/index';
+import { analyze, run, runLines, AnalysisResult, AnalysisSuccess } from '../src/engine/index';
+
+function assertSuccess(result: AnalysisResult): asserts result is AnalysisSuccess {
+  if (!result.ok) {
+    throw new Error(`Expected analysis success, got error: ${result.code} - ${result.message}`);
+  }
+}
 
 const fixturePath = resolve(__dirname, '../.agents/skills/thompson-rules/fixtures/worked-example.json');
 const workedExample = JSON.parse(readFileSync(fixturePath, 'utf-8'));
@@ -9,6 +15,7 @@ const step1 = workedExample.steps[0];
 
 test('analyzing "a" matches single-symbol fragment in worked-example fixture', () => {
   const result = analyze('a');
+  assertSuccess(result);
 
   expect(result.nfa.states).toEqual(step1.newStates);
   expect(result.nfa.start).toBe(step1.result.start);
@@ -18,6 +25,7 @@ test('analyzing "a" matches single-symbol fragment in worked-example fixture', (
 
 test('analyzing "(a|b)*a" produces tokens and postfix matching worked-example fixture', () => {
   const result = analyze('(a|b)*a');
+  assertSuccess(result);
 
   // Verify tokens
   expect(result.tokens.map(t => ({ type: t.type, symbol: t.symbol, position: t.position }))).toEqual([
@@ -41,6 +49,7 @@ test('analyzing "(a|b)*a" produces tokens and postfix matching worked-example fi
 
 test('step-by-step construction for "(a|b)*a" matches worked-example fixture exactly', () => {
   const result = analyze('(a|b)*a');
+  assertSuccess(result);
 
   expect(result.steps.length).toBe(workedExample.steps.length);
 
@@ -60,6 +69,7 @@ test('step-by-step construction for "(a|b)*a" matches worked-example fixture exa
 
 test('analyzing "(a|b)*a" produces final NFA, transition table, and initial ε-closure matching worked-example fixture', () => {
   const result = analyze('(a|b)*a');
+  assertSuccess(result);
 
   expect(result.nfa.states).toEqual(workedExample.nfa.states);
   expect(result.nfa.start).toBe(workedExample.nfa.start);
@@ -75,6 +85,7 @@ test('analyzing "(a|b)*a" produces final NFA, transition table, and initial ε-c
 
 test('steps store independent copies and step-log replay reproduces final NFA exactly', () => {
   const result = analyze('(a|b)*a');
+  assertSuccess(result);
 
   // Verify independence of copies
   const originalStep0Result = { ...result.steps[0].result };
@@ -88,6 +99,7 @@ test('steps store independent copies and step-log replay reproduces final NFA ex
 
   // Re-analyze cleanly to test replay
   const cleanResult = analyze('(a|b)*a');
+  assertSuccess(cleanResult);
   const replayedStates: number[] = [];
   const replayedTransitions: { from: number; to: number; label: string }[] = [];
 
@@ -110,12 +122,14 @@ const classicAbbFixture = JSON.parse(readFileSync(classicAbbPath, 'utf-8'));
 test('invariants I1-I4, no dangling edges, and size formulas hold for fixture expressions', () => {
   // Test worked-example expression (a|b)*a
   const resWorked = analyze(workedExample.source);
+  assertSuccess(resWorked);
   expect(resWorked.invariants).toEqual(workedExample.invariants);
   expect(resWorked.stats.states).toBe(10);
   expect(resWorked.stats.transitions).toBe(12);
 
   // Test classic-abb expression (a|b)*abb
   const resAbb = analyze(classicAbbFixture.source);
+  assertSuccess(resAbb);
   expect(resAbb.invariants).toEqual({
     I1: true,
     I2: true,
@@ -132,6 +146,7 @@ test('invariants I1-I4, no dangling edges, and size formulas hold for fixture ex
 test('structural edge cases build correctly: #, @, nested groups, and stacked operators', () => {
   // Empty atom '#'
   const resEmpty = analyze('#');
+  assertSuccess(resEmpty);
   expect(resEmpty.stats.states).toBe(2);
   expect(resEmpty.stats.transitions).toBe(0);
   expect(resEmpty.nfa.states).toEqual([0, 1]);
@@ -146,6 +161,7 @@ test('structural edge cases build correctly: #, @, nested groups, and stacked op
 
   // Epsilon atom '@'
   const resEps = analyze('@');
+  assertSuccess(resEps);
   expect(resEps.stats.states).toBe(2);
   expect(resEps.stats.transitions).toBe(1);
   expect(resEps.nfa.states).toEqual([0, 1]);
@@ -160,12 +176,15 @@ test('structural edge cases build correctly: #, @, nested groups, and stacked op
 
   // Unicode aliases '∅' and 'ε'
   const resEmptyUnicode = analyze('∅');
+  assertSuccess(resEmptyUnicode);
   expect(resEmptyUnicode.stats).toEqual({ states: 2, transitions: 0 });
   const resEpsUnicode = analyze('ε');
+  assertSuccess(resEpsUnicode);
   expect(resEpsUnicode.stats).toEqual({ states: 2, transitions: 1 });
 
   // Nested groups ((a|b))
   const resNested = analyze('((a|b))');
+  assertSuccess(resNested);
   expect(resNested.invariants.I1).toBe(true);
   expect(resNested.invariants.I2).toBe(true);
   expect(resNested.invariants.I3).toBe(true);
@@ -175,6 +194,7 @@ test('structural edge cases build correctly: #, @, nested groups, and stacked op
 
   // Stacked postfix a**
   const resStacked = analyze('a**');
+  assertSuccess(resStacked);
   expect(resStacked.invariants.I1).toBe(true);
   expect(resStacked.invariants.I2).toBe(true);
   expect(resStacked.invariants.I3).toBe(true);
@@ -186,6 +206,7 @@ test('structural edge cases build correctly: #, @, nested groups, and stacked op
 
 test('simulation on "(a|b)*a" produces traces and verdicts matching worked-example fixture', () => {
   const analysis = analyze('(a|b)*a');
+  assertSuccess(analysis);
   const testInputs = ['ba', 'ab', 'a', ''];
 
   for (const input of testInputs) {
@@ -202,6 +223,7 @@ test('simulation on "(a|b)*a" produces traces and verdicts matching worked-examp
 
 test('dead active set is reported with position and simulation terminates early', () => {
   const analysis = analyze('(a|b)*a');
+  assertSuccess(analysis);
   const extendedAlphabet = ['a', 'b', 'c'];
 
   // Test 'cab': 'c' empties the set at index 0, so 'a' and 'b' must not be processed
@@ -232,6 +254,7 @@ test('dead active set is reported with position and simulation terminates early'
 
 test('symbol outside alphabet is reported at its position with the trace so far', () => {
   const analysis = analyze('(a|b)*a');
+  assertSuccess(analysis);
   const inferredAlphabet = analysis.alphabet; // ['a', 'b']
 
   // 'bx' where 'x' is not in alphabet at position 1
@@ -257,6 +280,7 @@ test('symbol outside alphabet is reported at its position with the trace so far'
 test('strings and positions are processed by code point for non-BMP symbols', () => {
   // 🚀 is U+1F680, taking 2 UTF-16 code units (surrogate pair)
   const analysis = analyze('🚀');
+  assertSuccess(analysis);
   expect(analysis.alphabet).toEqual(['🚀']);
 
   // '🚀' accepted
@@ -279,6 +303,7 @@ test('strings and positions are processed by code point for non-BMP symbols', ()
 
 test('runLines returns one result and verdict per line for multi-line inputs', () => {
   const analysis = analyze('(a|b)*a');
+  assertSuccess(analysis);
   const multiLineInput = 'ba\nab\na\n';
   // 4 lines: 'ba', 'ab', 'a', ''
   const results = runLines(analysis.nfa, analysis.alphabet, multiLineInput);
@@ -293,11 +318,206 @@ test('runLines returns one result and verdict per line for multi-line inputs', (
 
 test('symbol step never follows an ε-transition even if alphabet includes ε', () => {
   const analysis = analyze('a*');
+  assertSuccess(analysis);
   const result = run(analysis.nfa, ['a', 'ε'], 'ε');
 
   expect(result.status).toBe('dead');
   expect(result.position).toBe(0);
   expect(result.accepted).toBe(false);
+});
+
+test('empty or whitespace-only input returns EMPTY_INPUT with no position and hint', () => {
+  const emptyRes = analyze('');
+  expect(emptyRes.ok).toBe(false);
+  if (!emptyRes.ok) {
+    expect(emptyRes.code).toBe('EMPTY_INPUT');
+    expect(emptyRes.position).toBeUndefined();
+    expect(emptyRes.hint).toBeDefined();
+  }
+
+  const wsRes = analyze('   \t\n ');
+  expect(wsRes.ok).toBe(false);
+  if (!wsRes.ok) {
+    expect(wsRes.code).toBe('EMPTY_INPUT');
+    expect(wsRes.position).toBeUndefined();
+    expect(wsRes.hint).toBeDefined();
+  }
+});
+
+test('EMPTY_GROUP reported at the position of ( for () and nested empty groups', () => {
+  const res1 = analyze('()');
+  expect(res1.ok).toBe(false);
+  if (!res1.ok) {
+    expect(res1.code).toBe('EMPTY_GROUP');
+    expect(res1.position).toBe(0);
+  }
+
+  const res2 = analyze('(()a)');
+  expect(res2.ok).toBe(false);
+  if (!res2.ok) {
+    expect(res2.code).toBe('EMPTY_GROUP');
+    expect(res2.position).toBe(1);
+  }
+
+  const res3 = analyze('a|()');
+  expect(res3.ok).toBe(false);
+  if (!res3.ok) {
+    expect(res3.code).toBe('EMPTY_GROUP');
+    expect(res3.position).toBe(2);
+  }
+});
+
+test('NOTHING_TO_REPEAT reported at postfix operator position when operand expected', () => {
+  const res1 = analyze('*a');
+  expect(res1.ok).toBe(false);
+  if (!res1.ok) {
+    expect(res1.code).toBe('NOTHING_TO_REPEAT');
+    expect(res1.position).toBe(0);
+  }
+
+  const res2 = analyze('a|*b');
+  expect(res2.ok).toBe(false);
+  if (!res2.ok) {
+    expect(res2.code).toBe('NOTHING_TO_REPEAT');
+    expect(res2.position).toBe(2);
+  }
+
+  const res3 = analyze('(*)');
+  expect(res3.ok).toBe(false);
+  if (!res3.ok) {
+    expect(res3.code).toBe('NOTHING_TO_REPEAT');
+    expect(res3.position).toBe(1);
+  }
+});
+
+test('UNBALANCED_RPAREN reported at the offending ) position', () => {
+  const res1 = analyze(')a');
+  expect(res1.ok).toBe(false);
+  if (!res1.ok) {
+    expect(res1.code).toBe('UNBALANCED_RPAREN');
+    expect(res1.position).toBe(0);
+  }
+
+  const res2 = analyze('a)');
+  expect(res2.ok).toBe(false);
+  if (!res2.ok) {
+    expect(res2.code).toBe('UNBALANCED_RPAREN');
+    expect(res2.position).toBe(1);
+  }
+
+  const res3 = analyze('(a))');
+  expect(res3.ok).toBe(false);
+  if (!res3.ok) {
+    expect(res3.code).toBe('UNBALANCED_RPAREN');
+    expect(res3.position).toBe(3);
+  }
+});
+
+test('MISSING_OPERAND reported at the offending operator position', () => {
+  const cases: [string, number][] = [
+    ['|a', 0],
+    ['a|', 1],
+    ['a||b', 1],
+    ['(|a)', 1],
+    ['(a|)', 2],
+    ['a(|b)c', 2]
+  ];
+
+  for (const [source, expectedPos] of cases) {
+    const res = analyze(source);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.code).toBe('MISSING_OPERAND');
+      expect(res.position).toBe(expectedPos);
+    }
+  }
+});
+
+test('end-of-input check: missing right operand takes precedence over unclosed parenthesis', () => {
+  const res = analyze('(a|');
+  expect(res.ok).toBe(false);
+  if (!res.ok) {
+    expect(res.code).toBe('MISSING_OPERAND');
+    expect(res.position).toBe(2);
+  }
+});
+
+test('UNBALANCED_LPAREN reported at first unclosed ( scanning left-to-right', () => {
+  const cases: [string, number][] = [
+    ['a(', 1],
+    ['(a', 0],
+    ['((a)', 0]
+  ];
+
+  for (const [source, expectedPos] of cases) {
+    const res = analyze(source);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.code).toBe('UNBALANCED_LPAREN');
+      expect(res.position).toBe(expectedPos);
+    }
+  }
+});
+
+const errorCasesFixturePath = resolve(__dirname, '../.agents/skills/thompson-rules/fixtures/error-cases.json');
+const errorCasesFixture = JSON.parse(readFileSync(errorCasesFixturePath, 'utf-8'));
+
+test('error-case fixture cases return expected code and position (tickets 05 and 06 cases disabled with note)', () => {
+  for (const c of errorCasesFixture.cases) {
+    // Note: Cases requiring '+' are enabled by ticket 05
+    if (c.source.includes('+')) {
+      // Skipped: enabled by ticket 05 (+ and ?)
+      continue;
+    }
+    // Note: Cases requiring textbook notation are enabled by ticket 06
+    if (c.notation === 'textbook') {
+      // Skipped: enabled by ticket 06 (settings, notation, merge, alphabet)
+      continue;
+    }
+
+    const res = analyze(c.source, { notation: c.notation });
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.code).toBe(c.code);
+      expect(res.position).toBe(c.pos);
+    }
+  }
+});
+
+test('valid expressions from error-cases fixture build without error', () => {
+  for (const expr of errorCasesFixture.valid) {
+    if (expr.includes('+') || expr.includes('?')) {
+      // Skipped: enabled by ticket 05 (+ and ? operators)
+      continue;
+    }
+
+    const res = analyze(expr);
+    expect(res.ok).toBe(true);
+    assertSuccess(res);
+    expect(res.nfa.states.length).toBeGreaterThan(0);
+  }
+});
+
+test('syntax error position counts whitespace and indexes by code points for non-BMP characters', () => {
+  // '🚀 |': '🚀' (index 0), ' ' (index 1), '|' (index 2)
+  // In UTF-16, '🚀' takes 2 units so '|' would be at UTF-16 index 3.
+  // The error position must be 2 (code point index).
+  const res1 = analyze('🚀 |');
+  expect(res1.ok).toBe(false);
+  if (!res1.ok) {
+    expect(res1.code).toBe('MISSING_OPERAND');
+    expect(res1.position).toBe(2);
+  }
+
+  // '  🚀  *': spaces at 0, 1; '🚀' at 2; spaces at 3, 4; '*' at 5
+  // '*' after '🚀' is valid postfix: '🚀*'
+  // But with spaces: '  🚀  |' has '|' at code point 5:
+  const res2 = analyze('  🚀  |');
+  expect(res2.ok).toBe(false);
+  if (!res2.ok) {
+    expect(res2.code).toBe('MISSING_OPERAND');
+    expect(res2.position).toBe(5);
+  }
 });
 
 

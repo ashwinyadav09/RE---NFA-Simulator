@@ -92,6 +92,53 @@ const assert = require('node:assert');
   console.log('Trace escaped text:', traceEscapedText);
   assert(traceEscapedText.includes('<b>&'), 'Trace textContent must contain the literal "<b>&"');
 
+  // 12. Syntax error test: type '(a|)', see error at position 2, last good build stays, then fix it
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|)');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const errorText = await page.textContent('#error-message');
+  console.log('Error text for "(a|)":', errorText);
+  assert(errorText.includes('position 2'), 'Error message must mention position 2');
+  const errorCode = await page.getAttribute('#error-message', 'data-error-code');
+  assert.strictEqual(errorCode, 'MISSING_OPERAND', 'Error code must be MISSING_OPERAND');
+
+  const errorPosAttr = await page.getAttribute('#regex-input', 'data-error-position');
+  assert.strictEqual(errorPosAttr, '2', 'regex-input must mark data-error-position="2"');
+
+  // Verify last good build stays on screen
+  const statsAfterError = await page.textContent('#stats');
+  assert(statsAfterError.includes('States: 10'), 'Previous stats must stay on screen after error');
+  const hasSvgAfterError = await page.evaluate(() => !!document.querySelector('#canvas svg'));
+  assert(hasSvgAfterError, 'Previous canvas SVG must stay on screen after error');
+
+  // Fix the error
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const errorTextFixed = await page.textContent('#error-message');
+  assert.strictEqual(errorTextFixed, '', 'Error message must be cleared after fixing syntax error');
+  const fixedPosAttr = await page.getAttribute('#regex-input', 'data-error-position');
+  assert.strictEqual(fixedPosAttr, null, 'regex-input data-error-position must be removed after successful build');
+
+  // 13. Empty input hint test: empty input shows a hint and no error, last good build stays on screen
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const hintText = await page.textContent('#error-message');
+  console.log('Hint text for empty input:', hintText);
+  assert(hintText.length > 0, 'Empty input must show a hint');
+  const errorClass = await page.getAttribute('#error-message', 'class');
+  assert(errorClass.includes('hint') && !errorClass.includes('error'), 'Empty input hint must not be styled as an error');
+
+  const statsAfterEmpty = await page.textContent('#stats');
+  assert(statsAfterEmpty.includes('States: 10'), 'Previous build stats must stay on screen on empty input');
+
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
 
 

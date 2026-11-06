@@ -1,10 +1,10 @@
 /// <reference types="vite/client" />
-import { analyze, runLines, RunResult } from '../engine/index';
+import { analyze, runLines, RunResult, AnalysisSuccess } from '../engine/index';
 import { toDot, VizRenderer } from '../diagram/index';
 import InlineWorker from './worker.ts?worker&inline';
 
 const renderer = new VizRenderer();
-let currentAnalysis: ReturnType<typeof analyze> | null = null;
+let currentAnalysis: AnalysisSuccess | null = null;
 
 // Setup inline worker
 try {
@@ -32,8 +32,9 @@ const testInputEl = document.getElementById('test-input') as HTMLTextAreaElement
 const runButtonEl = document.getElementById('run-button') as HTMLButtonElement | null;
 const verdictEl = document.getElementById('verdict');
 const traceEl = document.getElementById('trace');
+const errorEl = document.getElementById('error-message');
 
-function renderTransitionTable(container: HTMLElement, analysis: ReturnType<typeof analyze>): void {
+function renderTransitionTable(container: HTMLElement, analysis: AnalysisSuccess): void {
   const { nfa, transitionTable } = analysis;
   container.textContent = '';
 
@@ -87,9 +88,41 @@ function renderTransitionTable(container: HTMLElement, analysis: ReturnType<type
 async function handleBuild() {
   if (!inputEl) return;
   const source = inputEl.value;
-  if (!source) return;
 
   const analysis = analyze(source);
+  if (!analysis.ok) {
+    if (errorEl) {
+      if (analysis.code === 'EMPTY_INPUT') {
+        errorEl.textContent = analysis.hint || analysis.message;
+        errorEl.className = 'hint';
+        errorEl.removeAttribute('data-error-code');
+        errorEl.removeAttribute('data-error-position');
+      } else {
+        errorEl.textContent = `${analysis.message} at position ${analysis.position}`;
+        errorEl.setAttribute('data-error-code', analysis.code);
+        if (analysis.position !== undefined) {
+          errorEl.setAttribute('data-error-position', String(analysis.position));
+        }
+        errorEl.className = 'error';
+      }
+    }
+    if (analysis.code !== 'EMPTY_INPUT' && analysis.position !== undefined) {
+      inputEl.setAttribute('data-error-position', String(analysis.position));
+      inputEl.focus();
+      inputEl.setSelectionRange(analysis.position, analysis.position + 1);
+    }
+    (window as any).__buildDone = true;
+    return;
+  }
+
+  if (errorEl) {
+    errorEl.textContent = '';
+    errorEl.className = '';
+    errorEl.removeAttribute('data-error-code');
+    errorEl.removeAttribute('data-error-position');
+  }
+  inputEl.removeAttribute('data-error-position');
+
   currentAnalysis = analysis;
 
   if (statsEl) {
@@ -175,7 +208,12 @@ function renderTrace(container: HTMLElement, results: RunResult[], lines: string
 function handleRun() {
   if (!currentAnalysis) {
     if (inputEl && inputEl.value) {
-      currentAnalysis = analyze(inputEl.value);
+      const res = analyze(inputEl.value);
+      if (res.ok) {
+        currentAnalysis = res;
+      } else {
+        return;
+      }
     } else {
       return;
     }

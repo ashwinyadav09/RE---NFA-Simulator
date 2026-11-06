@@ -59,7 +59,15 @@ export interface InvariantsResult {
   noDanglingEdges: boolean;
 }
 
-export interface AnalysisResult {
+export interface AnalysisError {
+  code: string;
+  position?: number;
+  message: string;
+  hint?: string;
+}
+
+export interface AnalysisSuccess {
+  ok: true;
   tokens: Token[];
   postfix: Token[];
   steps: Step[];
@@ -69,7 +77,19 @@ export interface AnalysisResult {
   transitionTable: Record<number, Record<string, number[]>>;
   initialClosure: number[];
   invariants: InvariantsResult;
+  error?: undefined;
 }
+
+export interface AnalysisFailure {
+  ok: false;
+  code: string;
+  position?: number;
+  message: string;
+  hint?: string;
+  error: AnalysisError;
+}
+
+export type AnalysisResult = AnalysisSuccess | AnalysisFailure;
 
 export type SimulationVerdict = 'ACCEPT' | 'REJECT';
 export type RunStatus = 'ok' | 'dead' | 'out_of_alphabet';
@@ -130,6 +150,136 @@ function tokenize(source: string, notation: 'standard' | 'textbook' = 'standard'
   }
 
   return rawTokens;
+}
+
+function validateTokens(tokens: Token[]): AnalysisError | null {
+  interface Frame {
+    lparen?: Token;
+    lastBinaryOp: Token | null;
+  }
+
+  const frames: Frame[] = [{ lastBinaryOp: null }];
+  let state: 'EXPECTING_OPERAND' | 'EXPECTING_OPERATOR' = 'EXPECTING_OPERAND';
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+
+    // Check for empty group: ( immediately followed by )
+    if (token.type === 'LPAREN' && tokens[i + 1]?.type === 'RPAREN') {
+      return {
+        code: 'EMPTY_GROUP',
+        position: token.position,
+        message: 'Empty group ()',
+        hint: 'Parentheses must enclose an expression'
+      };
+    }
+
+    if (state === 'EXPECTING_OPERAND') {
+      if (token.type === 'SYMBOL' || token.type === 'EPSILON' || token.type === 'EMPTY') {
+        state = 'EXPECTING_OPERATOR';
+        frames[frames.length - 1].lastBinaryOp = null;
+      } else if (token.type === 'LPAREN') {
+        frames.push({ lparen: token, lastBinaryOp: null });
+        state = 'EXPECTING_OPERAND';
+      } else if (token.type === 'STAR' || token.type === 'PLUS' || token.type === 'OPT') {
+        return {
+          code: 'NOTHING_TO_REPEAT',
+          position: token.position,
+          message: `Nothing to repeat before '${token.type === 'STAR' ? '*' : token.type === 'PLUS' ? '+' : '?'}'`,
+          hint: 'Unary operators (*, +, ?) must follow an operand'
+        };
+      } else if (token.type === 'UNION') {
+        const currentFrame = frames[frames.length - 1];
+        if (currentFrame.lastBinaryOp !== null) {
+          return {
+            code: 'MISSING_OPERAND',
+            position: currentFrame.lastBinaryOp.position,
+            message: "Missing operand after '|'",
+            hint: 'Binary operator requires operands on both sides'
+          };
+        } else {
+          return {
+            code: 'MISSING_OPERAND',
+            position: token.position,
+            message: "Missing operand before '|'",
+            hint: 'Binary operator requires operands on both sides'
+          };
+        }
+      } else if (token.type === 'RPAREN') {
+        const currentFrame = frames[frames.length - 1];
+        if (currentFrame.lastBinaryOp !== null) {
+          return {
+            code: 'MISSING_OPERAND',
+            position: currentFrame.lastBinaryOp.position,
+            message: "Missing operand after '|'",
+            hint: 'Binary operator requires operands on both sides'
+          };
+        } else {
+          return {
+            code: 'UNBALANCED_RPAREN',
+            position: token.position,
+            message: "Unbalanced ')' with no matching '('",
+            hint: 'Remove extra closing parenthesis or add an opening parenthesis'
+          };
+        }
+      }
+    } else {
+      // state === 'EXPECTING_OPERATOR'
+      if (token.type === 'STAR' || token.type === 'PLUS' || token.type === 'OPT') {
+        // Stacked unary operators allowed (e.g. a**, a+?)
+        state = 'EXPECTING_OPERATOR';
+        frames[frames.length - 1].lastBinaryOp = null;
+      } else if (token.type === 'UNION') {
+        state = 'EXPECTING_OPERAND';
+        frames[frames.length - 1].lastBinaryOp = token;
+      } else if (token.type === 'RPAREN') {
+        if (frames.length === 1) {
+          return {
+            code: 'UNBALANCED_RPAREN',
+            position: token.position,
+            message: "Unbalanced ')' with no matching '('",
+            hint: 'Remove extra closing parenthesis or add an opening parenthesis'
+          };
+        }
+        frames.pop();
+        state = 'EXPECTING_OPERATOR';
+        frames[frames.length - 1].lastBinaryOp = null;
+      } else if (token.type === 'SYMBOL' || token.type === 'EPSILON' || token.type === 'EMPTY') {
+        // Implicit concatenation
+        state = 'EXPECTING_OPERATOR';
+        frames[frames.length - 1].lastBinaryOp = null;
+      } else if (token.type === 'LPAREN') {
+        // Implicit concatenation into '('
+        frames.push({ lparen: token, lastBinaryOp: null });
+        state = 'EXPECTING_OPERAND';
+      }
+    }
+  }
+
+  // End of input checks:
+  // 1. Missing right operand
+  for (let f = frames.length - 1; f >= 0; f--) {
+    if (frames[f].lastBinaryOp !== null) {
+      return {
+        code: 'MISSING_OPERAND',
+        position: frames[f].lastBinaryOp!.position,
+        message: "Missing operand after '|'",
+        hint: 'Binary operator requires operands on both sides'
+      };
+    }
+  }
+
+  // 2. Unclosed parenthesis: first unmatched '(' scanning left-to-right
+  if (frames.length > 1) {
+    return {
+      code: 'UNBALANCED_LPAREN',
+      position: frames[1].lparen!.position,
+      message: "Unbalanced '(' that was never closed",
+      hint: 'Add closing parenthesis or remove extra opening parenthesis'
+    };
+  }
+
+  return null;
 }
 
 function canEndOperand(token: Token): boolean {
@@ -487,6 +637,34 @@ export function checkInvariants(nfa: NFA): InvariantsResult {
 export function analyze(source: string, options: AnalyzeOptions = {}): AnalysisResult {
   const notation = options.notation ?? 'standard';
   const tokens = tokenize(source, notation);
+
+  if (tokens.length === 0) {
+    const error: AnalysisError = {
+      code: 'EMPTY_INPUT',
+      message: 'Enter a regular expression',
+      hint: 'Enter a regular expression to build its NFA'
+    };
+    return {
+      ok: false,
+      code: error.code,
+      message: error.message,
+      hint: error.hint,
+      error
+    };
+  }
+
+  const validationError = validateTokens(tokens);
+  if (validationError) {
+    return {
+      ok: false,
+      code: validationError.code,
+      position: validationError.position,
+      message: validationError.message,
+      hint: validationError.hint,
+      error: validationError
+    };
+  }
+
   const tokensWithConcat = insertImplicitConcat(tokens);
   const postfix = toPostfix(tokensWithConcat);
   const { steps, nfa } = buildNFA(postfix);
@@ -496,6 +674,7 @@ export function analyze(source: string, options: AnalyzeOptions = {}): AnalysisR
   const invariants = checkInvariants(nfa);
 
   return {
+    ok: true,
     tokens,
     postfix,
     steps,
