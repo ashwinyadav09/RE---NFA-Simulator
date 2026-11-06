@@ -614,6 +614,210 @@ const assert = require('node:assert');
   // Clear test delay hook
   await page.evaluate(() => { window.__testRenderDelay = null; });
 
+  // 26. Stable layout across steps: existing states stay where they are
+  console.log('Testing stable layout across steps...');
+  await page.selectOption('#concat-select', 'epsilon-link');
+  // 26. Absolute on-screen position stability of #n0 across steps 1-6 in epsilon-link mode
+  console.log('Testing absolute position stability of n0 across steps in epsilon-link mode...');
+  await page.selectOption('#concat-select', 'epsilon-link');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const getNodeCenter = async (selector) => {
+    const box = await page.locator(selector).boundingBox();
+    assert(box !== null, `${selector} must have a boundingBox`);
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  };
+
+  const center0_step1 = await getNodeCenter('g#n0');
+  console.log('Step 1 g#n0 center:', center0_step1);
+
+  // Step through steps 2 to 6, verifying absolute center position of #n0 is within 0.5px
+  for (let s = 2; s <= 6; s++) {
+    await page.click('#step-next');
+    await page.waitForFunction(
+      (expected) => document.querySelector('#step-counter')?.textContent.includes(`step ${expected} / 6`),
+      s,
+      { timeout: 5000 }
+    );
+    const center0_stepS = await getNodeCenter('g#n0');
+    const dx = Math.abs(center0_stepS.x - center0_step1.x);
+    const dy = Math.abs(center0_stepS.y - center0_step1.y);
+    console.log(`Step ${s} g#n0 center drift: dx=${dx.toFixed(3)}, dy=${dy.toFixed(3)}`);
+    assert(dx <= 0.5, `g#n0 center x-position drift at step ${s} must be <= 0.5px (was ${dx})`);
+    assert(dy <= 0.5, `g#n0 center y-position drift at step ${s} must be <= 0.5px (was ${dy})`);
+  }
+
+  // 27. Test merge mode: absolute position stability of #n0 and surviving merged state #n7
+  console.log('Testing merge mode absolute stability of n0 and surviving state n7...');
+  await page.selectOption('#concat-select', 'merge');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const center0_merge1 = await getNodeCenter('g#n0');
+
+  let center7_merge4 = null;
+  for (let s = 2; s <= 6; s++) {
+    await page.click('#step-next');
+    await page.waitForFunction(
+      (expected) => document.querySelector('#step-counter')?.textContent.includes(`step ${expected} / 6`),
+      s,
+      { timeout: 5000 }
+    );
+    const center0_mergeS = await getNodeCenter('g#n0');
+    const dx = Math.abs(center0_mergeS.x - center0_merge1.x);
+    const dy = Math.abs(center0_mergeS.y - center0_merge1.y);
+    assert(dx <= 0.5, `g#n0 center x-drift at step ${s} in merge mode must be <= 0.5px (was ${dx})`);
+    assert(dy <= 0.5, `g#n0 center y-drift at step ${s} in merge mode must be <= 0.5px (was ${dy})`);
+
+    if (s === 4) {
+      center7_merge4 = await getNodeCenter('g#n7');
+    } else if (s > 4) {
+      const center7_mergeS = await getNodeCenter('g#n7');
+      const d7x = Math.abs(center7_mergeS.x - center7_merge4.x);
+      const d7y = Math.abs(center7_mergeS.y - center7_merge4.y);
+      console.log(`Step ${s} g#n7 center drift from step 4: dx=${d7x.toFixed(3)}, dy=${d7y.toFixed(3)}`);
+      assert(d7x <= 0.5, `Surviving state n7 center x-drift at step ${s} must be <= 0.5px (was ${d7x})`);
+      assert(d7y <= 0.5, `Surviving state n7 center y-drift at step ${s} must be <= 0.5px (was ${d7y})`);
+    }
+  }
+
+  // Verify removed state 8 is absent
+  const hasNode8InMergeStep = await page.evaluate(() => document.querySelector('g#n8, g[id="n8"]') !== null);
+  assert.strictEqual(hasNode8InMergeStep, false, 'Removed state 8 must not exist at step 6 in merge mode');
+
+  // 28. Test layout fallback when layout fails
+  console.log('Testing layout fallback note on failure...');
+  await page.evaluate(() => {
+    window.__testForceLayoutFailure = true;
+    window.__buildDone = false;
+  });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const layoutNoteText = await page.textContent('#layout-note');
+  console.log('Layout note text on failure:', layoutNoteText);
+  assert(layoutNoteText && layoutNoteText.includes('falling back to unpinned layout'), 'Layout note must display fallback warning');
+
+  const fallbackCanvasHasSvg = await page.evaluate(() => !!document.querySelector('#canvas svg'));
+  assert.strictEqual(fallbackCanvasHasSvg, true, 'Canvas must render unpinned SVG rather than being blank');
+
+  // Reset force failure hook
+  await page.evaluate(() => {
+    window.__testForceLayoutFailure = false;
+  });
+
+  // 29. navigateToStep cache invalidation test:
+  // Step 1 is already in cache. Delay step 2 render.
+  // Click next (step 2 delayed) then immediately prev (step 1 cache hit).
+  // Wait past delay; canvas must still show step 1, not get overwritten by step 2.
+  console.log('Testing cache invalidation race (step 1 cached, step 2 delayed)...');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  // On build, step 1 is loaded and cached.
+  await page.evaluate(() => {
+    window.__testRenderDelay = { 2: 250 };
+  });
+
+  // Click next then immediately prev
+  await page.click('#step-next');
+  await page.click('#step-prev');
+
+  // Wait 350ms for step 2's delayed render to settle
+  await new Promise((resolve) => setTimeout(resolve, 350));
+
+  const stepAfterCacheRace = await page.evaluate(() => document.getElementById('canvas')?.getAttribute('data-current-step'));
+  console.log('Canvas step after cache hit race:', stepAfterCacheRace);
+  assert.strictEqual(stepAfterCacheRace, '1', 'Canvas must remain on step 1 after in-flight step 2 finishes');
+
+  await page.evaluate(() => { window.__testRenderDelay = null; });
+
+  // 30. handleBuild race guard test:
+  // Build (a|b)*abb, then immediately change input to "a" and build again in the same task.
+  // The canvas must show only the nodes for "a" (start-node, n0, n1; no nodes from (a|b)*abb).
+  console.log('Testing handleBuild race guard ((a|b)*abb then a)...');
+  await page.evaluate(() => {
+    window.__buildDone = false;
+    const input = document.getElementById('regex-input');
+    const btn = document.getElementById('build-button');
+    input.value = '(a|b)*abb';
+    btn.click();
+    input.value = 'a';
+    btn.click();
+  });
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  const nodesAfterRace = await page.evaluate(() => {
+    const nodeEls = Array.from(document.querySelectorAll('#canvas svg g.node'));
+    return nodeEls.map((el) => el.id);
+  });
+  console.log('Canvas nodes after handleBuild race:', nodesAfterRace);
+  assert(nodesAfterRace.includes('n0'), 'Canvas must contain n0 for "a"');
+  assert(nodesAfterRace.includes('n1'), 'Canvas must contain n1 for "a"');
+  assert.strictEqual(nodesAfterRace.length, 3, 'Canvas must contain only start-node, n0, and n1 for "a"');
+  for (let i = 2; i <= 13; i++) {
+    assert(!nodesAfterRace.includes(`n${i}`), `Canvas must not contain n${i} from (a|b)*abb`);
+  }
+
+  // 31. Per-step pinned render fallback & cache invalidation test:
+  // Step 1 renders and caches pinned. Force pinned render failure on step 2.
+  // Click next (step 2 fails pinned, falls back to unpinned, sets layoutFailed=true, clears stepSvgCache).
+  // Click prev (returns to step 1). Assert step 1 now displays unpinned render (observable via viewBox).
+  console.log('Testing per-step pinned fallback & cache invalidation...');
+  await page.selectOption('#concat-select', 'epsilon-link');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  // Record step 1's pinned SVG viewBox
+  const pinnedStep1ViewBox = await page.evaluate(() => {
+    return document.querySelector('#canvas svg')?.getAttribute('viewBox');
+  });
+  console.log('Pinned step 1 viewBox:', pinnedStep1ViewBox);
+  assert(pinnedStep1ViewBox !== null, 'Step 1 must have a viewBox');
+
+  // Arm forced pinned render failure for next navigation
+  await page.evaluate(() => {
+    window.__testForcePinnedRenderFailure = true;
+  });
+
+  // Navigate to step 2 (triggers fallback to unpinned)
+  await page.click('#step-next');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 2 / 6'));
+
+  const perStepNote = await page.textContent('#layout-note');
+  console.log('Per-step layout note on failure:', perStepNote);
+  assert(perStepNote && perStepNote.includes('Pinned layout render failed'), 'Layout note must display pinned render failure warning');
+
+  // Turn off the forced failure hook
+  await page.evaluate(() => {
+    window.__testForcePinnedRenderFailure = false;
+  });
+
+  // Navigate back to step 1
+  await page.click('#step-prev');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
+
+  // Assert step 1 now shows unpinned render (its viewBox must differ from the pinned viewBox)
+  const unpinnedStep1ViewBox = await page.evaluate(() => {
+    return document.querySelector('#canvas svg')?.getAttribute('viewBox');
+  });
+  console.log('Step 1 viewBox after fallback:', unpinnedStep1ViewBox);
+  assert(unpinnedStep1ViewBox !== null, 'Step 1 must have a viewBox after fallback');
+  assert.notStrictEqual(
+    unpinnedStep1ViewBox,
+    pinnedStep1ViewBox,
+    'Step 1 must now display unpinned render after cache invalidation'
+  );
+
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
 
 

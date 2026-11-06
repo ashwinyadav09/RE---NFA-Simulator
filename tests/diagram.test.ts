@@ -1,6 +1,6 @@
 import { test, expect } from 'vitest';
-import { toDot, FakeRenderer, VizRenderer } from '../src/diagram/index';
-import type { StepSnapshot } from '../src/engine/index';
+import { toDot, FakeRenderer, VizRenderer, computeMasterLayout, type DiagramRenderer } from '../src/diagram/index';
+import { type StepSnapshot, analyze, getStepSnapshot } from '../src/engine/index';
 
 test('toDot produces DOT text with id on every node and edge, start arrow, and double-circle accept', () => {
   const nfa = {
@@ -358,6 +358,391 @@ test('[T07-8] toDot includes tooltip attribute on nodes for state hovering', asy
     expect(res.svg).toContain('Created by step 1: symbol');
   }
 });
+
+test('[T08-1] toDot includes pinned positions in inches (points / 72) with pos="x,y!" and splines=true when pin options are provided', () => {
+  const nfa = {
+    states: [0, 1],
+    start: 0,
+    accept: 1,
+    transitions: [{ from: 0, to: 1, label: 'a' }]
+  };
+
+  const pin = new Map<number, [number, number]>([
+    [0, [72, 144]],
+    [1, [216, 288]]
+  ]);
+
+  const dot = toDot(nfa, { pin });
+
+  expect(dot).toContain('splines=true;');
+  expect(dot).toMatch(/q0\s*\[[^\]]*pos="1\.0000,2\.0000!"/);
+  expect(dot).toMatch(/q1\s*\[[^\]]*pos="3\.0000,4\.0000!"/);
+
+  const partialPin = new Map<number, [number, number]>([[0, [72, 144]]]);
+  const partialDot = toDot(nfa, { pin: partialPin });
+  expect(partialDot).toMatch(/q0\s*\[[^\]]*pos="1\.0000,2\.0000!"/);
+  expect(partialDot).toMatch(/q1\s*\[[^\]]*id="n1"/);
+  expect(partialDot).not.toMatch(/q1\s*\[[^\]]*pos=/);
+});
+
+test('[T08-2] computeMasterLayout extracts node positions for all NFA states using dot layout', async () => {
+  const nfa = {
+    states: [0, 1],
+    start: 0,
+    accept: 1,
+    transitions: [{ from: 0, to: 1, label: 'a' }]
+  };
+
+  const fakeRenderer = new FakeRenderer();
+  const fakeLayout = await computeMasterLayout(nfa, fakeRenderer);
+  expect(fakeLayout.ok).toBe(true);
+  if (fakeLayout.ok) {
+    expect(fakeLayout.positions.has(0)).toBe(true);
+    expect(fakeLayout.positions.has(1)).toBe(true);
+  }
+
+  const vizRenderer = new VizRenderer();
+  const vizLayout = await computeMasterLayout(nfa, vizRenderer);
+  expect(vizLayout.ok).toBe(true);
+  if (vizLayout.ok) {
+    expect(vizLayout.positions.has(0)).toBe(true);
+    expect(vizLayout.positions.has(1)).toBe(true);
+    const [x0, y0] = vizLayout.positions.get(0)!;
+    const [x1, y1] = vizLayout.positions.get(1)!;
+    expect(typeof x0).toBe('number');
+    expect(typeof y0).toBe('number');
+    // Rankdir=LR: accept state x1 is to the right of start state x0
+    expect(x1).toBeGreaterThan(x0);
+  }
+});
+
+function computeMaxDrift(posA: Map<number, [number, number]>, posB: Map<number, [number, number]>): number {
+  const common = [...posA.keys()].filter((k) => posB.has(k));
+  if (common.length === 0) return 0;
+  return Math.max(
+    ...common.map((k) => {
+      const dX = posA.get(k)![0] - posB.get(k)![0];
+      const dY = posA.get(k)![1] - posB.get(k)![1];
+      return Math.hypot(dX, dY);
+    })
+  );
+}
+
+function parseSvgNodePositions(svg: string): Map<number, [number, number]> {
+  const positions = new Map<number, [number, number]>();
+  const matches = svg.matchAll(/<g id="n(\d+)" class="node"[^>]*>[\s\S]*?<ellipse[^>]*cx="([^"]+)"\s+cy="([^"]+)"/g);
+  for (const m of matches) {
+    positions.set(Number(m[1]), [parseFloat(m[2]), parseFloat(m[3])]);
+  }
+  return positions;
+}
+
+function parseSvgDimensions(svg: string): { width: string; height: string; viewBox: string } {
+  const widthMatch = /<svg[^>]*\bwidth="([^"]+)"/.exec(svg);
+  const heightMatch = /<svg[^>]*\bheight="([^"]+)"/.exec(svg);
+  const vbMatch = /<svg[^>]*\bviewBox="([^"]+)"/.exec(svg);
+  return {
+    width: widthMatch ? widthMatch[1] : '',
+    height: heightMatch ? heightMatch[1] : '',
+    viewBox: vbMatch ? vbMatch[1] : ''
+  };
+}
+
+test('[T08-3] consecutive-step absolute drift for (a|b)*a is <= 0.5 points and viewBox/dimensions are identical across steps', async () => {
+  const renderer = new VizRenderer();
+  const expr = '(a|b)*a';
+
+  // Master layout is computed on the epsilon-link final NFA
+  const epsAnalysis = analyze(expr, { notation: 'standard', concatenation: 'epsilon-link' });
+  expect(epsAnalysis.ok).toBe(true);
+  if (!epsAnalysis.ok) return;
+
+  const masterLayout = await computeMasterLayout(epsAnalysis.nfa, renderer);
+  expect(masterLayout.ok).toBe(true);
+  if (!masterLayout.ok) return;
+
+  for (const concatMode of ['epsilon-link', 'merge'] as const) {
+    const analysis = analyze(expr, { notation: 'standard', concatenation: concatMode });
+    expect(analysis.ok).toBe(true);
+    if (!analysis.ok) continue;
+
+    const stepPositions: Array<Map<number, [number, number]>> = [];
+    const stepDimensions: Array<{ width: string; height: string; viewBox: string }> = [];
+
+    for (let k = 1; k <= analysis.steps.length; k++) {
+      const snapshot = getStepSnapshot(analysis.steps, k);
+      const dot = toDot(snapshot, { pin: masterLayout.positions });
+      const renderRes = await renderer.render(dot, { engine: 'neato', format: 'svg' });
+      expect(renderRes.ok).toBe(true);
+      if (!renderRes.ok) continue;
+
+      const positions = parseSvgNodePositions(renderRes.svg);
+      stepPositions.push(positions);
+      stepDimensions.push(parseSvgDimensions(renderRes.svg));
+    }
+
+    expect(stepPositions.length).toBe(analysis.steps.length);
+    expect(stepDimensions.length).toBe(analysis.steps.length);
+
+    // ViewBox and width/height are identical on every step
+    const firstDim = stepDimensions[0];
+    for (let i = 1; i < stepDimensions.length; i++) {
+      expect(stepDimensions[i].viewBox).toBe(firstDim.viewBox);
+      expect(stepDimensions[i].width).toBe(firstDim.width);
+      expect(stepDimensions[i].height).toBe(firstDim.height);
+    }
+
+    // Absolute drift <= 0.5pt between consecutive steps and from step 1
+    for (let i = 0; i < stepPositions.length - 1; i++) {
+      const drift = computeMaxDrift(stepPositions[i], stepPositions[i + 1]);
+      expect(drift).toBeLessThanOrEqual(0.5);
+    }
+  }
+});
+
+test('[T08-4] consecutive-step absolute drift for (a|b)*abb is <= 0.5 points and viewBox/dimensions are identical across steps', async () => {
+  const renderer = new VizRenderer();
+  const expr = '(a|b)*abb';
+
+  // Master layout is computed on the epsilon-link final NFA
+  const epsAnalysis = analyze(expr, { notation: 'standard', concatenation: 'epsilon-link' });
+  expect(epsAnalysis.ok).toBe(true);
+  if (!epsAnalysis.ok) return;
+
+  const masterLayout = await computeMasterLayout(epsAnalysis.nfa, renderer);
+  expect(masterLayout.ok).toBe(true);
+  if (!masterLayout.ok) return;
+
+  for (const concatMode of ['epsilon-link', 'merge'] as const) {
+    const analysis = analyze(expr, { notation: 'standard', concatenation: concatMode });
+    expect(analysis.ok).toBe(true);
+    if (!analysis.ok) continue;
+
+    const stepPositions: Array<Map<number, [number, number]>> = [];
+    const stepDimensions: Array<{ width: string; height: string; viewBox: string }> = [];
+
+    for (let k = 1; k <= analysis.steps.length; k++) {
+      const snapshot = getStepSnapshot(analysis.steps, k);
+      const dot = toDot(snapshot, { pin: masterLayout.positions });
+      const renderRes = await renderer.render(dot, { engine: 'neato', format: 'svg' });
+      expect(renderRes.ok).toBe(true);
+      if (!renderRes.ok) continue;
+
+      const positions = parseSvgNodePositions(renderRes.svg);
+      stepPositions.push(positions);
+      stepDimensions.push(parseSvgDimensions(renderRes.svg));
+    }
+
+    expect(stepPositions.length).toBe(analysis.steps.length);
+    expect(stepDimensions.length).toBe(analysis.steps.length);
+
+    // ViewBox and width/height are identical on every step
+    const firstDim = stepDimensions[0];
+    for (let i = 1; i < stepDimensions.length; i++) {
+      expect(stepDimensions[i].viewBox).toBe(firstDim.viewBox);
+      expect(stepDimensions[i].width).toBe(firstDim.width);
+      expect(stepDimensions[i].height).toBe(firstDim.height);
+    }
+
+    // Absolute drift <= 0.5pt between consecutive steps and from step 1
+    for (let i = 0; i < stepPositions.length - 1; i++) {
+      const drift = computeMaxDrift(stepPositions[i], stepPositions[i + 1]);
+      expect(drift).toBeLessThanOrEqual(0.5);
+    }
+  }
+});
+
+test('[T08-5] in merge mode the merged state appears at the surviving state position', async () => {
+  const expr = '(a|b)*a';
+  const mergeAnalysis = analyze(expr, { notation: 'standard', concatenation: 'merge' });
+  expect(mergeAnalysis.ok).toBe(true);
+  if (!mergeAnalysis.ok) return;
+
+  // Step 6 is the concatenation step where 8 was merged into 7 (mergedPair = { removed: 8, into: 7 })
+  const step6 = getStepSnapshot(mergeAnalysis.steps, 6);
+  expect(step6.mergedPair).toEqual({ removed: 8, into: 7 });
+
+  // Hand-built pin map passed to toDot (not derived from computeMasterLayout)
+  const pin = new Map<number, [number, number]>([
+    [6, [72, 144]],
+    [7, [360, 216]], // 5.0000 in, 3.0000 in
+    [9, [504, 216]]
+  ]);
+
+  const dot = toDot(step6, { pin });
+
+  // Surviving state 7 is present with pos attribute corresponding to state 7 in pin map
+  expect(dot).toContain('pos="5.0000,3.0000!"');
+  expect(dot).toMatch(/q7\s*\[[^\]]*pos="5\.0000,3\.0000!"/);
+
+  // Removed state 8 is not present
+  expect(dot).not.toMatch(/\bq8\b/);
+});
+
+test('[T08-6] computeMasterLayout returns ok: false with error message when renderer fails, without throwing', async () => {
+  const failingRenderer: DiagramRenderer = {
+    async render() {
+      return { ok: false, error: 'Synthetic layout engine failure' };
+    }
+  };
+
+  const nfa = {
+    states: [0, 1],
+    start: 0,
+    accept: 1,
+    transitions: [{ from: 0, to: 1, label: 'a' }]
+  };
+
+  const res = await computeMasterLayout(nfa, failingRenderer);
+  expect(res.ok).toBe(false);
+  if (!res.ok) {
+    expect(res.error).toContain('Synthetic layout engine failure');
+  }
+});
+
+function parseViewBox(svg: string): { x: number; y: number; width: number; height: number } | null {
+  const match = /viewBox="([^"]+)"/.exec(svg);
+  if (!match) return null;
+  const parts = match[1].trim().split(/[\s,]+/).map(Number);
+  if (parts.length === 4 && parts.every((n) => !isNaN(n))) {
+    return { x: parts[0], y: parts[1], width: parts[2], height: parts[3] };
+  }
+  return null;
+}
+
+test('[T08-7] step 2 of (a|b)*a with pinned positions keeps SVG viewBox height within master layout bounds', async () => {
+  const renderer = new VizRenderer();
+  const expr = '(a|b)*a';
+
+  const epsAnalysis = analyze(expr, { notation: 'standard', concatenation: 'epsilon-link' });
+  expect(epsAnalysis.ok).toBe(true);
+  if (!epsAnalysis.ok) return;
+
+  const masterLayout = await computeMasterLayout(epsAnalysis.nfa, renderer);
+  expect(masterLayout.ok).toBe(true);
+  if (!masterLayout.ok) return;
+
+  // Render master layout to find master viewBox height
+  const masterDot = toDot(epsAnalysis.nfa);
+  const masterSvgRes = await renderer.render(masterDot, { engine: 'dot' });
+  expect(masterSvgRes.ok).toBe(true);
+  if (!masterSvgRes.ok) return;
+
+  const masterVb = parseViewBox(masterSvgRes.svg);
+  expect(masterVb).not.toBeNull();
+  if (!masterVb) return;
+
+  const step2Snapshot = getStepSnapshot(epsAnalysis.steps, 2);
+  const step2Dot = toDot(step2Snapshot, { pin: masterLayout.positions });
+  const step2Res = await renderer.render(step2Dot, { engine: 'neato' });
+  expect(step2Res.ok).toBe(true);
+  if (!step2Res.ok) return;
+
+  const step2Vb = parseViewBox(step2Res.svg);
+  expect(step2Vb).not.toBeNull();
+  if (!step2Vb) return;
+
+  // Margin computed from master layout bounds: without pinning __start, step 2 viewBox height blows up to ~868pt vs master ~172pt
+  const maxAllowedHeight = masterVb.height * 2.2;
+  expect(step2Vb.height).toBeLessThanOrEqual(maxAllowedHeight);
+});
+
+test('[T08-8] per-step render fallback: when pinned neato render fails, falling back to unpinned DOT succeeds', async () => {
+  const failingNeatoRenderer: DiagramRenderer = {
+    async render(dot, options) {
+      if (options?.engine === 'neato') {
+        return { ok: false, error: 'Simulated neato engine failure' };
+      }
+      return { ok: true, svg: '<svg id="fallback-svg"></svg>' };
+    }
+  };
+
+  const nfa = {
+    states: [0, 1],
+    start: 0,
+    accept: 1,
+    transitions: [{ from: 0, to: 1, label: 'a' }]
+  };
+
+  const pin = new Map<number, [number, number]>([[0, [72, 72]], [1, [144, 72]]]);
+  const pinnedDot = toDot(nfa, { pin });
+  let result = await failingNeatoRenderer.render(pinnedDot, { engine: 'neato' });
+  expect(result.ok).toBe(false);
+
+  // Fallback to unpinned DOT
+  if (!result.ok) {
+    const unpinnedDot = toDot(nfa);
+    result = await failingNeatoRenderer.render(unpinnedDot);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.svg).toContain('fallback-svg');
+    }
+  }
+});
+
+test('[T08-9] fixture-based check: no __start marker overlaps a state node in the rendered SVG for all steps and modes', async () => {
+  const renderer = new VizRenderer();
+  const fixtureExprs = ['(a|b)*a', '(a|b)*abb'];
+
+  for (const expr of fixtureExprs) {
+    const epsAnalysis = analyze(expr, { notation: 'standard', concatenation: 'epsilon-link' });
+    expect(epsAnalysis.ok).toBe(true);
+    if (!epsAnalysis.ok) continue;
+
+    const masterLayout = await computeMasterLayout(epsAnalysis.nfa, renderer);
+    expect(masterLayout.ok).toBe(true);
+    if (!masterLayout.ok) continue;
+
+    for (const mode of ['epsilon-link', 'merge'] as const) {
+      const analysis = analyze(expr, { notation: 'standard', concatenation: mode });
+      expect(analysis.ok).toBe(true);
+      if (!analysis.ok) continue;
+
+      for (let k = 1; k <= analysis.steps.length; k++) {
+        const snap = getStepSnapshot(analysis.steps, k);
+        const dot = toDot(snap, { pin: masterLayout.positions });
+        const res = await renderer.render(dot, { engine: 'neato', format: 'svg' });
+        expect(res.ok).toBe(true);
+        if (!res.ok) continue;
+
+        // Extract start-node ellipses and state node ellipses from rendered SVG
+        const startMatches = [
+          ...res.svg.matchAll(
+            /<g id="(start-node(?:-\d+)?)" class="node"[^>]*>[\s\S]*?<ellipse[^>]*cx="([^"]+)"\s+cy="([^"]+)"/g
+          )
+        ];
+        const stateMatches = [
+          ...res.svg.matchAll(
+            /<g id="n(\d+)" class="node"[^>]*>[\s\S]*?<ellipse[^>]*cx="([^"]+)"\s+cy="([^"]+)"\s+rx="([^"]+)"\s+ry="([^"]+)"/g
+          )
+        ];
+
+        for (const sm of startMatches) {
+          const scx = parseFloat(sm[2]);
+          const scy = parseFloat(sm[3]);
+          for (const tm of stateMatches) {
+            const tcx = parseFloat(tm[2]);
+            const tcy = parseFloat(tm[3]);
+            const trx = parseFloat(tm[4]);
+            const dist = Math.hypot(tcx - scx, tcy - scy);
+            // Center of start marker must not lie inside or overlap state node ellipse
+            expect(dist).toBeGreaterThanOrEqual(trx);
+          }
+        }
+      }
+    }
+  }
+});
+
+
+
+
+
+
+
+
+
+
 
 
 

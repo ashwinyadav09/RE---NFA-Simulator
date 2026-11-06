@@ -12,10 +12,10 @@ If a ticket contradicts `docs/SPEC.md`, stop and ask.
 ## Architecture
 - `src/engine/` is pure TypeScript: no DOM, no import from `src/ui/`. It returns plain JSON-serialisable data and runs under Node.
 - `src/ui/` renders what the engine returns and does no algorithmic work. Plain TypeScript, no UI framework unless a ticket says so.
-- Diagrams: engine data → DOT text → Viz.js. Use `viz.render()`, which returns errors; `renderString()` throws on bad DOT.
+- Diagrams: engine data → DOT text → Viz.js. `toDot` adds `splines=true;` when pins are given. `computeMasterLayout` is part of the Diagram seam (extractNodePositions is an internal helper). Use `viz.render()`, which returns errors; `renderString()` throws on bad DOT.
 
 ## Tests (TDD, two seams only)
-Write tests at the Engine seam (`src/engine/index.ts`) and the Diagram seam (`toDot`). Do not import engine internals from a test. One failing test, then the code to pass it, then the next.
+Write tests at the Engine seam (`src/engine/index.ts`) and the Diagram seam (`toDot`, `computeMasterLayout`). Do not import engine internals from a test. One failing test, then the code to pass it, then the next.
 Expected values come from `.agents/skills/thompson-rules/fixtures/` or the oracles, never from the code under test.
 Keep the generator size-distribution test passing: fast-check's default expressions are tiny.
 

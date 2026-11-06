@@ -10,7 +10,7 @@ import {
   getStepSnapshot,
   validateAlphabet
 } from '../engine/index';
-import { toDot, VizRenderer } from '../diagram/index';
+import { toDot, VizRenderer, computeMasterLayout } from '../diagram/index';
 import InlineWorker from './worker.ts?worker&inline';
 
 const renderer = new VizRenderer();
@@ -20,6 +20,9 @@ let buildGeneration = 0;
 let stepGeneration = 0;
 let currentStepIndex = 1;
 let playbackTimer: ReturnType<typeof setInterval> | null = null;
+let masterPositions: Map<number, [number, number]> | null = null;
+let stepSvgCache = new Map<number, string>();
+let layoutFailed = false;
 
 // Setup inline worker
 try {
@@ -56,6 +59,7 @@ const runButtonEl = document.getElementById('run-button') as HTMLButtonElement |
 const verdictEl = document.getElementById('verdict');
 const traceEl = document.getElementById('trace');
 const errorEl = document.getElementById('error-message');
+const layoutNoteEl = document.getElementById('layout-note');
 const stepFirstBtn = document.getElementById('step-first') as HTMLButtonElement | null;
 const stepPrevBtn = document.getElementById('step-prev') as HTMLButtonElement | null;
 const stepPlayBtn = document.getElementById('step-play') as HTMLButtonElement | null;
@@ -129,14 +133,14 @@ function renderTreeView(container: HTMLElement, tree: ParseNode): void {
   function nodeToText(node: ParseNode, depth: number): string {
     const indent = '  '.repeat(depth);
     switch (node.k) {
-      case 'sym':   return `${indent}sym(${node.v})`;
-      case 'eps':   return `${indent}eps`;
+      case 'sym': return `${indent}sym(${node.v})`;
+      case 'eps': return `${indent}eps`;
       case 'empty': return `${indent}empty`;
-      case 'star':  return `${indent}star\n${nodeToText(node.c, depth + 1)}`;
-      case 'plus':  return `${indent}plus\n${nodeToText(node.c, depth + 1)}`;
-      case 'opt':   return `${indent}opt\n${nodeToText(node.c, depth + 1)}`;
+      case 'star': return `${indent}star\n${nodeToText(node.c, depth + 1)}`;
+      case 'plus': return `${indent}plus\n${nodeToText(node.c, depth + 1)}`;
+      case 'opt': return `${indent}opt\n${nodeToText(node.c, depth + 1)}`;
       case 'union': return `${indent}union\n${nodeToText(node.l, depth + 1)}\n${nodeToText(node.r, depth + 1)}`;
-      case 'cat':   return `${indent}cat\n${nodeToText(node.l, depth + 1)}\n${nodeToText(node.r, depth + 1)}`;
+      case 'cat': return `${indent}cat\n${nodeToText(node.l, depth + 1)}\n${nodeToText(node.r, depth + 1)}`;
     }
   }
   container.textContent = nodeToText(tree, 0);
@@ -219,6 +223,14 @@ function clearResults(): void {
   if (stepPlayBtn) stepPlayBtn.disabled = true;
   if (stepNextBtn) stepNextBtn.disabled = true;
   if (stepLastBtn) stepLastBtn.disabled = true;
+
+  masterPositions = null;
+  stepSvgCache.clear();
+  layoutFailed = false;
+  if (layoutNoteEl) {
+    layoutNoteEl.textContent = '';
+    layoutNoteEl.className = '';
+  }
 
   currentAnalysis = null;
 }
@@ -333,17 +345,47 @@ async function navigateToStep(stepIndex: number): Promise<void> {
     });
   }
 
-  const snapshot = getStepSnapshot(currentAnalysis.steps, targetStep);
-  const dot = toDot(snapshot);
-
   const gen = ++stepGeneration;
   const bGen = buildGeneration;
+
+  if (stepSvgCache.has(targetStep)) {
+    if (canvasEl) {
+      canvasEl.setAttribute('data-current-step', String(targetStep));
+      canvasEl.innerHTML = stepSvgCache.get(targetStep)!;
+      attachStateHoverListeners(canvasEl);
+    }
+    return;
+  }
+
+  const snapshot = getStepSnapshot(currentAnalysis.steps, targetStep);
+  let dot: string;
+  let renderEngine: string | undefined;
+
+  if (masterPositions && !layoutFailed) {
+    dot = toDot(snapshot, { pin: masterPositions });
+    renderEngine = 'neato';
+  } else {
+    dot = toDot(snapshot);
+    renderEngine = undefined;
+  }
 
   if ((window as any).__testRenderDelay && (window as any).__testRenderDelay[targetStep]) {
     await new Promise((r) => setTimeout(r, (window as any).__testRenderDelay[targetStep]));
   }
 
-  const result = await renderer.render(dot);
+  let result = await renderer.render(dot, renderEngine ? { engine: renderEngine } : undefined);
+
+  if ((!result.ok || (window as any).__testForcePinnedRenderFailure) && renderEngine === 'neato') {
+    layoutFailed = true;
+    stepSvgCache.clear();
+    const errText = !result.ok ? result.error : 'Forced pinned failure';
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = `Note: Pinned layout render failed (${errText}); falling back to unpinned layout.`;
+      layoutNoteEl.className = 'warning';
+    }
+    const fallbackDot = toDot(snapshot);
+    result = await renderer.render(fallbackDot);
+  }
 
   if (bGen !== buildGeneration || gen !== stepGeneration) {
     return;
@@ -354,6 +396,9 @@ async function navigateToStep(stepIndex: number): Promise<void> {
     if (result.ok) {
       canvasEl.innerHTML = result.svg;
       attachStateHoverListeners(canvasEl);
+      if (bGen === buildGeneration) {
+        stepSvgCache.set(targetStep, result.svg);
+      }
     } else {
       canvasEl.innerHTML = '';
       if (result.error) {
@@ -499,6 +544,54 @@ async function handleBuild() {
   if (stepPlayBtn) {
     stepPlayBtn.disabled = false;
   }
+
+  stepSvgCache.clear();
+  layoutFailed = false;
+  if (layoutNoteEl) {
+    layoutNoteEl.textContent = '';
+    layoutNoteEl.className = '';
+  }
+
+  let epsNfa = analysis.nfa;
+  if (concatenation !== 'epsilon-link') {
+    const epsAnalysis = analyze(source, {
+      notation,
+      concatenation: 'epsilon-link',
+      ...(userEditedAlphabet ? { alphabet: userEditedAlphabet } : {})
+    });
+    if (epsAnalysis.ok) {
+      epsNfa = epsAnalysis.nfa;
+    }
+  }
+
+  if ((window as any).__testForceLayoutFailure) {
+    masterPositions = null;
+    layoutFailed = true;
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = 'Note: Master layout failed (Forced test failure); falling back to unpinned layout.';
+      layoutNoteEl.className = 'warning';
+    }
+  } else {
+    const layoutRes = await computeMasterLayout(epsNfa, renderer);
+    if (gen !== buildGeneration) return;
+    if (layoutRes.ok) {
+      masterPositions = layoutRes.positions;
+      layoutFailed = false;
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = '';
+        layoutNoteEl.className = '';
+      }
+    } else {
+      masterPositions = null;
+      layoutFailed = true;
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = `Note: Master layout failed (${layoutRes.error}); falling back to unpinned layout.`;
+        layoutNoteEl.className = 'warning';
+      }
+    }
+  }
+
+  if (gen !== buildGeneration) return;
 
   await navigateToStep(1);
 
