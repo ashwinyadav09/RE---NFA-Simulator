@@ -21,7 +21,6 @@ let buildGeneration = 0;
 let stepGeneration = 0;
 let currentStepIndex = 1;
 let currentView: 'flat' | 'textbook' | 'final' = 'flat';
-let compactLabelsEnabled = false;
 let currentActiveStates: number[] | null = null;
 let isDeadRun = false;
 let lastRunResults: RunResult[] | null = null;
@@ -67,6 +66,7 @@ const verdictEl = document.getElementById('verdict');
 const traceEl = document.getElementById('trace');
 const errorEl = document.getElementById('error-message');
 const layoutNoteEl = document.getElementById('layout-note');
+const runStatusEl = document.getElementById('run-status');
 const stepFirstBtn = document.getElementById('step-first') as HTMLButtonElement | null;
 const stepPrevBtn = document.getElementById('step-prev') as HTMLButtonElement | null;
 const stepPlayBtn = document.getElementById('step-play') as HTMLButtonElement | null;
@@ -78,7 +78,12 @@ const viewToggleSelect = document.getElementById('view-toggle') as HTMLSelectEle
 const stepLogEl = document.getElementById('step-log');
 const compactLabelsEl = document.getElementById('compact-labels') as HTMLInputElement | null;
 
-function renderTransitionTable(container: HTMLElement, analysis: AnalysisSuccess, compact = false): void {
+function isCompactLabels(): boolean {
+  return !!compactLabelsEl?.checked;
+}
+
+function renderTransitionTable(container: HTMLElement, analysis: AnalysisSuccess): void {
+  const compact = isCompactLabels();
   const { nfa, transitionTable, compactLabelMap } = analysis;
   container.textContent = '';
 
@@ -250,11 +255,16 @@ function clearResults(): void {
   }
 
   masterPositions = null;
+  (window as any).__masterPositions = null;
   stepSvgCache.clear();
   layoutFailed = false;
   if (layoutNoteEl) {
     layoutNoteEl.textContent = '';
     layoutNoteEl.className = '';
+  }
+  if (runStatusEl) {
+    runStatusEl.textContent = '';
+    runStatusEl.className = '';
   }
 
   currentAnalysis = null;
@@ -344,6 +354,10 @@ async function navigateToStep(stepIndex: number): Promise<void> {
     canvasEl.removeAttribute('data-view');
     canvasEl.removeAttribute('data-run-status');
   }
+  if (runStatusEl) {
+    runStatusEl.textContent = '';
+    runStatusEl.className = '';
+  }
 
   const totalSteps = currentAnalysis.steps.length;
   const targetStep = Math.max(1, Math.min(stepIndex, totalSteps));
@@ -390,7 +404,7 @@ async function navigateToStep(stepIndex: number): Promise<void> {
 
   const gen = ++stepGeneration;
   const bGen = buildGeneration;
-  const cacheKey = `${currentView}-${compactLabelsEnabled}-${targetStep}`;
+  const cacheKey = `${currentView}-${targetStep}`;
 
   if (stepSvgCache.has(cacheKey)) {
     if (canvasEl) {
@@ -406,13 +420,13 @@ async function navigateToStep(stepIndex: number): Promise<void> {
   let renderEngine: string | undefined;
 
   if (currentView === 'textbook') {
-    dot = toDot(snapshot, { view: 'textbook', postfixCount: currentAnalysis.postfix.length, compactLabels: compactLabelsEnabled });
+    dot = toDot(snapshot, { view: 'textbook', postfixCount: currentAnalysis.postfix.length });
     renderEngine = undefined;
   } else if (masterPositions && !layoutFailed) {
-    dot = toDot(snapshot, { view: 'flat', pin: masterPositions, postfixCount: currentAnalysis.postfix.length, compactLabels: compactLabelsEnabled });
+    dot = toDot(snapshot, { view: 'flat', pin: masterPositions, postfixCount: currentAnalysis.postfix.length });
     renderEngine = 'neato';
   } else {
-    dot = toDot(snapshot, { view: 'flat', postfixCount: currentAnalysis.postfix.length, compactLabels: compactLabelsEnabled });
+    dot = toDot(snapshot, { view: 'flat', postfixCount: currentAnalysis.postfix.length });
     renderEngine = undefined;
   }
 
@@ -463,6 +477,18 @@ async function renderFinalView(): Promise<void> {
     viewToggleSelect.value = 'final';
   }
 
+  const mode = checkDiagramCap(currentAnalysis.postfix.length);
+  if (mode === 'off') {
+    const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping} postfix tokens (limit: ${CAPS.textbookStepping}). Table, simulation, and tests remain available.`;
+    if (canvasEl) {
+      canvasEl.innerHTML = '';
+      canvasEl.textContent = message;
+      canvasEl.setAttribute('data-view', 'final');
+      canvasEl.removeAttribute('data-current-step');
+    }
+    return;
+  }
+
   if (stepCounterEl) {
     stepCounterEl.textContent = `Final NFA (${currentAnalysis.stats.states} states, ${currentAnalysis.stats.transitions} transitions)`;
   }
@@ -493,8 +519,9 @@ async function renderFinalView(): Promise<void> {
 
   const gen = ++stepGeneration;
   const bGen = buildGeneration;
+  const compact = isCompactLabels();
   const activeStr = currentActiveStates ? currentActiveStates.join(',') : 'none';
-  const cacheKey = `final-${compactLabelsEnabled}-${activeStr}`;
+  const cacheKey = `final-${compact}-${activeStr}`;
 
   if (stepSvgCache.has(cacheKey)) {
     if (canvasEl) {
@@ -512,7 +539,7 @@ async function renderFinalView(): Promise<void> {
   }
 
   const options: DiagramOptions = {
-    compactLabels: compactLabelsEnabled,
+    compactLabels: compact,
     ...(currentActiveStates ? { activeStates: currentActiveStates } : {})
   };
 
@@ -531,7 +558,7 @@ async function renderFinalView(): Promise<void> {
     layoutFailed = true;
     stepSvgCache.clear();
     const fallbackDot = toDot(currentAnalysis.nfa, {
-      compactLabels: compactLabelsEnabled,
+      compactLabels: compact,
       ...(currentActiveStates ? { activeStates: currentActiveStates } : {})
     });
     result = await renderer.render(fallbackDot);
@@ -654,6 +681,7 @@ async function handleBuild() {
       const { start, end } = codePointToUtf16Range(source, analysis.position);
       inputEl.setSelectionRange(start, end);
     }
+    (window as any).__masterPositions = null;
     (window as any).__buildDone = true;
     return;
   }
@@ -724,7 +752,9 @@ async function handleBuild() {
     if (stepPlayBtn) stepPlayBtn.disabled = true;
     if (stepNextBtn) stepNextBtn.disabled = true;
     if (stepLastBtn) stepLastBtn.disabled = true;
-    if (viewToggleSelect) viewToggleSelect.disabled = true;
+    if (flatOption) flatOption.disabled = true;
+    if (textbookOption) textbookOption.disabled = true;
+    if (viewToggleSelect) viewToggleSelect.disabled = false;
 
     const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping} postfix tokens (limit: ${CAPS.textbookStepping}). Table, simulation, and tests remain available.`;
     if (canvasEl) {
@@ -735,6 +765,7 @@ async function handleBuild() {
       layoutNoteEl.textContent = message;
       layoutNoteEl.className = 'warning';
     }
+    (window as any).__masterPositions = null;
     (window as any).__buildDone = true;
     return;
   }
@@ -810,15 +841,16 @@ async function handleBuild() {
 
   if (gen !== buildGeneration) return;
 
+  (window as any).__masterPositions = masterPositions;
   (window as any).__buildDone = true;
 }
 
 function renderTrace(
   container: HTMLElement,
   results: RunResult[],
-  lines: string[],
-  compact = false
+  lines: string[]
 ): void {
+  const compact = isCompactLabels();
   container.textContent = '';
   const mapState = (q: number) =>
     currentAnalysis && compact ? currentAnalysis.compactLabelMap[q] ?? q : q;
@@ -851,9 +883,9 @@ function renderTrace(
       initialDiv.classList.add('active');
       currentActiveStates = [...res.initialClosure];
       isDeadRun = false;
-      if (layoutNoteEl && layoutNoteEl.textContent.includes('dead')) {
-        layoutNoteEl.textContent = '';
-        layoutNoteEl.className = '';
+      if (runStatusEl) {
+        runStatusEl.textContent = '';
+        runStatusEl.className = '';
       }
       renderFinalView();
     });
@@ -875,14 +907,14 @@ function renderTrace(
         stepDiv.classList.add('active');
         currentActiveStates = [...set];
         isDeadRun = set.length === 0;
-        if (isDeadRun) {
-          if (layoutNoteEl) {
-            layoutNoteEl.textContent = `Run is dead at position ${idx}: active set is empty.`;
-            layoutNoteEl.className = 'warning';
+        if (runStatusEl) {
+          if (isDeadRun) {
+            runStatusEl.textContent = `Run is dead at position ${idx}: active set is empty.`;
+            runStatusEl.className = 'warning';
+          } else {
+            runStatusEl.textContent = '';
+            runStatusEl.className = '';
           }
-        } else if (layoutNoteEl && layoutNoteEl.textContent.includes('dead')) {
-          layoutNoteEl.textContent = '';
-          layoutNoteEl.className = '';
         }
         renderFinalView();
       });
@@ -899,9 +931,9 @@ function renderTrace(
         deadDiv.classList.add('active');
         currentActiveStates = [];
         isDeadRun = true;
-        if (layoutNoteEl) {
-          layoutNoteEl.textContent = `Run is dead at position ${res.position}: active set is empty.`;
-          layoutNoteEl.className = 'warning';
+        if (runStatusEl) {
+          runStatusEl.textContent = `Run is dead at position ${res.position}: active set is empty.`;
+          runStatusEl.className = 'warning';
         }
         renderFinalView();
       });
@@ -925,8 +957,17 @@ function handleRun() {
     if (traceEl) {
       traceEl.innerHTML = '';
     }
+    if (runStatusEl) {
+      runStatusEl.textContent = '';
+      runStatusEl.className = '';
+    }
     (window as any).__runDone = true;
     return;
+  }
+
+  currentView = 'final';
+  if (viewToggleSelect) {
+    viewToggleSelect.value = 'final';
   }
 
   const text = testInputEl ? testInputEl.value : '';
@@ -941,8 +982,13 @@ function handleRun() {
     verdictEl.textContent = results.map((r) => r.verdict).join('\n');
   }
 
+  if (runStatusEl) {
+    runStatusEl.textContent = '';
+    runStatusEl.className = '';
+  }
+
   if (traceEl) {
-    renderTrace(traceEl, results, lines, compactLabelsEnabled);
+    renderTrace(traceEl, results, lines);
     if (results.length > 0) {
       const firstInitial = traceEl.querySelector('.trace-step[data-step="0"]') as HTMLElement | null;
       if (firstInitial) {
@@ -950,7 +996,10 @@ function handleRun() {
       }
       currentActiveStates = [...results[0].initialClosure];
       isDeadRun = false;
-      renderFinalView();
+      const mode = checkDiagramCap(currentAnalysis.postfix.length);
+      if (mode !== 'off') {
+        renderFinalView();
+      }
     }
   }
 
@@ -1075,16 +1124,13 @@ if (viewToggleSelect) {
 
 if (compactLabelsEl) {
   compactLabelsEl.addEventListener('change', () => {
-    compactLabelsEnabled = compactLabelsEl.checked;
     if (currentAnalysis) {
-      renderTransitionTable(tableEl!, currentAnalysis, compactLabelsEnabled);
+      renderTransitionTable(tableEl!, currentAnalysis);
       if (lastRunResults && lastRunLines && traceEl) {
-        renderTrace(traceEl, lastRunResults, lastRunLines, compactLabelsEnabled);
+        renderTrace(traceEl, lastRunResults, lastRunLines);
       }
       if (currentView === 'final') {
         renderFinalView();
-      } else {
-        navigateToStep(currentStepIndex);
       }
     }
   });

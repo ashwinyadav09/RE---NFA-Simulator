@@ -1071,7 +1071,7 @@ export function getStepSnapshot(steps: Step[], stepIndex: number): StepSnapshot 
   };
 }
 
-export function getCompactLabelMap(states: number[]): Record<number, number> {
+function getCompactLabelMap(states: number[]): Record<number, number> {
   const sorted = Array.from(new Set(states)).sort((a, b) => a - b);
   const map: Record<number, number> = {};
   for (let i = 0; i < sorted.length; i++) {

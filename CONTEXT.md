@@ -42,4 +42,6 @@ Words used in the spec, tickets, tests and code. Use these terms; avoid the ones
 
 **Flat view / Textbook view** Flat draws every state. Textbook draws finished sub-automata as labelled boxes and expands only the newest operator.
 
+**Final view** Displays the complete finished NFA. Run switches the view to Final; stepper buttons in Final view return to flat.
+
 **Mutant** A deliberately broken copy of a rule used to prove the tests can fail. The suite must kill all thirteen listed in the rules skill.

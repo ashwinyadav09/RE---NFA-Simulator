@@ -1,4 +1,4 @@
-import { CAPS, getCompactLabelMap, type SizeCaps, type NFA, type StepSnapshot, type Fragment } from '../engine/index';
+import { CAPS, type SizeCaps, type NFA, type StepSnapshot, type Fragment } from '../engine/index';
 import { instance, type Viz } from '@viz-js/viz';
 
 export { CAPS, type SizeCaps };
@@ -331,10 +331,18 @@ export function toDot(input: NFA | StepSnapshot, options?: DiagramOptions): stri
   const newTransitions = isSnapshot ? input.newTransitions ?? [] : [];
   const mergedPair = isSnapshot ? input.mergedPair : undefined;
   const stateCreators = isSnapshot ? input.stateCreators : undefined;
-  let displayLabelMap: Record<number, string | number> | Map<number, string | number> | undefined =
-    options?.labelMap;
-  if (!displayLabelMap && options?.compactLabels) {
-    displayLabelMap = getCompactLabelMap(states);
+  let displayLabelMap: Record<number, string | number> | Map<number, string | number> | undefined = undefined;
+  if (!isSnapshot) {
+    if (options?.labelMap) {
+      displayLabelMap = options.labelMap;
+    } else if (options?.compactLabels) {
+      const sorted = Array.from(new Set(states)).sort((a, b) => a - b);
+      const map: Record<number, number> = {};
+      for (let i = 0; i < sorted.length; i++) {
+        map[sorted[i]] = i;
+      }
+      displayLabelMap = map;
+    }
   }
 
   const getDisplayId = (stateId: number): string | number => {

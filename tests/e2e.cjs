@@ -887,6 +887,10 @@ const assert = require('node:assert');
   const has160Svg = await page.evaluate(() => !!document.querySelector('#canvas svg'));
   assert(has160Svg, 'Canvas must render textbook SVG for 160+ tokens');
 
+  // Confirm master layout stays skipped above 150
+  const masterPositions160 = await page.evaluate(() => window.__masterPositions);
+  assert.strictEqual(masterPositions160, null, 'Master layout must stay skipped above 150 tokens');
+
   // Transition table works
   const tableRows160 = await page.evaluate(() => document.querySelectorAll('#transition-table tbody tr').length);
   assert(tableRows160 > 0, 'Transition table must be populated for 160+ tokens');
@@ -896,6 +900,10 @@ const assert = require('node:assert');
   await page.click('#run-button');
   const verdict160 = await page.textContent('#verdict');
   assert(verdict160 && (verdict160.includes('ACCEPT') || verdict160.includes('REJECT')), 'Simulation must return verdict');
+
+  // Cap note in #layout-note survives the Run
+  const capNoteAfterRun160 = await page.textContent('#layout-note');
+  assert(capNoteAfterRun160 && capNoteAfterRun160.includes('150'), '150 cap note in #layout-note must survive Run');
 
   // 2b. Round-trip: build 161 tokens, then build (b|a)*b
   await page.fill('#regex-input', '(b|a)*b');
@@ -973,6 +981,23 @@ const assert = require('node:assert');
 
   const canvasMsgAfterClicks = await page.textContent('#canvas');
   assert(canvasMsgAfterClicks && canvasMsgAfterClicks.includes('400'), 'Canvas must still show cap message after interactions');
+
+  // Cap for final view: when expression is above 400 postfix tokens, Run and selecting Final NFA must not invoke Graphviz
+  await page.evaluate(() => { window.__runDone = false; });
+  await page.fill('#test-input', 'a');
+  await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
+
+  await page.selectOption('#view-toggle', 'final');
+
+  const hasSvgAfterRun400 = await page.evaluate(() => !!document.querySelector('#canvas svg'));
+  assert.strictEqual(hasSvgAfterRun400, false, 'Canvas must have no <svg> above cap after Run');
+  const canvasMsgAfterRun400 = await page.textContent('#canvas');
+  assert(canvasMsgAfterRun400 && canvasMsgAfterRun400.includes('400'), 'Canvas must still show 400 cap message after Run');
+
+  // Cap note in #layout-note survives the Run
+  const capNoteAfterRun400 = await page.textContent('#layout-note');
+  assert(capNoteAfterRun400 && capNoteAfterRun400.includes('400'), '400 cap note in #layout-note must survive Run');
 
   const tableRows400 = await page.evaluate(() => document.querySelectorAll('#transition-table tbody tr').length);
   assert(tableRows400 > 0, 'Transition table must still work beyond 400 tokens');
@@ -1075,6 +1100,10 @@ const assert = require('node:assert');
   const deadRunStatus = await page.evaluate(() => document.querySelector('#canvas')?.getAttribute('data-run-status'));
   assert.strictEqual(deadRunStatus, 'dead', 'Canvas must have data-run-status="dead" on dead step');
 
+  const runStatusText = await page.textContent('#run-status');
+  console.log('Run status text for dead step:', runStatusText);
+  assert(runStatusText.includes('dead') && runStatusText.includes('empty'), '#run-status must report dead run');
+
   // 4. Compact labels toggle in merge mode
   await page.evaluate(() => { window.__buildDone = false; });
   await page.selectOption('#concat-select', 'merge');
@@ -1114,6 +1143,21 @@ const assert = require('node:assert');
   });
   console.log('State 9 row label after compact:', rowState9After);
   assert(rowState9After.startsWith('q8'), 'After compact toggle, state 9 row must start with q8 (0..n-1)');
+
+  // Rebuild while #compact-labels is checked: assert no desync occurs on rebuild
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  const rowState9Rebuild = await page.evaluate(() => {
+    const row = document.querySelector('#transition-table tbody tr[data-state="9"] td:first-child');
+    return row?.textContent || '';
+  });
+  console.log('State 9 row label on rebuild with compact checked:', rowState9Rebuild);
+  assert(rowState9Rebuild.startsWith('q8'), `On rebuild with compact checked, state 9 row must read q8, got ${rowState9Rebuild}`);
+
+  // Switch to final view to verify diagram node n9 after rebuild
+  await page.selectOption('#view-toggle', 'final');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
 
   // Engine id in table attribute did NOT change
   const dataStateAttr = await page.evaluate(() =>

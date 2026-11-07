@@ -1001,6 +1001,25 @@ test('[T10-6] Diagram seam: toDot combines compactLabels, activeStates, and pinn
   }
 });
 
+test('[T10-7] Diagram seam: toDot on StepSnapshot ignores compactLabels and labelMap so step views use engine ids without label collision with merged step log', () => {
+  const analysis = analyze('(a|b)*a', { concatenation: 'merge' });
+  if (!analysis.ok) throw new Error(analysis.message);
+
+  // Step 6 is the last step: concatenation of 6->7 and 8->9 (merged 7 and 8 into 7)
+  const step6Snap = getStepSnapshot(analysis.steps, 6);
+
+  // Call toDot with compactLabels: true and final NFA compactLabelMap
+  const dot = toDot(step6Snap, { compactLabels: true, labelMap: analysis.compactLabelMap });
+
+  // Node 7 must show "7 (merged 7, 8)" matching the step log
+  expect(dot).toMatch(/q7\s*\[[^\]]*label="7 \(merged 7, 8\)"/);
+
+  // Node 9 must retain its engine id "9", NOT mapped to "8" (which would collide with merged state 8)
+  expect(dot).toMatch(/q9\s*\[[^\]]*label="9"/);
+  expect(dot).not.toMatch(/q9\s*\[[^\]]*label="8"/);
+});
+
+
 
 
 

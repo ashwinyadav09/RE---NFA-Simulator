@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { analyze, run, runLines, validateAlphabet, getStepSnapshot, getCompactLabelMap, EPS, CAPS, AnalysisResult, AnalysisSuccess } from '../src/engine/index';
+import { analyze, run, runLines, validateAlphabet, getStepSnapshot, EPS, CAPS, AnalysisResult, AnalysisSuccess } from '../src/engine/index';
 import { parseRD } from './oracles';
 
 function assertSuccess(result: AnalysisResult): asserts result is AnalysisSuccess {
@@ -1221,44 +1221,6 @@ test('[T09-3] Fragment and Step track sub-expression labels and step operands ac
   expect(snap4.operands).toHaveLength(1);
   expect(snap4.operands?.[0].expression).toBe('(a|b)');
   expect(snap4.stack[0].expression).toBe('(a|b)*');
-});
-
-test('[T10-1] Engine seam: getCompactLabelMap maps states to 0..n-1 in ascending id order without modifying engine state ids', () => {
-  // Contiguous states 0..3
-  const contiguous = [0, 1, 2, 3];
-  expect(getCompactLabelMap(contiguous)).toEqual({
-    0: 0,
-    1: 1,
-    2: 2,
-    3: 3
-  });
-
-  // Gapped states from merge mode (e.g. state 8 removed when concatenating 7 and 8)
-  const gapped = [0, 1, 2, 3, 4, 5, 6, 7, 9];
-  const gappedCopy = [...gapped];
-  const map = getCompactLabelMap(gapped);
-
-  expect(map).toEqual({
-    0: 0,
-    1: 1,
-    2: 2,
-    3: 3,
-    4: 4,
-    5: 5,
-    6: 6,
-    7: 7,
-    9: 8
-  });
-
-  // Ensure input array was not mutated or renumbered
-  expect(gapped).toEqual(gappedCopy);
-
-  // Arbitrary gapped IDs
-  expect(getCompactLabelMap([10, 42, 25])).toEqual({
-    10: 0,
-    25: 1,
-    42: 2
-  });
 });
 
 test('[T10-2] Engine seam: analyze returns compactLabelMap matching fixture expectations', () => {
