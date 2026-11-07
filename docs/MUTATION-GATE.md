@@ -8,11 +8,23 @@ This document records the design, repeatable command, and verified results for t
 npm run test:mutants
 ```
 
-Under the hood, this executes `node tests/mutation-gate.cjs`. It writes each mutant to an isolated temporary directory inside `node_modules/.tmp-mutation-gate` and runs Vitest directly with process spawning (no shell) using a generated temporary Vitest configuration with `--no-file-parallelism`, `--bail 1`, `--reporter=json`, and an engine-first deterministic `PathSequencer` sort order (`tests/engine.test.ts`, `tests/properties.test.ts`, `tests/diagram.test.ts`). The Vite plugin intercepts and redirects module resolution of `src/engine/index.ts` to the mutated file.
+Under the hood, this executes `node tests/mutation-gate.cjs`. It writes each mutant to an isolated temporary directory under `node_modules/.tmp-mutation-gate` and invokes Vitest directly via `process.execPath` spawning the Vitest binary without a shell wrapper (`no shell`).
+
+The harness generates a temporary Vitest configuration that uses a custom Vite plugin implementing `resolveId` redirection: whenever a test imports `src/engine/index.ts`, the plugin resolves the import and redirects it to the mutated copy.
+
+## Execution and Determinism
+
+1. **Baseline unmutated suite runs first**: the unmutated test suite is executed before applying any mutant. If the baseline is red, the gate aborts immediately with a non-zero exit code.
+2. **Fixed file ordering**: test execution runs with `--no-file-parallelism` and a custom `PathSequencer` that deterministically sorts test files in engine-first order (`tests/engine.test.ts`, `tests/properties.test.ts`, `tests/diagram.test.ts`).
+3. **Status classification**:
+   - **`KILLED`**: counted only if an actual test assertion failed.
+   - **`ERROR`**: reported if the process failed due to a syntax, import, or suite-level error rather than an assertion failure.
+   - **`SURVIVED`**: reported if all tests passed despite the mutation.
+4. **Early exit on failure**: tests execute with `--bail 1` and output a temporary JSON report inside the temp directory, which is removed immediately after reading.
 
 ## Production Code Integrity
 
-Production code in `src/engine/index.ts` is **never written or modified** by the mutation gate. It carries **no mutation switches**, environment variable checks, or debug hooks. Even if the process is terminated forcibly mid-run during mutant execution, `git status --porcelain` remains clean and `src/engine/index.ts` remains completely untouched.
+Production code in `src/engine/index.ts` is **never written or modified** by the mutation gate. It carries **no mutation switches**, environment variable checks, or debug hooks. Even if the process is terminated forcibly mid-run during mutant execution, `git status --porcelain` remains empty and `src/engine/index.ts` remains completely untouched.
 
 ## StrykerJS Trial
 
@@ -20,7 +32,7 @@ StrykerJS with Vitest runner was attempted once (`npx stryker --version`). Due t
 ```
 Error: Cannot find module 'rx'
 ```
-As specified by Ticket 12 and the project guidelines, debugging external toolchain mismatches was halted, and the plain text-substitution harness with Vite module redirection was implemented directly.
+As specified by Ticket 12 and the project guidelines, debugging external toolchain mismatches was halted, and the plain text-substitution harness with Vite `resolveId` redirection was implemented directly.
 
 ## Mutants and Results
 
@@ -44,7 +56,7 @@ The thirteen mutants are defined in Section 9 of `.agents/skills/thompson-rules/
 
 ### Key Properties Verified
 
-1. **Unmutated suite runs first**: aborts with non-zero exit code if baseline is red.
-2. **All 13 mutants are killed** by assertion failures (0 survived, 0 errors).
-3. **Right-associative parser mutant (`assoc-right`)** is killed specifically by the parse-tree check (`[T05-5] parseTree matches Oracle 4 with left-nested binary operators and concat-over-union precedence`).
-4. **Deterministic engine-first test ordering**: `--no-file-parallelism` with custom `PathSequencer` ensures identical test ordering and results across multiple runs.
+1. **Baseline first**: aborts with non-zero exit code if unmutated baseline is red.
+2. **All 13 mutants are killed**: 13 killed by assertion failures, 0 survived, 0 errors.
+3. **Right-associative parser mutant (`assoc-right`)**: killed specifically by the parse-tree check (`[T05-5] parseTree matches Oracle 4 with left-nested binary operators and concat-over-union precedence`).
+4. **Deterministic test ordering**: `--no-file-parallelism` with custom `PathSequencer` guarantees identical test ordering and results across multiple runs.
