@@ -480,3 +480,4 @@ if (!assocRightKilledByParseTree) {
 
 console.log('\nSUCCESS: All 13 mutants killed.');
 process.exit(0);
+

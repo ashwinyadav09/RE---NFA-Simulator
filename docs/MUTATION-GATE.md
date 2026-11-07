@@ -47,3 +47,4 @@ The thirteen mutants are defined in Section 9 of `.agents/skills/thompson-rules/
 1. **All 13 mutants are killed** by the existing test suite (0 survived).
 2. **Right-associative parser mutant (`assoc-right`)** is killed specifically by the parse-tree check (`[T05-5] parseTree matches Oracle 4 with left-nested binary operators and concat-over-union precedence`).
 3. Total gate runtime is ~27 seconds on Node v24.
+
