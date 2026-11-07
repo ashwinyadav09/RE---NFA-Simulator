@@ -1,4 +1,4 @@
-import { CAPS, type SizeCaps, type NFA, type StepSnapshot, type Fragment } from '../engine/index';
+import { CAPS, getCompactLabelMap, type SizeCaps, type NFA, type StepSnapshot, type Fragment } from '../engine/index';
 import { instance, type Viz } from '@viz-js/viz';
 
 export { CAPS, type SizeCaps };
@@ -156,6 +156,10 @@ export interface DiagramOptions {
   pin?: Map<number, [number, number]> | Record<number, [number, number]>;
   bounds?: { minX: number; minY: number; maxX: number; maxY: number };
   splines?: boolean;
+  activeStates?: number[] | Set<number>;
+  highlightStates?: number[] | Set<number>;
+  compactLabels?: boolean;
+  labelMap?: Map<number, string | number> | Record<number, string | number>;
 }
 
 export type DiagramCapMode = 'flat' | 'textbook' | 'off';
@@ -327,6 +331,31 @@ export function toDot(input: NFA | StepSnapshot, options?: DiagramOptions): stri
   const newTransitions = isSnapshot ? input.newTransitions ?? [] : [];
   const mergedPair = isSnapshot ? input.mergedPair : undefined;
   const stateCreators = isSnapshot ? input.stateCreators : undefined;
+  let displayLabelMap: Record<number, string | number> | Map<number, string | number> | undefined =
+    options?.labelMap;
+  if (!displayLabelMap && options?.compactLabels) {
+    displayLabelMap = getCompactLabelMap(states);
+  }
+
+  const getDisplayId = (stateId: number): string | number => {
+    if (!displayLabelMap) return stateId;
+    if (displayLabelMap instanceof Map) {
+      return displayLabelMap.has(stateId) ? displayLabelMap.get(stateId)! : stateId;
+    }
+    return displayLabelMap[stateId] !== undefined ? displayLabelMap[stateId] : stateId;
+  };
+
+  const activeSet = new Set(
+    options?.activeStates
+      ? options.activeStates instanceof Set
+        ? options.activeStates
+        : options.activeStates
+      : options?.highlightStates
+        ? options.highlightStates instanceof Set
+          ? options.highlightStates
+          : options.highlightStates
+        : []
+  );
 
   const lines: string[] = [
     'digraph NFA {',
@@ -417,13 +446,14 @@ export function toDot(input: NFA | StepSnapshot, options?: DiagramOptions): stri
     const isNew = newStates.has(q);
     const isMerged = mergedPair !== undefined && mergedPair.into === q;
     const attrs = [`id="n${q}"`];
+    const displayId = getDisplayId(q);
 
     if (isMerged) {
-      attrs.push(`label="${q} (merged ${mergedPair.into}, ${mergedPair.removed})"`, 'color="#d62728"', 'penwidth=2.5');
+      attrs.push(`label="${displayId} (merged ${getDisplayId(mergedPair.into)}, ${getDisplayId(mergedPair.removed)})"`, 'color="#d62728"', 'penwidth=2.5');
     } else if (isNew) {
-      attrs.push(`label="${q} (new)"`, 'color="#d62728"', 'penwidth=2.5');
+      attrs.push(`label="${displayId} (new)"`, 'color="#d62728"', 'penwidth=2.5');
     } else {
-      attrs.push(`label="${q}"`);
+      attrs.push(`label="${displayId}"`);
     }
 
     const pinPos = getPinPos(q);
@@ -440,6 +470,11 @@ export function toDot(input: NFA | StepSnapshot, options?: DiagramOptions): stri
 
     if (stack.some((f) => f.accept === q)) {
       attrs.push('shape=doublecircle');
+    }
+
+    const isActive = activeSet.has(q);
+    if (isActive) {
+      attrs.push('class="active"', 'fillcolor="#b3d4fc"', 'style=filled', 'color="#1f77b4"', 'penwidth=2.5');
     }
     lines.push(`  q${q} [${attrs.join(', ')}];`);
   }

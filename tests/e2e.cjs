@@ -989,6 +989,178 @@ const assert = require('node:assert');
   console.log('Error for 2000+ tokens:', error2000);
   assert(error2000 && error2000.includes('2,000'), 'Error message must state limit of 2,000 tokens');
 
+  // ----------------------------------------------------
+  // Ticket 10: Final NFA View, Compact Labels, and Trace Stepping
+  // ----------------------------------------------------
+  console.log('Testing Ticket 10: Final NFA view, active-state highlighting, and compact labels...');
+
+  // Reset inputs and build (a|b)*a in epsilon-link mode
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.selectOption('#concat-select', 'epsilon-link');
+  await page.selectOption('#notation-select', 'standard');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  // 1. Final view shows diagram, transition-table and stats
+  await page.selectOption('#view-toggle', 'final');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+
+  const finalStatsText = await page.textContent('#stats');
+  assert(finalStatsText.includes('States: 10'), 'Final view must show 10 states in stats');
+  assert(finalStatsText.includes('Transitions: 12'), 'Final view must show 12 transitions in stats');
+
+  const finalTableRows = await page.evaluate(() => document.querySelectorAll('#transition-table tbody tr').length);
+  assert(finalTableRows >= 10, 'Final view must show transition table with >= 10 rows');
+
+  const finalSvgNodeCount = await page.evaluate(() => document.querySelectorAll('#canvas svg g.node').length);
+  assert(finalSvgNodeCount >= 10, 'Final view canvas must render NFA diagram with >= 10 nodes');
+
+  // 2. Active state highlighting while stepping through trace for 'ba'
+  await page.evaluate(() => { window.__runDone = false; });
+  await page.fill('#test-input', 'ba');
+  await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
+
+  // On run, initial closure is highlighted: {0, 2, 4, 6, 7, 8}
+  await page.waitForFunction(() => document.querySelectorAll('#canvas svg g.node.active').length === 6);
+  const initialActiveNodes = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#canvas svg g.node.active')).map((el) => el.id).sort()
+  );
+  console.log('Initial active nodes:', initialActiveNodes);
+  assert.deepStrictEqual(
+    initialActiveNodes,
+    ['n0', 'n2', 'n4', 'n6', 'n7', 'n8'],
+    'Initial closure must highlight states 0, 2, 4, 6, 7, 8'
+  );
+
+  // Step through trace: click After 'b' (step 1)
+  await page.click('#trace .trace-step[data-step="1"]');
+  await page.waitForFunction(() => document.querySelectorAll('#canvas svg g.node.active').length === 7);
+  const afterBActiveNodes = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#canvas svg g.node.active')).map((el) => el.id).sort()
+  );
+  console.log('After b active nodes:', afterBActiveNodes);
+  assert.deepStrictEqual(
+    afterBActiveNodes,
+    ['n0', 'n2', 'n3', 'n4', 'n5', 'n7', 'n8'],
+    'After "b" must highlight states 0, 2, 3, 4, 5, 7, 8'
+  );
+
+  // Step through trace: click After 'a' (step 2)
+  await page.click('#trace .trace-step[data-step="2"]');
+  await page.waitForFunction(() => document.querySelectorAll('#canvas svg g.node.active').length === 8);
+  const afterAActiveNodes = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#canvas svg g.node.active')).map((el) => el.id).sort()
+  );
+  console.log('After a active nodes:', afterAActiveNodes);
+  assert.deepStrictEqual(
+    afterAActiveNodes,
+    ['n0', 'n1', 'n2', 'n4', 'n5', 'n7', 'n8', 'n9'],
+    'After "a" must highlight states 0, 1, 2, 4, 5, 7, 8, 9'
+  );
+
+  // 3. Dead run: run 'c' (added symbol in alphabet), active set becomes empty and is reported dead
+  await page.evaluate(() => { window.__runDone = false; });
+  await page.fill('#test-input', 'c');
+  await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
+
+  // Click After 'c' / Dead step in trace
+  await page.click('#trace .trace-step[data-step="1"]');
+  await page.waitForFunction(() => document.querySelectorAll('#canvas svg g.node.active').length === 0);
+  const deadActiveCount = await page.evaluate(() => document.querySelectorAll('#canvas svg g.node.active').length);
+  assert.strictEqual(deadActiveCount, 0, 'Dead run step must highlight 0 active states');
+
+  const deadRunStatus = await page.evaluate(() => document.querySelector('#canvas')?.getAttribute('data-run-status'));
+  assert.strictEqual(deadRunStatus, 'dead', 'Canvas must have data-run-status="dead" on dead step');
+
+  // 4. Compact labels toggle in merge mode
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.selectOption('#concat-select', 'merge');
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  await page.selectOption('#view-toggle', 'final');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+
+  // Check state 9 in merge mode before compact labels toggle
+  const rowState9Before = await page.evaluate(() => {
+    const row = document.querySelector('#transition-table tbody tr[data-state="9"] td:first-child');
+    return row?.textContent || '';
+  });
+  console.log('State 9 row label before compact:', rowState9Before);
+  assert(rowState9Before.startsWith('q9'), 'Before compact toggle, state 9 row must start with q9');
+
+  const node9TextBefore = await page.evaluate(() => {
+    const txt = document.querySelector('#canvas svg g[id="n9"] text');
+    return txt?.textContent || '';
+  });
+  console.log('Node n9 label before compact:', node9TextBefore);
+  assert.strictEqual(node9TextBefore, '9', 'Before compact toggle, node n9 text must be 9');
+
+  // Enable compact labels
+  await page.check('#compact-labels');
+  await page.waitForFunction(() => {
+    const txt = document.querySelector('#canvas svg g[id="n9"] text')?.textContent;
+    return txt === '8';
+  });
+
+  // Table must now display q8 for row with data-state="9"
+  const rowState9After = await page.evaluate(() => {
+    const row = document.querySelector('#transition-table tbody tr[data-state="9"] td:first-child');
+    return row?.textContent || '';
+  });
+  console.log('State 9 row label after compact:', rowState9After);
+  assert(rowState9After.startsWith('q8'), 'After compact toggle, state 9 row must start with q8 (0..n-1)');
+
+  // Engine id in table attribute did NOT change
+  const dataStateAttr = await page.evaluate(() =>
+    document.querySelector('#transition-table tbody tr[data-display-state="8"]')?.getAttribute('data-state')
+  );
+  assert.strictEqual(dataStateAttr, '9', 'Row data-state attribute must still be engine id "9"');
+
+  // Diagram SVG id did NOT change, but text became 8
+  const node9TextAfter = await page.evaluate(() =>
+    document.querySelector('#canvas svg g[id="n9"] text')?.textContent
+  );
+  assert.strictEqual(node9TextAfter, '8', 'After compact toggle, node n9 text must be mapped label 8');
+
+  // Run 'ba' in merge mode with compact labels on
+  await page.evaluate(() => { window.__runDone = false; });
+  await page.fill('#test-input', 'ba');
+  await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
+
+  // Trace text must use compact labels (state 9 mapped to 8)
+  const compactTraceText = await page.textContent('#trace');
+  console.log('Compact trace text:', compactTraceText);
+  // In merge mode, after 'a': original states are {0, 1, 2, 4, 5, 7, 9} -> mapped to {0, 1, 2, 4, 5, 6, 8}
+  assert(compactTraceText.includes('8'), 'Trace text must contain compact label 8');
+  assert(!compactTraceText.includes('9'), 'Trace text with compact labels must not contain unmapped label 9');
+
+  // Click After 'a' in compact trace
+  await page.click('#trace .trace-step[data-step="2"]');
+  await page.waitForFunction(() => document.querySelectorAll('#canvas svg g.node.active').length > 0);
+  const compactActiveNodeIds = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#canvas svg g.node.active')).map((el) => el.id)
+  );
+  assert(compactActiveNodeIds.includes('n9'), 'Node n9 must still be identified by engine ID in SVG');
+
+  // Uncheck compact labels: all revert back to unmapped
+  await page.uncheck('#compact-labels');
+  await page.waitForFunction(() => {
+    const txt = document.querySelector('#canvas svg g[id="n9"] text')?.textContent;
+    return txt === '9';
+  });
+
+  const rowState9Reverted = await page.evaluate(() => {
+    const row = document.querySelector('#transition-table tbody tr[data-state="9"] td:first-child');
+    return row?.textContent || '';
+  });
+  assert(rowState9Reverted.startsWith('q9'), 'Unchecking compact labels must revert table state label to q9');
+
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
 
 

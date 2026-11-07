@@ -134,6 +134,7 @@ export interface AnalysisSuccess {
   alphabet: string[];
   stats: AnalysisStats;
   transitionTable: Record<number, Record<string, number[]>>;
+  compactLabelMap: Record<number, number>;
   initialClosure: number[];
   invariants: InvariantsResult;
   error?: undefined;
@@ -956,6 +957,7 @@ export function analyze(source: string, options: AnalyzeOptions = {}): AnalysisR
       transitions: nfa.transitions.length
     },
     transitionTable,
+    compactLabelMap: getCompactLabelMap(nfa.states),
     initialClosure,
     invariants
   };
@@ -1068,5 +1070,15 @@ export function getStepSnapshot(steps: Step[], stepIndex: number): StepSnapshot 
     ...(currentStep.mergedPair ? { mergedPair: { ...currentStep.mergedPair } } : {})
   };
 }
+
+export function getCompactLabelMap(states: number[]): Record<number, number> {
+  const sorted = Array.from(new Set(states)).sort((a, b) => a - b);
+  const map: Record<number, number> = {};
+  for (let i = 0; i < sorted.length; i++) {
+    map[sorted[i]] = i;
+  }
+  return map;
+}
+
 
 

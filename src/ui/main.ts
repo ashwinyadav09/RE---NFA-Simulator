@@ -11,7 +11,7 @@ import {
   validateAlphabet,
   CAPS
 } from '../engine/index';
-import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap } from '../diagram/index';
+import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions } from '../diagram/index';
 import InlineWorker from './worker.ts?worker&inline';
 
 const renderer = new VizRenderer();
@@ -20,7 +20,12 @@ let userEditedAlphabet: string[] | null = null;
 let buildGeneration = 0;
 let stepGeneration = 0;
 let currentStepIndex = 1;
-let currentView: 'flat' | 'textbook' = 'flat';
+let currentView: 'flat' | 'textbook' | 'final' = 'flat';
+let compactLabelsEnabled = false;
+let currentActiveStates: number[] | null = null;
+let isDeadRun = false;
+let lastRunResults: RunResult[] | null = null;
+let lastRunLines: string[] | null = null;
 let playbackTimer: ReturnType<typeof setInterval> | null = null;
 let masterPositions: Map<number, [number, number]> | null = null;
 let stepSvgCache = new Map<string, string>();
@@ -71,9 +76,10 @@ const stepCounterEl = document.getElementById('step-counter');
 const stepSpeedSelect = document.getElementById('step-speed') as HTMLSelectElement | null;
 const viewToggleSelect = document.getElementById('view-toggle') as HTMLSelectElement | null;
 const stepLogEl = document.getElementById('step-log');
+const compactLabelsEl = document.getElementById('compact-labels') as HTMLInputElement | null;
 
-function renderTransitionTable(container: HTMLElement, analysis: AnalysisSuccess): void {
-  const { nfa, transitionTable } = analysis;
+function renderTransitionTable(container: HTMLElement, analysis: AnalysisSuccess, compact = false): void {
+  const { nfa, transitionTable, compactLabelMap } = analysis;
   container.textContent = '';
 
   const table = document.createElement('table');
@@ -91,13 +97,15 @@ function renderTransitionTable(container: HTMLElement, analysis: AnalysisSuccess
   for (const q of nfa.states) {
     const isStart = q === nfa.start ? ' (start)' : '';
     const isAccept = q === nfa.accept ? ' (accept)' : '';
-    const stateLabel = `q${q}${isStart}${isAccept}`;
+    const displayId = compact ? compactLabelMap[q] ?? q : q;
+    const stateLabel = `q${displayId}${isStart}${isAccept}`;
     const transitions = transitionTable[q] || {};
     const labels = Object.keys(transitions);
 
     if (labels.length === 0) {
       const tr = document.createElement('tr');
       tr.setAttribute('data-state', String(q));
+      tr.setAttribute('data-display-state', String(displayId));
       for (const val of [stateLabel, '-', '-']) {
         const td = document.createElement('td');
         td.textContent = val;
@@ -106,9 +114,12 @@ function renderTransitionTable(container: HTMLElement, analysis: AnalysisSuccess
       tbody.appendChild(tr);
     } else {
       for (const label of labels) {
-        const targets = transitions[label].map((dest) => `q${dest}`).join(', ');
+        const targets = transitions[label]
+          .map((dest) => `q${compact ? compactLabelMap[dest] ?? dest : dest}`)
+          .join(', ');
         const tr = document.createElement('tr');
         tr.setAttribute('data-state', String(q));
+        tr.setAttribute('data-display-state', String(displayId));
         for (const val of [stateLabel, label, targets]) {
           const td = document.createElement('td');
           td.textContent = val;
@@ -186,6 +197,10 @@ function insertAtCursor(char: string): void {
 function clearResults(): void {
   stopPlayback();
   currentStepIndex = 0;
+  currentActiveStates = null;
+  isDeadRun = false;
+  lastRunResults = null;
+  lastRunLines = null;
 
   if (statsEl) {
     statsEl.textContent = '';
@@ -195,6 +210,8 @@ function clearResults(): void {
   if (canvasEl) {
     canvasEl.innerHTML = '';
     canvasEl.removeAttribute('data-current-step');
+    canvasEl.removeAttribute('data-view');
+    canvasEl.removeAttribute('data-run-status');
   }
   if (traceEl) {
     traceEl.innerHTML = '';
@@ -315,6 +332,19 @@ async function navigateToStep(stepIndex: number): Promise<void> {
     stopPlayback();
     return;
   }
+  if (currentView === 'final') {
+    currentView = (viewToggleSelect?.value === 'textbook' ? 'textbook' : 'flat');
+    if (viewToggleSelect) {
+      viewToggleSelect.value = currentView;
+    }
+  }
+  currentActiveStates = null;
+  isDeadRun = false;
+  if (canvasEl) {
+    canvasEl.removeAttribute('data-view');
+    canvasEl.removeAttribute('data-run-status');
+  }
+
   const totalSteps = currentAnalysis.steps.length;
   const targetStep = Math.max(1, Math.min(stepIndex, totalSteps));
   currentStepIndex = targetStep;
@@ -360,7 +390,7 @@ async function navigateToStep(stepIndex: number): Promise<void> {
 
   const gen = ++stepGeneration;
   const bGen = buildGeneration;
-  const cacheKey = `${currentView}-${targetStep}`;
+  const cacheKey = `${currentView}-${compactLabelsEnabled}-${targetStep}`;
 
   if (stepSvgCache.has(cacheKey)) {
     if (canvasEl) {
@@ -376,13 +406,13 @@ async function navigateToStep(stepIndex: number): Promise<void> {
   let renderEngine: string | undefined;
 
   if (currentView === 'textbook') {
-    dot = toDot(snapshot, { view: 'textbook', postfixCount: currentAnalysis.postfix.length });
+    dot = toDot(snapshot, { view: 'textbook', postfixCount: currentAnalysis.postfix.length, compactLabels: compactLabelsEnabled });
     renderEngine = undefined;
   } else if (masterPositions && !layoutFailed) {
-    dot = toDot(snapshot, { view: 'flat', pin: masterPositions, postfixCount: currentAnalysis.postfix.length });
+    dot = toDot(snapshot, { view: 'flat', pin: masterPositions, postfixCount: currentAnalysis.postfix.length, compactLabels: compactLabelsEnabled });
     renderEngine = 'neato';
   } else {
-    dot = toDot(snapshot, { view: 'flat', postfixCount: currentAnalysis.postfix.length });
+    dot = toDot(snapshot, { view: 'flat', postfixCount: currentAnalysis.postfix.length, compactLabels: compactLabelsEnabled });
     renderEngine = undefined;
   }
 
@@ -424,6 +454,117 @@ async function navigateToStep(stepIndex: number): Promise<void> {
     }
   }
 }
+
+async function renderFinalView(): Promise<void> {
+  if (!currentAnalysis) return;
+  stopPlayback();
+  currentView = 'final';
+  if (viewToggleSelect) {
+    viewToggleSelect.value = 'final';
+  }
+
+  if (stepCounterEl) {
+    stepCounterEl.textContent = `Final NFA (${currentAnalysis.stats.states} states, ${currentAnalysis.stats.transitions} transitions)`;
+  }
+
+  if (stepFirstBtn) stepFirstBtn.disabled = false;
+  if (stepPrevBtn) stepPrevBtn.disabled = false;
+  if (stepNextBtn) stepNextBtn.disabled = false;
+  if (stepLastBtn) stepLastBtn.disabled = false;
+  if (stepPlayBtn) stepPlayBtn.disabled = true;
+
+  if (stepLogEl) {
+    const items = stepLogEl.querySelectorAll('.step-log-item');
+    items.forEach((item) => {
+      item.classList.remove('active');
+      (item as HTMLElement).style.fontWeight = 'normal';
+      (item as HTMLElement).style.backgroundColor = 'transparent';
+    });
+  }
+
+  if (postfixEl) {
+    const tokens = postfixEl.querySelectorAll('.postfix-token');
+    tokens.forEach((tok) => {
+      tok.classList.remove('active');
+      (tok as HTMLElement).style.backgroundColor = 'transparent';
+      (tok as HTMLElement).style.color = 'inherit';
+    });
+  }
+
+  const gen = ++stepGeneration;
+  const bGen = buildGeneration;
+  const activeStr = currentActiveStates ? currentActiveStates.join(',') : 'none';
+  const cacheKey = `final-${compactLabelsEnabled}-${activeStr}`;
+
+  if (stepSvgCache.has(cacheKey)) {
+    if (canvasEl) {
+      canvasEl.setAttribute('data-view', 'final');
+      canvasEl.removeAttribute('data-current-step');
+      if (isDeadRun) {
+        canvasEl.setAttribute('data-run-status', 'dead');
+      } else {
+        canvasEl.removeAttribute('data-run-status');
+      }
+      canvasEl.innerHTML = stepSvgCache.get(cacheKey)!;
+      attachStateHoverListeners(canvasEl);
+    }
+    return;
+  }
+
+  const options: DiagramOptions = {
+    compactLabels: compactLabelsEnabled,
+    ...(currentActiveStates ? { activeStates: currentActiveStates } : {})
+  };
+
+  let renderEngine: string | undefined;
+  if (masterPositions && !layoutFailed) {
+    options.pin = masterPositions;
+    renderEngine = 'neato';
+  } else {
+    renderEngine = undefined;
+  }
+
+  const dot = toDot(currentAnalysis.nfa, options);
+  let result = await renderer.render(dot, renderEngine ? { engine: renderEngine } : undefined);
+
+  if (!result.ok && renderEngine === 'neato') {
+    layoutFailed = true;
+    stepSvgCache.clear();
+    const fallbackDot = toDot(currentAnalysis.nfa, {
+      compactLabels: compactLabelsEnabled,
+      ...(currentActiveStates ? { activeStates: currentActiveStates } : {})
+    });
+    result = await renderer.render(fallbackDot);
+  }
+
+  if (bGen !== buildGeneration || gen !== stepGeneration) {
+    return;
+  }
+
+  if (canvasEl) {
+    canvasEl.setAttribute('data-view', 'final');
+    canvasEl.removeAttribute('data-current-step');
+    if (isDeadRun) {
+      canvasEl.setAttribute('data-run-status', 'dead');
+    } else {
+      canvasEl.removeAttribute('data-run-status');
+    }
+
+    if (result.ok) {
+      canvasEl.innerHTML = result.svg;
+      attachStateHoverListeners(canvasEl);
+      if (bGen === buildGeneration) {
+        stepSvgCache.set(cacheKey, result.svg);
+      }
+    } else {
+      canvasEl.innerHTML = '';
+      if (result.error) {
+        canvasEl.textContent = `Error rendering diagram: ${result.error}`;
+      }
+    }
+  }
+}
+
 
 function togglePlayback(): void {
   if (!currentAnalysis || currentAnalysis.steps.length === 0) return;
@@ -672,8 +813,16 @@ async function handleBuild() {
   (window as any).__buildDone = true;
 }
 
-function renderTrace(container: HTMLElement, results: RunResult[], lines: string[]): void {
+function renderTrace(
+  container: HTMLElement,
+  results: RunResult[],
+  lines: string[],
+  compact = false
+): void {
   container.textContent = '';
+  const mapState = (q: number) =>
+    currentAnalysis && compact ? currentAnalysis.compactLabelMap[q] ?? q : q;
+
   for (let lineIdx = 0; lineIdx < results.length; lineIdx++) {
     const res = results[lineIdx];
     const line = lines[lineIdx];
@@ -692,7 +841,22 @@ function renderTrace(container: HTMLElement, results: RunResult[], lines: string
     const initialDiv = document.createElement('div');
     initialDiv.className = 'trace-step';
     initialDiv.setAttribute('data-step', '0');
-    initialDiv.textContent = `Initial: {${res.initialClosure.join(', ')}}`;
+    initialDiv.setAttribute('data-states', res.initialClosure.join(','));
+    initialDiv.style.cursor = 'pointer';
+    const initMapped = res.initialClosure.map(mapState).sort((a, b) => a - b);
+    initialDiv.textContent = `Initial: {${initMapped.join(', ')}}`;
+
+    initialDiv.addEventListener('click', () => {
+      container.querySelectorAll('.trace-step, .trace-status').forEach((el) => el.classList.remove('active'));
+      initialDiv.classList.add('active');
+      currentActiveStates = [...res.initialClosure];
+      isDeadRun = false;
+      if (layoutNoteEl && layoutNoteEl.textContent.includes('dead')) {
+        layoutNoteEl.textContent = '';
+        layoutNoteEl.className = '';
+      }
+      renderFinalView();
+    });
     lineEl.appendChild(initialDiv);
 
     for (let idx = 0; idx < res.afterEachSymbol.length; idx++) {
@@ -702,14 +866,45 @@ function renderTrace(container: HTMLElement, results: RunResult[], lines: string
       stepDiv.className = 'trace-step';
       stepDiv.setAttribute('data-step', String(idx + 1));
       stepDiv.setAttribute('data-states', set.join(','));
-      stepDiv.textContent = `After '${char}': {${set.join(', ')}}`;
+      stepDiv.style.cursor = 'pointer';
+      const mapped = set.map(mapState).sort((a, b) => a - b);
+      stepDiv.textContent = `After '${char}': {${mapped.join(', ')}}`;
+
+      stepDiv.addEventListener('click', () => {
+        container.querySelectorAll('.trace-step, .trace-status').forEach((el) => el.classList.remove('active'));
+        stepDiv.classList.add('active');
+        currentActiveStates = [...set];
+        isDeadRun = set.length === 0;
+        if (isDeadRun) {
+          if (layoutNoteEl) {
+            layoutNoteEl.textContent = `Run is dead at position ${idx}: active set is empty.`;
+            layoutNoteEl.className = 'warning';
+          }
+        } else if (layoutNoteEl && layoutNoteEl.textContent.includes('dead')) {
+          layoutNoteEl.textContent = '';
+          layoutNoteEl.className = '';
+        }
+        renderFinalView();
+      });
       lineEl.appendChild(stepDiv);
     }
 
     if (res.status === 'dead') {
       const deadDiv = document.createElement('div');
       deadDiv.className = 'trace-status dead';
+      deadDiv.style.cursor = 'pointer';
       deadDiv.textContent = `Dead at position ${res.position}`;
+      deadDiv.addEventListener('click', () => {
+        container.querySelectorAll('.trace-step, .trace-status').forEach((el) => el.classList.remove('active'));
+        deadDiv.classList.add('active');
+        currentActiveStates = [];
+        isDeadRun = true;
+        if (layoutNoteEl) {
+          layoutNoteEl.textContent = `Run is dead at position ${res.position}: active set is empty.`;
+          layoutNoteEl.className = 'warning';
+        }
+        renderFinalView();
+      });
       lineEl.appendChild(deadDiv);
     } else if (res.status === 'out_of_alphabet') {
       const errDiv = document.createElement('div');
@@ -739,12 +934,24 @@ function handleRun() {
   const activeAlphabet = userEditedAlphabet ?? currentAnalysis.alphabet;
   const results = runLines(currentAnalysis.nfa, activeAlphabet, text);
 
+  lastRunResults = results;
+  lastRunLines = lines;
+
   if (verdictEl) {
     verdictEl.textContent = results.map((r) => r.verdict).join('\n');
   }
 
   if (traceEl) {
-    renderTrace(traceEl, results, lines);
+    renderTrace(traceEl, results, lines, compactLabelsEnabled);
+    if (results.length > 0) {
+      const firstInitial = traceEl.querySelector('.trace-step[data-step="0"]') as HTMLElement | null;
+      if (firstInitial) {
+        firstInitial.classList.add('active');
+      }
+      currentActiveStates = [...results[0].initialClosure];
+      isDeadRun = false;
+      renderFinalView();
+    }
   }
 
   (window as any).__runDone = true;
@@ -854,9 +1061,31 @@ if (stepSpeedSelect) {
 
 if (viewToggleSelect) {
   viewToggleSelect.addEventListener('change', () => {
-    currentView = (viewToggleSelect.value as 'flat' | 'textbook') || 'flat';
+    const val = (viewToggleSelect.value as 'flat' | 'textbook' | 'final') || 'flat';
+    currentView = val;
     if (currentAnalysis) {
-      navigateToStep(currentStepIndex);
+      if (val === 'final') {
+        renderFinalView();
+      } else {
+        navigateToStep(currentStepIndex);
+      }
+    }
+  });
+}
+
+if (compactLabelsEl) {
+  compactLabelsEl.addEventListener('change', () => {
+    compactLabelsEnabled = compactLabelsEl.checked;
+    if (currentAnalysis) {
+      renderTransitionTable(tableEl!, currentAnalysis, compactLabelsEnabled);
+      if (lastRunResults && lastRunLines && traceEl) {
+        renderTrace(traceEl, lastRunResults, lastRunLines, compactLabelsEnabled);
+      }
+      if (currentView === 'final') {
+        renderFinalView();
+      } else {
+        navigateToStep(currentStepIndex);
+      }
     }
   });
 }

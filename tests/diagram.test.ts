@@ -883,6 +883,128 @@ test('[T09-8] Cap boundary 2: toDot permits 400 postfix tokens in textbook view 
   expect(() => toDot(snap, { view: 'flat', postfixCount: 401 })).toThrow(/400/);
 });
 
+test('[T10-3] Diagram seam: toDot with activeStates highlights matching states with active class, fillcolor, border color, and thicker line, while leaving inactive states unhighlighted', () => {
+  const nfa = {
+    states: [0, 1, 2, 3],
+    start: 0,
+    accept: 3,
+    transitions: [
+      { from: 0, to: 1, label: 'a' },
+      { from: 1, to: 2, label: 'b' },
+      { from: 2, to: 3, label: 'c' }
+    ]
+  };
+
+  const dot = toDot(nfa, { activeStates: [0, 2] });
+
+  // States 0 and 2 must have active styling: class="active", fillcolor="#b3d4fc", style=filled, color="#1f77b4", penwidth=2.5
+  expect(dot).toMatch(/q0\s*\[[^\]]*class="active"[^\]]*fillcolor="#b3d4fc"[^\]]*style=filled[^\]]*color="#1f77b4"[^\]]*penwidth=2\.5/);
+  expect(dot).toMatch(/q2\s*\[[^\]]*class="active"[^\]]*fillcolor="#b3d4fc"[^\]]*style=filled[^\]]*color="#1f77b4"[^\]]*penwidth=2\.5/);
+
+  // States 1 and 3 must not be active
+  expect(dot).not.toMatch(/q1\s*\[[^\]]*class="active"/);
+  expect(dot).not.toMatch(/q3\s*\[[^\]]*class="active"/);
+});
+
+test('[T10-4] Diagram seam: toDot with empty activeStates highlights no states (dead run)', () => {
+  const nfa = {
+    states: [0, 1, 2],
+    start: 0,
+    accept: 2,
+    transitions: [
+      { from: 0, to: 1, label: 'a' },
+      { from: 1, to: 2, label: 'b' }
+    ]
+  };
+
+  const dot = toDot(nfa, { activeStates: [] });
+
+  expect(dot).not.toContain('class="active"');
+  expect(dot).not.toContain('fillcolor=');
+  expect(dot).not.toContain('style=filled');
+});
+
+test('[T10-5] Diagram seam: toDot with compactLabels maps display labels to 0..n-1 while preserving engine ids on node and edge attributes', () => {
+  const nfa = {
+    states: [0, 2, 5],
+    start: 0,
+    accept: 5,
+    transitions: [
+      { from: 0, to: 2, label: 'a' },
+      { from: 2, to: 5, label: 'b' }
+    ]
+  };
+
+  const dot = toDot(nfa, { compactLabels: true });
+
+  // Node statements must preserve engine IDs in DOT node names and id attributes
+  expect(dot).toContain('id="n0"');
+  expect(dot).toContain('id="n2"');
+  expect(dot).toContain('id="n5"');
+
+  // Display labels must be mapped to 0..n-1 in ascending id order
+  expect(dot).toMatch(/q0\s*\[[^\]]*label="0"/);
+  expect(dot).toMatch(/q2\s*\[[^\]]*label="1"/);
+  expect(dot).toMatch(/q5\s*\[[^\]]*label="2"/);
+
+  // Transitions must keep original engine IDs in edge definitions and id attributes
+  expect(dot).toContain('id="e0"');
+  expect(dot).toContain('id="e1"');
+  expect(dot).toContain('q0 -> q2');
+  expect(dot).toContain('q2 -> q5');
+  expect(dot).toContain('__start -> q0');
+});
+
+test('[T10-6] Diagram seam: toDot combines compactLabels, activeStates, and pinned layout positions into valid SVG via VizRenderer', async () => {
+  const analysis = analyze('(a|b)*a', { concatenation: 'merge' });
+  if (!analysis.ok) throw new Error(analysis.message);
+
+  const renderer = new VizRenderer();
+  const masterRes = await computeMasterLayout(analysis.nfa, renderer);
+  expect(masterRes.ok).toBe(true);
+  if (!masterRes.ok) return;
+
+  // Active states from trace (e.g. states 0, 2, 7)
+  const active = [0, 2, 7];
+  const dot = toDot(analysis.nfa, {
+    pin: masterRes.positions,
+    compactLabels: true,
+    activeStates: active
+  });
+
+  // Verify splines=true and pos attributes appear
+  expect(dot).toContain('splines=true;');
+  expect(dot).toContain('pos=');
+
+  // Verify compact labels on accept state (state 9 is mapped to 8 in merge mode)
+  expect(dot).toMatch(/q9\s*\[[^\]]*label="8"/);
+
+  // Verify active states have active styling and inactive states don't
+  expect(dot).toMatch(/q0\s*\[[^\]]*class="active"/);
+  expect(dot).toMatch(/q2\s*\[[^\]]*class="active"/);
+  expect(dot).toMatch(/q7\s*\[[^\]]*class="active"/);
+  expect(dot).not.toMatch(/q1\s*\[[^\]]*class="active"/);
+  expect(dot).not.toMatch(/q9\s*\[[^\]]*class="active"/);
+
+  // Render with neato using real VizRenderer
+  const res = await renderer.render(dot, { engine: 'neato' });
+  expect(res.ok).toBe(true);
+  if (res.ok) {
+    expect(res.svg).toContain('<svg');
+    // SVG has node group with class="node active" for q0
+    expect(res.svg).toMatch(/<g id="n0" class="node active"/);
+    expect(res.svg).toMatch(/<g id="n2" class="node active"/);
+    expect(res.svg).toMatch(/<g id="n7" class="node active"/);
+    // Inactive node does not have active class
+    expect(res.svg).toMatch(/<g id="n9" class="node"/);
+    expect(res.svg).not.toMatch(/<g id="n9" class="node active"/);
+  }
+});
+
+
+
+
+
 
 
 
