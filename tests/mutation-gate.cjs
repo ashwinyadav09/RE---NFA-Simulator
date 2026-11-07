@@ -4,28 +4,34 @@
  * Repeatable Mutation Gate for RE → NFA (Thompson) Simulator.
  *
  * Applies the 13 canonical mutants from section 9 of .agents/skills/thompson-rules/SKILL.md
- * to a temporary copy of src/engine/index.ts using text substitution, runs the Vitest suite,
- * and reports whether each mutant was killed and which test failed first.
+ * to a temporary copy of the engine in a temp directory using a generated Vitest config
+ * whose Vite plugin redirects the resolved engine module to the mutated file.
  *
- * Production code carries no mutation switches.
+ * Production code (src/engine/index.ts) is never written or overwritten.
  */
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
-const enginePath = path.resolve(__dirname, '../src/engine/index.ts');
+const projectRoot = path.resolve(__dirname, '..');
+const enginePath = path.resolve(projectRoot, 'src/engine/index.ts');
 if (!fs.existsSync(enginePath)) {
   console.error(`Error: Engine file not found at ${enginePath}`);
   process.exit(1);
 }
 
-const originalContent = fs.readFileSync(enginePath, 'utf-8');
-const isCrlf = originalContent.includes('\r\n');
-const normalize = (s) => s.replace(/\r\n/g, '\n');
-const denormalize = (s) => (isCrlf ? s.replace(/\r?\n/g, '\r\n') : s.replace(/\r\n/g, '\n'));
+const vitestBin = path.resolve(projectRoot, 'node_modules/vitest/vitest.mjs');
+if (!fs.existsSync(vitestBin)) {
+  console.error(`Error: Vitest binary not found at ${vitestBin}`);
+  process.exit(1);
+}
 
-// Section 9 canonical mutants
+const originalContent = fs.readFileSync(enginePath, 'utf-8');
+const normalize = (s) => s.replace(/\r\n/g, '\n');
+const normOrig = normalize(originalContent);
+
+// Section 9 canonical mutants (do not touch definitions)
 const mutants = [
   {
     id: 'star-no-back',
@@ -333,71 +339,184 @@ const mutants = [
   }
 ];
 
-function restore() {
-  try {
-    fs.writeFileSync(enginePath, originalContent, 'utf-8');
-  } catch (err) {
-    console.error('Failed to restore engine file:', err);
-  }
-}
-
-process.on('exit', restore);
-process.on('SIGINT', () => {
-  restore();
-  process.exit(1);
-});
-process.on('uncaughtException', (err) => {
-  restore();
-  console.error('Uncaught exception:', err);
-  process.exit(1);
-});
-
 // Verify all mutant targets exist uniquely
-const normOrig = normalize(originalContent);
 for (const m of mutants) {
   const normTarget = normalize(m.target);
   const count = normOrig.split(normTarget).length - 1;
   if (count !== 1) {
-    console.error(`Error: Mutant target for '${m.id}' matched ${count} times (expected 1).`);
+    console.error(`Error: Mutant target for '${m.id}' matched ${count} times in src/engine/index.ts (expected 1).`);
     process.exit(1);
   }
 }
 
-const reportFile = path.resolve(__dirname, '../.vitest-mutation-report.json');
+// Create isolated temporary directory inside node_modules (.gitignore protected)
+const baseTempDir = path.resolve(projectRoot, 'node_modules/.tmp-mutation-gate');
+fs.mkdirSync(baseTempDir, { recursive: true });
+const tempDir = fs.mkdtempSync(path.join(baseTempDir, 'run-'));
 
-console.log('Running Mutation Gate on 13 canonical mutants...\n');
+function cleanupTempDir() {
+  try {
+    if (fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  } catch {}
+}
 
-const results = [];
-let allKilled = true;
-let assocRightKilledByParseTree = false;
+const targetResolvedClean = path.resolve(enginePath).toLowerCase();
 
-for (const m of mutants) {
-  const normTarget = normalize(m.target);
-  const normReplacement = normalize(m.replacement);
-  const mutated = normOrig.replace(normTarget, normReplacement);
+function generateVitestConfig(mutatedFilePath) {
+  const configPath = path.join(tempDir, `vitest-${Date.now()}-${Math.random().toString(36).slice(2)}.config.mjs`);
+  const redirectPlugin = mutatedFilePath
+    ? `
+    {
+      name: 'mutant-redirect',
+      enforce: 'pre',
+      async resolveId(source, importer, options) {
+        const resolution = await this.resolve(source, importer, { ...options, skipSelf: true });
+        if (resolution && resolution.id) {
+          const clean = path.resolve(resolution.id).toLowerCase();
+          if (clean === ${JSON.stringify(targetResolvedClean)}) {
+            return ${JSON.stringify(mutatedFilePath)};
+          }
+        }
+        return null;
+      }
+    },`
+    : '';
 
-  const start = Date.now();
-  let failed = false;
-  let firstFailingTest = '';
-  let suiteName = '';
+  const configContent = `
+import { defineConfig } from 'vitest/config';
+import { viteSingleFile } from 'vite-plugin-singlefile';
+import { BaseSequencer } from 'vitest/node';
+import path from 'node:path';
+
+class PathSequencer extends BaseSequencer {
+  async sort(files) {
+    return [...files].sort((a, b) => a.moduleId.localeCompare(b.moduleId));
+  }
+}
+
+export default defineConfig({
+  root: ${JSON.stringify(projectRoot)},
+  plugins: [
+    viteSingleFile(),${redirectPlugin}
+  ],
+  test: {
+    include: ['tests/**/*.test.ts'],
+    fileParallelism: false,
+    sequence: {
+      sequencer: PathSequencer
+    }
+  }
+});
+`;
+  fs.writeFileSync(configPath, configContent, 'utf-8');
+  return configPath;
+}
+
+try {
+  // Step 3: Run unmutated suite first and abort if it is red
+  console.log('Running unmutated baseline test suite...');
+  const baselineConfigPath = generateVitestConfig(null);
+  const baselineReportPath = path.join(tempDir, 'baseline-report.json');
 
   try {
-    fs.writeFileSync(enginePath, denormalize(mutated), 'utf-8');
-    if (fs.existsSync(reportFile)) fs.unlinkSync(reportFile);
-
-    execSync(`npx vitest run --bail 1 --reporter=json --outputFile="${reportFile}"`, {
-      stdio: 'pipe',
-      shell: 'cmd.exe',
-      windowsHide: true
-    });
+    execFileSync(
+      process.execPath,
+      [
+        vitestBin,
+        'run',
+        '--config',
+        baselineConfigPath,
+        '--no-file-parallelism',
+        '--bail',
+        '1',
+        '--reporter=json',
+        `--outputFile=${baselineReportPath}`
+      ],
+      {
+        cwd: projectRoot,
+        stdio: 'pipe',
+        encoding: 'utf-8'
+      }
+    );
   } catch (err) {
-    failed = true;
-    if (fs.existsSync(reportFile)) {
+    console.error('\nERROR: Unmutated baseline test suite is RED. Aborting mutation gate.');
+    cleanupTempDir();
+    process.exit(1);
+  }
+
+  if (fs.existsSync(baselineReportPath)) {
+    try {
+      const baselineReport = JSON.parse(fs.readFileSync(baselineReportPath, 'utf-8'));
+      if (baselineReport.numFailedTests > 0 || baselineReport.numFailedTestSuites > 0) {
+        console.error('\nERROR: Unmutated baseline test suite reported failures. Aborting mutation gate.');
+        cleanupTempDir();
+        process.exit(1);
+      }
+      fs.unlinkSync(baselineReportPath);
+    } catch {}
+  }
+  if (fs.existsSync(baselineConfigPath)) fs.unlinkSync(baselineConfigPath);
+
+  console.log('Baseline suite is GREEN. Running 13 canonical mutants...\n');
+
+  const results = [];
+  let allKilled = true;
+  let assocRightKilledByParseTree = false;
+
+  for (const m of mutants) {
+    const normTarget = normalize(m.target);
+    const normReplacement = normalize(m.replacement);
+    const mutated = normOrig.replace(normTarget, normReplacement);
+
+    const mutatedFilePath = path.join(tempDir, `engine-${m.id}.ts`);
+    fs.writeFileSync(mutatedFilePath, mutated, 'utf-8');
+
+    const mutantConfigPath = generateVitestConfig(mutatedFilePath);
+    const reportFilePath = path.join(tempDir, `report-${m.id}.json`);
+
+    const start = Date.now();
+    let processFailed = false;
+    let assertionFailed = false;
+    let firstFailingTest = '';
+    let suiteName = '';
+    let errorDetail = '';
+
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          vitestBin,
+          'run',
+          '--config',
+          mutantConfigPath,
+          '--no-file-parallelism',
+          '--bail',
+          '1',
+          '--reporter=json',
+          `--outputFile=${reportFilePath}`
+        ],
+        {
+          cwd: projectRoot,
+          stdio: 'pipe',
+          encoding: 'utf-8'
+        }
+      );
+    } catch (err) {
+      processFailed = true;
+    }
+
+    if (fs.existsSync(reportFilePath)) {
       try {
-        const report = JSON.parse(fs.readFileSync(reportFile, 'utf-8'));
+        const report = JSON.parse(fs.readFileSync(reportFilePath, 'utf-8'));
         for (const suite of report.testResults || []) {
+          if (suite.message) {
+            errorDetail = suite.message;
+          }
           for (const a of suite.assertionResults || []) {
             if (a.status === 'failed') {
+              assertionFailed = true;
               firstFailingTest = a.title || a.fullName;
               suiteName = path.basename(suite.name);
               break;
@@ -406,78 +525,94 @@ for (const m of mutants) {
           if (firstFailingTest) break;
         }
       } catch (parseErr) {
-        firstFailingTest = 'Unknown (failed to parse JSON)';
+        errorDetail = `JSON parse failure: ${parseErr.message}`;
       }
-    } else {
-      firstFailingTest = 'Unknown (no JSON report)';
-    }
-  } finally {
-    restore();
-    if (fs.existsSync(reportFile)) {
       try {
-        fs.unlinkSync(reportFile);
+        fs.unlinkSync(reportFilePath);
       } catch {}
     }
-  }
-
-  const durationMs = Date.now() - start;
-
-  if (failed) {
-    const fullTestName = `${suiteName ? suiteName + ' > ' : ''}${firstFailingTest}`;
-    results.push({
-      id: m.id,
-      layer: m.layer,
-      description: m.description,
-      status: 'KILLED',
-      firstTest: fullTestName,
-      durationMs
-    });
-
-    if (m.id === 'assoc-right') {
-      const isParseTree = /parseTree|parse-tree|parseRD/i.test(fullTestName);
-      if (isParseTree) {
-        assocRightKilledByParseTree = true;
-      }
+    if (fs.existsSync(mutantConfigPath)) {
+      try {
+        fs.unlinkSync(mutantConfigPath);
+      } catch {}
     }
-  } else {
-    allKilled = false;
-    results.push({
-      id: m.id,
-      layer: m.layer,
-      description: m.description,
-      status: 'SURVIVED',
-      firstTest: '(none)',
-      durationMs
-    });
+    if (fs.existsSync(mutatedFilePath)) {
+      try {
+        fs.unlinkSync(mutatedFilePath);
+      } catch {}
+    }
+
+    const durationMs = Date.now() - start;
+
+    if (processFailed && assertionFailed) {
+      const fullTestName = `${suiteName ? suiteName + ' > ' : ''}${firstFailingTest}`;
+      results.push({
+        id: m.id,
+        layer: m.layer,
+        description: m.description,
+        status: 'KILLED',
+        firstTest: fullTestName,
+        durationMs
+      });
+
+      if (m.id === 'assoc-right') {
+        const isParseTree = /parseTree|parse-tree|parseRD/i.test(fullTestName);
+        if (isParseTree) {
+          assocRightKilledByParseTree = true;
+        }
+      }
+    } else if (processFailed && !assertionFailed) {
+      allKilled = false;
+      results.push({
+        id: m.id,
+        layer: m.layer,
+        description: m.description,
+        status: 'ERROR',
+        firstTest: `Error (not assertion failure): ${errorDetail.slice(0, 100)}`,
+        durationMs
+      });
+    } else {
+      allKilled = false;
+      results.push({
+        id: m.id,
+        layer: m.layer,
+        description: m.description,
+        status: 'SURVIVED',
+        firstTest: '(none)',
+        durationMs
+      });
+    }
   }
+
+  // Print Markdown output table
+  console.log('| Mutant | Layer | Description | Status | Time | First Failing Test |');
+  console.log('| --- | --- | --- | --- | ---: | --- |');
+  for (const r of results) {
+    console.log(`| ${r.id} | ${r.layer} | ${r.description} | **${r.status}** | ${r.durationMs}ms | ${r.firstTest} |`);
+  }
+
+  console.log('\n--- Summary ---');
+  console.log(`Total mutants: ${results.length}`);
+  console.log(`Killed: ${results.filter((r) => r.status === 'KILLED').length}`);
+  console.log(`Survived: ${results.filter((r) => r.status === 'SURVIVED').length}`);
+  console.log(`Errors: ${results.filter((r) => r.status === 'ERROR').length}`);
+  console.log(`assoc-right caught specifically by parse-tree check: ${assocRightKilledByParseTree ? 'YES' : 'NO'}`);
+
+  if (!allKilled) {
+    console.error('\nFAIL: One or more mutants survived or encountered errors!');
+    cleanupTempDir();
+    process.exit(1);
+  }
+
+  if (!assocRightKilledByParseTree) {
+    console.error("\nFAIL: 'assoc-right' was killed, but NOT by a parse-tree check!");
+    cleanupTempDir();
+    process.exit(1);
+  }
+
+  console.log('\nSUCCESS: All 13 mutants killed.');
+  cleanupTempDir();
+  process.exit(0);
+} finally {
+  cleanupTempDir();
 }
-
-// Ensure restored
-restore();
-
-// Print Markdown output table
-console.log('| Mutant | Layer | Description | Status | Time | First Failing Test |');
-console.log('| --- | --- | --- | --- | ---: | --- |');
-for (const r of results) {
-  console.log(`| ${r.id} | ${r.layer} | ${r.description} | **${r.status}** | ${r.durationMs}ms | ${r.firstTest} |`);
-}
-
-console.log('\n--- Summary ---');
-console.log(`Total mutants: ${results.length}`);
-console.log(`Killed: ${results.filter((r) => r.status === 'KILLED').length}`);
-console.log(`Survived: ${results.filter((r) => r.status === 'SURVIVED').length}`);
-console.log(`assoc-right caught specifically by parse-tree check: ${assocRightKilledByParseTree ? 'YES' : 'NO'}`);
-
-if (!allKilled) {
-  console.error('\nFAIL: One or more mutants survived!');
-  process.exit(1);
-}
-
-if (!assocRightKilledByParseTree) {
-  console.error("\nFAIL: 'assoc-right' was killed, but NOT by a parse-tree check!");
-  process.exit(1);
-}
-
-console.log('\nSUCCESS: All 13 mutants killed.');
-process.exit(0);
-
