@@ -4,6 +4,18 @@
 // and works cleanly as object keys in transition tables (Record<string, number[]>).
 export const EPS = 'ε';
 
+export interface SizeCaps {
+  flatStepping: number;
+  textbookStepping: number;
+  engineTokens: number;
+}
+
+export const CAPS: SizeCaps = {
+  flatStepping: 150,
+  textbookStepping: 400,
+  engineTokens: 2000
+};
+
 export type TokenType =
   | 'SYMBOL'
   | 'EPSILON'
@@ -55,6 +67,24 @@ export interface AnalysisStats {
 export interface Fragment {
   start: number;
   accept: number;
+  expression?: string;
+}
+
+export function makeFragment(start: number, accept: number, expression?: string): Fragment {
+  const frag: Fragment = { start, accept };
+  if (expression !== undefined) {
+    Object.defineProperty(frag, 'expression', {
+      value: expression,
+      enumerable: false,
+      writable: true,
+      configurable: true
+    });
+  }
+  return frag;
+}
+
+export function cloneFragment(frag: Fragment): Fragment {
+  return makeFragment(frag.start, frag.accept, frag.expression);
 }
 
 export interface Step {
@@ -67,6 +97,7 @@ export interface Step {
   result: Fragment;
   stackAfter: Fragment[];
   stackDepthAfter: number;
+  operands?: Fragment[];
   position?: number;
   mergedPair?: { removed: number; into: number };
 }
@@ -78,6 +109,7 @@ export interface StepSnapshot {
   stack: Fragment[];
   newStates: number[];
   newTransitions: Transition[];
+  operands?: Fragment[];
   mergedPair?: { removed: number; into: number };
   stateCreators?: Record<number, { step: number; rule: string }>;
 }
@@ -142,6 +174,7 @@ export interface AnalyzeOptions {
   notation?: 'standard' | 'textbook';
   concatenation?: 'epsilon-link' | 'merge';
   alphabet?: string[];
+  caps?: Partial<SizeCaps>;
 }
 
 function tokenize(source: string, notation: 'standard' | 'textbook' = 'standard'): Token[] {
@@ -419,9 +452,28 @@ function toPostfix(tokensWithConcat: Token[]): Token[] {
   return postfix;
 }
 
+function wrapUnary(expr: string): string {
+  if (expr.length <= 1) return expr;
+  if (expr.startsWith('(') && expr.endsWith(')')) {
+    let depth = 0;
+    let isSingleGroup = true;
+    for (let i = 0; i < expr.length; i++) {
+      if (expr[i] === '(') depth++;
+      else if (expr[i] === ')') depth--;
+      if (depth === 0 && i < expr.length - 1) {
+        isSingleGroup = false;
+        break;
+      }
+    }
+    if (isSingleGroup) return expr;
+  }
+  return `(${expr})`;
+}
+
 function buildNFA(
   postfix: Token[],
-  concatenation: 'epsilon-link' | 'merge' = 'epsilon-link'
+  concatenation: 'epsilon-link' | 'merge' = 'epsilon-link',
+  notation: 'standard' | 'textbook' = 'standard'
 ): {
   steps: Step[];
   nfa: NFA;
@@ -441,6 +493,7 @@ function buildNFA(
     const newTransitions: Transition[] = [];
     let mergedPair: { removed: number; into: number } | undefined;
     let produced: Fragment;
+    let operands: Fragment[] = [];
     let description = '';
 
     switch (token.type) {
@@ -450,7 +503,7 @@ function buildNFA(
         const f = nextStateId++;
         newStates.push(s, f);
         newTransitions.push({ from: s, to: f, label: token.symbol! });
-        produced = { start: s, accept: f };
+        produced = makeFragment(s, f, token.symbol!);
         description = `symbol '${token.symbol}' (fragment ${s}→${f})`;
         stack.push(produced);
         break;
@@ -461,7 +514,7 @@ function buildNFA(
         const f = nextStateId++;
         newStates.push(s, f);
         newTransitions.push({ from: s, to: f, label: EPS });
-        produced = { start: s, accept: f };
+        produced = makeFragment(s, f, EPS);
         description = `epsilon (fragment ${s}→${f})`;
         stack.push(produced);
         break;
@@ -471,7 +524,7 @@ function buildNFA(
         const s = nextStateId++;
         const f = nextStateId++;
         newStates.push(s, f);
-        produced = { start: s, accept: f };
+        produced = makeFragment(s, f, '∅');
         description = `empty (fragment ${s}→${f})`;
         stack.push(produced);
         break;
@@ -480,6 +533,9 @@ function buildNFA(
         rule = 'concatenation';
         const B = stack.pop()!;
         const A = stack.pop()!;
+        operands = [cloneFragment(A), cloneFragment(B)];
+        const exprA = A.expression ?? '';
+        const exprB = B.expression ?? '';
         if (concatenation === 'merge') {
           mergedPair = { removed: B.start, into: A.accept };
           // Invariant I2 guarantees no transition enters B.start
@@ -497,12 +553,12 @@ function buildNFA(
               t.from = A.accept;
             }
           }
-          produced = { start: A.start, accept: B.accept };
+          produced = makeFragment(A.start, B.accept, `${exprA}${exprB}`);
           description = `concatenation of fragments ${A.start}→${A.accept} and ${B.start}→${B.accept} (merged states ${A.accept} and ${B.start} into ${A.accept})`;
           stack.push(produced);
         } else {
           newTransitions.push({ from: A.accept, to: B.start, label: EPS });
-          produced = { start: A.start, accept: B.accept };
+          produced = makeFragment(A.start, B.accept, `${exprA}${exprB}`);
           description = `concatenation of fragments ${A.start}→${A.accept} and ${B.start}→${B.accept}`;
           stack.push(produced);
         }
@@ -512,6 +568,10 @@ function buildNFA(
         rule = 'union';
         const B = stack.pop()!;
         const A = stack.pop()!;
+        operands = [cloneFragment(A), cloneFragment(B)];
+        const exprA = A.expression ?? '';
+        const exprB = B.expression ?? '';
+        const op = notation === 'textbook' ? '+' : '|';
         const s = nextStateId++;
         const f = nextStateId++;
         newStates.push(s, f);
@@ -521,7 +581,7 @@ function buildNFA(
           { from: A.accept, to: f, label: EPS },
           { from: B.accept, to: f, label: EPS }
         );
-        produced = { start: s, accept: f };
+        produced = makeFragment(s, f, `(${exprA}${op}${exprB})`);
         description = `union of fragments ${A.start}→${A.accept} and ${B.start}→${B.accept}`;
         stack.push(produced);
         break;
@@ -529,6 +589,8 @@ function buildNFA(
       case 'STAR': {
         rule = 'star';
         const A = stack.pop()!;
+        operands = [cloneFragment(A)];
+        const exprA = A.expression ?? '';
         const s = nextStateId++;
         const f = nextStateId++;
         newStates.push(s, f);
@@ -538,7 +600,7 @@ function buildNFA(
           { from: s, to: f, label: EPS },
           { from: A.accept, to: A.start, label: EPS }
         );
-        produced = { start: s, accept: f };
+        produced = makeFragment(s, f, `${wrapUnary(exprA)}*`);
         description = `star of fragment ${A.start}→${A.accept}`;
         stack.push(produced);
         break;
@@ -546,6 +608,8 @@ function buildNFA(
       case 'PLUS': {
         rule = 'plus';
         const A = stack.pop()!;
+        operands = [cloneFragment(A)];
+        const exprA = A.expression ?? '';
         const s = nextStateId++;
         const f = nextStateId++;
         newStates.push(s, f);
@@ -554,7 +618,7 @@ function buildNFA(
           { from: A.accept, to: f, label: EPS },
           { from: A.accept, to: A.start, label: EPS }
         );
-        produced = { start: s, accept: f };
+        produced = makeFragment(s, f, `${wrapUnary(exprA)}+`);
         description = `plus of fragment ${A.start}→${A.accept}`;
         stack.push(produced);
         break;
@@ -562,6 +626,8 @@ function buildNFA(
       case 'OPT': {
         rule = 'optional';
         const A = stack.pop()!;
+        operands = [cloneFragment(A)];
+        const exprA = A.expression ?? '';
         const s = nextStateId++;
         const f = nextStateId++;
         newStates.push(s, f);
@@ -570,7 +636,7 @@ function buildNFA(
           { from: A.accept, to: f, label: EPS },
           { from: s, to: f, label: EPS }
         );
-        produced = { start: s, accept: f };
+        produced = makeFragment(s, f, `${wrapUnary(exprA)}?`);
         description = `optional of fragment ${A.start}→${A.accept}`;
         stack.push(produced);
         break;
@@ -582,10 +648,7 @@ function buildNFA(
     allStates.push(...newStates);
     allTransitions.push(...newTransitions);
 
-    const stackSnapshot: Fragment[] = stack.map((frag) => ({
-      start: frag.start,
-      accept: frag.accept
-    }));
+    const stackSnapshot: Fragment[] = stack.map((frag) => cloneFragment(frag));
 
     steps.push({
       index: i + 1,
@@ -594,15 +657,16 @@ function buildNFA(
       description,
       newStates: [...newStates],
       newTransitions: newTransitions.map((t) => ({ ...t })),
-      result: { start: produced.start, accept: produced.accept },
+      result: cloneFragment(produced),
       stackAfter: stackSnapshot,
       stackDepthAfter: stackSnapshot.length,
+      operands: operands.map((o) => cloneFragment(o)),
       position: token.position,
       ...(mergedPair ? { mergedPair } : {})
     });
   }
 
-  const finalFragment = stack.length > 0 ? stack[stack.length - 1] : { start: 0, accept: 0 };
+  const finalFragment = stack.length > 0 ? stack[stack.length - 1] : makeFragment(0, 0, '');
 
   return {
     steps,
@@ -826,6 +890,23 @@ export function analyze(source: string, options: AnalyzeOptions = {}): AnalysisR
     };
   }
 
+  const engineLimit = options.caps?.engineTokens ?? CAPS.engineTokens;
+  if (tokens.length > engineLimit) {
+    const limitFormatted = engineLimit.toLocaleString();
+    const error: AnalysisError = {
+      code: 'EXCEEDED_TOKEN_CAP',
+      message: `Expression exceeds the engine limit of ${limitFormatted} tokens (limit: ${limitFormatted}; received ${tokens.length.toLocaleString()})`,
+      hint: `Reduce the expression size to ${limitFormatted} tokens or fewer`
+    };
+    return {
+      ok: false,
+      code: error.code,
+      message: error.message,
+      hint: error.hint,
+      error
+    };
+  }
+
   const validationError = validateTokens(tokens, notation);
   if (validationError) {
     return {
@@ -840,7 +921,7 @@ export function analyze(source: string, options: AnalyzeOptions = {}): AnalysisR
 
   const tokensWithConcat = insertImplicitConcat(tokens);
   const postfix = toPostfix(tokensWithConcat);
-  const { steps, nfa } = buildNFA(postfix, concatenation);
+  const { steps, nfa } = buildNFA(postfix, concatenation, notation);
   const inferredAlphabet = inferAlphabet(tokens);
   let alphabet = inferredAlphabet;
 
@@ -984,9 +1065,10 @@ export function getStepSnapshot(steps: Step[], stepIndex: number): StepSnapshot 
     stepIndex,
     states: Array.from(replayedStates).sort((a, b) => a - b),
     transitions: replayedTransitions,
-    stack: currentStep.stackAfter.map((frag) => ({ ...frag })),
+    stack: currentStep.stackAfter.map((frag) => cloneFragment(frag)),
     newStates: [...currentStep.newStates],
     newTransitions: currentStep.newTransitions.map((t) => ({ ...t })),
+    operands: currentStep.operands ? currentStep.operands.map((frag) => cloneFragment(frag)) : [],
     stateCreators,
     ...(currentStep.mergedPair ? { mergedPair: { ...currentStep.mergedPair } } : {})
   };

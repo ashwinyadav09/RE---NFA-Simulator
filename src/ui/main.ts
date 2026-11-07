@@ -8,7 +8,8 @@ import {
   Token,
   Step,
   getStepSnapshot,
-  validateAlphabet
+  validateAlphabet,
+  CAPS
 } from '../engine/index';
 import { toDot, VizRenderer, computeMasterLayout } from '../diagram/index';
 import InlineWorker from './worker.ts?worker&inline';
@@ -19,9 +20,10 @@ let userEditedAlphabet: string[] | null = null;
 let buildGeneration = 0;
 let stepGeneration = 0;
 let currentStepIndex = 1;
+let currentView: 'flat' | 'textbook' = 'flat';
 let playbackTimer: ReturnType<typeof setInterval> | null = null;
 let masterPositions: Map<number, [number, number]> | null = null;
-let stepSvgCache = new Map<number, string>();
+let stepSvgCache = new Map<string, string>();
 let layoutFailed = false;
 
 // Setup inline worker
@@ -67,6 +69,7 @@ const stepNextBtn = document.getElementById('step-next') as HTMLButtonElement | 
 const stepLastBtn = document.getElementById('step-last') as HTMLButtonElement | null;
 const stepCounterEl = document.getElementById('step-counter');
 const stepSpeedSelect = document.getElementById('step-speed') as HTMLSelectElement | null;
+const viewToggleSelect = document.getElementById('view-toggle') as HTMLSelectElement | null;
 const stepLogEl = document.getElementById('step-log');
 
 function renderTransitionTable(container: HTMLElement, analysis: AnalysisSuccess): void {
@@ -223,6 +226,11 @@ function clearResults(): void {
   if (stepPlayBtn) stepPlayBtn.disabled = true;
   if (stepNextBtn) stepNextBtn.disabled = true;
   if (stepLastBtn) stepLastBtn.disabled = true;
+  if (viewToggleSelect) {
+    viewToggleSelect.disabled = true;
+    const flatOpt = viewToggleSelect.querySelector('option[value="flat"]') as HTMLOptionElement | null;
+    if (flatOpt) flatOpt.disabled = false;
+  }
 
   masterPositions = null;
   stepSvgCache.clear();
@@ -347,11 +355,12 @@ async function navigateToStep(stepIndex: number): Promise<void> {
 
   const gen = ++stepGeneration;
   const bGen = buildGeneration;
+  const cacheKey = `${currentView}-${targetStep}`;
 
-  if (stepSvgCache.has(targetStep)) {
+  if (stepSvgCache.has(cacheKey)) {
     if (canvasEl) {
       canvasEl.setAttribute('data-current-step', String(targetStep));
-      canvasEl.innerHTML = stepSvgCache.get(targetStep)!;
+      canvasEl.innerHTML = stepSvgCache.get(cacheKey)!;
       attachStateHoverListeners(canvasEl);
     }
     return;
@@ -361,11 +370,14 @@ async function navigateToStep(stepIndex: number): Promise<void> {
   let dot: string;
   let renderEngine: string | undefined;
 
-  if (masterPositions && !layoutFailed) {
-    dot = toDot(snapshot, { pin: masterPositions });
+  if (currentView === 'textbook') {
+    dot = toDot(snapshot, { view: 'textbook', postfixCount: currentAnalysis.postfix.length });
+    renderEngine = undefined;
+  } else if (masterPositions && !layoutFailed) {
+    dot = toDot(snapshot, { view: 'flat', pin: masterPositions, postfixCount: currentAnalysis.postfix.length });
     renderEngine = 'neato';
   } else {
-    dot = toDot(snapshot);
+    dot = toDot(snapshot, { view: 'flat', postfixCount: currentAnalysis.postfix.length });
     renderEngine = undefined;
   }
 
@@ -383,7 +395,7 @@ async function navigateToStep(stepIndex: number): Promise<void> {
       layoutNoteEl.textContent = `Note: Pinned layout render failed (${errText}); falling back to unpinned layout.`;
       layoutNoteEl.className = 'warning';
     }
-    const fallbackDot = toDot(snapshot);
+    const fallbackDot = toDot(snapshot, { view: 'flat', postfixCount: currentAnalysis.postfix.length });
     result = await renderer.render(fallbackDot);
   }
 
@@ -397,7 +409,7 @@ async function navigateToStep(stepIndex: number): Promise<void> {
       canvasEl.innerHTML = result.svg;
       attachStateHoverListeners(canvasEl);
       if (bGen === buildGeneration) {
-        stepSvgCache.set(targetStep, result.svg);
+        stepSvgCache.set(cacheKey, result.svg);
       }
     } else {
       canvasEl.innerHTML = '';
@@ -477,7 +489,10 @@ async function handleBuild() {
         errorEl.removeAttribute('data-error-code');
         errorEl.removeAttribute('data-error-position');
       } else {
-        errorEl.textContent = `${analysis.message} at position ${analysis.position}`;
+        errorEl.textContent =
+          analysis.position !== undefined
+            ? `${analysis.message} at position ${analysis.position}`
+            : analysis.message;
         errorEl.setAttribute('data-error-code', analysis.code);
         if (analysis.position !== undefined) {
           errorEl.setAttribute('data-error-position', String(analysis.position));
@@ -552,6 +567,52 @@ async function handleBuild() {
     layoutNoteEl.className = '';
   }
 
+  const postfixLen = analysis.postfix.length;
+  const flatOption = viewToggleSelect?.querySelector('option[value="flat"]') as HTMLOptionElement | null;
+  const textbookOption = viewToggleSelect?.querySelector('option[value="textbook"]') as HTMLOptionElement | null;
+
+  if (postfixLen > CAPS.textbookStepping) {
+    if (stepFirstBtn) stepFirstBtn.disabled = true;
+    if (stepPrevBtn) stepPrevBtn.disabled = true;
+    if (stepPlayBtn) stepPlayBtn.disabled = true;
+    if (stepNextBtn) stepNextBtn.disabled = true;
+    if (stepLastBtn) stepLastBtn.disabled = true;
+    if (viewToggleSelect) viewToggleSelect.disabled = true;
+
+    const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping} postfix tokens (limit: ${CAPS.textbookStepping}). Table, simulation, and tests remain available.`;
+    if (canvasEl) {
+      canvasEl.innerHTML = '';
+      canvasEl.textContent = message;
+    }
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = message;
+      layoutNoteEl.className = 'warning';
+    }
+    (window as any).__buildDone = true;
+    return;
+  }
+
+  if (postfixLen > CAPS.flatStepping) {
+    if (flatOption) flatOption.disabled = true;
+    if (textbookOption) textbookOption.disabled = false;
+    currentView = 'textbook';
+    if (viewToggleSelect) {
+      viewToggleSelect.disabled = false;
+      viewToggleSelect.value = 'textbook';
+    }
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = `Flat stepping is disabled for expressions over ${CAPS.flatStepping} postfix tokens (limit: ${CAPS.flatStepping}). Showing textbook view.`;
+      layoutNoteEl.className = 'warning';
+    }
+  } else {
+    if (flatOption) flatOption.disabled = false;
+    if (textbookOption) textbookOption.disabled = false;
+    if (viewToggleSelect) {
+      viewToggleSelect.disabled = false;
+      currentView = (viewToggleSelect.value as 'flat' | 'textbook') || 'flat';
+    }
+  }
+
   let epsNfa = analysis.nfa;
   if (concatenation !== 'epsilon-link') {
     const epsAnalysis = analyze(source, {
@@ -577,7 +638,7 @@ async function handleBuild() {
     if (layoutRes.ok) {
       masterPositions = layoutRes.positions;
       layoutFailed = false;
-      if (layoutNoteEl) {
+      if (layoutNoteEl && postfixLen <= CAPS.flatStepping) {
         layoutNoteEl.textContent = '';
         layoutNoteEl.className = '';
       }
@@ -776,6 +837,15 @@ if (stepSpeedSelect) {
     if (playbackTimer !== null) {
       stopPlayback();
       startPlayback();
+    }
+  });
+}
+
+if (viewToggleSelect) {
+  viewToggleSelect.addEventListener('change', () => {
+    currentView = (viewToggleSelect.value as 'flat' | 'textbook') || 'flat';
+    if (currentAnalysis) {
+      navigateToStep(currentStepIndex);
     }
   });
 }

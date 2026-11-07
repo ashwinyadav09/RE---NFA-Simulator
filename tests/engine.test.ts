@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { analyze, run, runLines, validateAlphabet, getStepSnapshot, EPS, AnalysisResult, AnalysisSuccess } from '../src/engine/index';
+import { analyze, run, runLines, validateAlphabet, getStepSnapshot, EPS, CAPS, AnalysisResult, AnalysisSuccess } from '../src/engine/index';
 import { parseRD } from './oracles';
 
 function assertSuccess(result: AnalysisResult): asserts result is AnalysisSuccess {
@@ -1147,6 +1147,77 @@ test('EXTRA: (a|b)(c|d) in merge mode merges state 10 into 5 at step 7 with outg
     { to: 8, label: EPS }
   ]);
 });
+
+test('[T09-1] CAPS config object defines flatStepping (150), textbookStepping (400), and engineTokens (2000)', () => {
+  expect(CAPS).toBeDefined();
+  expect(CAPS.flatStepping).toBe(150);
+  expect(CAPS.textbookStepping).toBe(400);
+  expect(CAPS.engineTokens).toBe(2000);
+});
+
+test('[T09-2] analyze() returns EXCEEDED_TOKEN_CAP error stating limit of 2,000 when tokens exceed 2,000, and succeeds at 2,000', () => {
+  // Test boundary at 2000 vs 2001
+  const overCap = 'a'.repeat(2001);
+  const failRes = analyze(overCap);
+  expect(failRes.ok).toBe(false);
+  if (!failRes.ok) {
+    expect(failRes.code).toBe('EXCEEDED_TOKEN_CAP');
+    expect(failRes.message).toContain('2,000');
+    expect(failRes.message.toLowerCase()).toContain('limit');
+  }
+
+  // Also verify customizable cap option on AnalyzeOptions
+  const smallOver = analyze('a'.repeat(6), { caps: { engineTokens: 5 } });
+  expect(smallOver.ok).toBe(false);
+  if (!smallOver.ok) {
+    expect(smallOver.code).toBe('EXCEEDED_TOKEN_CAP');
+    expect(smallOver.message).toContain('5');
+  }
+});
+
+test('[T09-3] Fragment and Step track sub-expression labels and step operands across construction steps', () => {
+  const res = analyze('(a|b)*a');
+  assertSuccess(res);
+
+  // Step 1: symbol 'a'
+  expect(res.steps[0].result.expression).toBe('a');
+  expect(res.steps[0].operands).toEqual([]);
+
+  // Step 2: symbol 'b'
+  expect(res.steps[1].result.expression).toBe('b');
+  expect(res.steps[1].operands).toEqual([]);
+
+  // Step 3: union 'a|b'
+  expect(res.steps[2].operands).toHaveLength(2);
+  expect(res.steps[2].operands?.[0].expression).toBe('a');
+  expect(res.steps[2].operands?.[1].expression).toBe('b');
+  expect(res.steps[2].result.expression).toBe('(a|b)');
+
+  // Step 4: star of '(a|b)'
+  expect(res.steps[3].operands).toHaveLength(1);
+  expect(res.steps[3].operands?.[0].expression).toBe('(a|b)');
+  expect(res.steps[3].result.expression).toBe('(a|b)*');
+
+  // Step 5: symbol 'a'
+  expect(res.steps[4].result.expression).toBe('a');
+  expect(res.steps[4].operands).toEqual([]);
+
+  // Step 6: concat
+  expect(res.steps[5].operands).toHaveLength(2);
+  expect(res.steps[5].operands?.[0].expression).toBe('(a|b)*');
+  expect(res.steps[5].operands?.[1].expression).toBe('a');
+  expect(res.steps[5].result.expression).toBe('(a|b)*a');
+
+  // Snapshot verifies operands and stack fragment expressions
+  const snap4 = getStepSnapshot(res.steps, 4);
+  expect(snap4.operands).toBeDefined();
+  expect(snap4.operands).toHaveLength(1);
+  expect(snap4.operands?.[0].expression).toBe('(a|b)');
+  expect(snap4.stack[0].expression).toBe('(a|b)*');
+});
+
+
+
 
 
 

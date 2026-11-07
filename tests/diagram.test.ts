@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { toDot, FakeRenderer, VizRenderer, computeMasterLayout, type DiagramRenderer } from '../src/diagram/index';
+import { toDot, FakeRenderer, VizRenderer, computeMasterLayout, checkDiagramCap, CAPS, type DiagramRenderer } from '../src/diagram/index';
 import { type StepSnapshot, analyze, getStepSnapshot } from '../src/engine/index';
 
 test('toDot produces DOT text with id on every node and edge, start arrow, and double-circle accept', () => {
@@ -733,6 +733,161 @@ test('[T08-9] fixture-based check: no __start marker overlaps a state node in th
     }
   }
 });
+
+test('[T09-4] toDot with view="textbook" on step 4 of (a|b)*a renders operand as record node with id, in/out ports, and escaped "|" in label', () => {
+  const analysis = analyze('(a|b)*a');
+  if (!analysis.ok) throw new Error(analysis.message);
+
+  // Step 4 is STAR of (a|b)
+  const snap4 = getStepSnapshot(analysis.steps, 4);
+  const dot = toDot(snap4, { view: 'textbook' });
+
+  // Record-shaped box with in/out ports and escaped | in label
+  expect(dot).toContain('shape=record');
+  expect(dot).toMatch(/label="\{<in>\|\(a\\\|b\)\|<out>\}"/);
+  expect(dot).toContain('id="frag-4-5"');
+
+  // Ports are used for edges
+  expect(dot).toMatch(/q6\s*->\s*\w+:in/);
+  expect(dot).toMatch(/\w+:out\s*->\s*q7/);
+  expect(dot).toMatch(/\w+:out\s*->\s*\w+:in/);
+  expect(dot).toMatch(/q6\s*->\s*q7/);
+});
+
+test('[T09-5] toDot with view="textbook" expands only newest operator states and edges while finished fragments are boxes', () => {
+  const analysis = analyze('(a|b)*a');
+  if (!analysis.ok) throw new Error(analysis.message);
+
+  // Step 3 is UNION of 'a' (0->1) and 'b' (2->3)
+  const snap3 = getStepSnapshot(analysis.steps, 3);
+  const dot = toDot(snap3, { view: 'textbook' });
+
+  // Both finished operand fragments are record boxes
+  expect(dot).toContain('id="frag-0-1"');
+  expect(dot).toContain('id="frag-2-3"');
+  expect(dot).toMatch(/label="\{<in>\|a\|<out>\}"/);
+  expect(dot).toMatch(/label="\{<in>\|b\|<out>\}"/);
+
+  // Expanded newest states only: q4 and q5
+  expect(dot).toContain('id="n4"');
+  expect(dot).toContain('id="n5"');
+  expect(dot).not.toMatch(/\bq0\s*\[/);
+  expect(dot).not.toMatch(/\bq1\s*\[/);
+  expect(dot).not.toMatch(/\bq2\s*\[/);
+  expect(dot).not.toMatch(/\bq3\s*\[/);
+
+  // Transitions connect newest states to operand box ports
+  expect(dot).toMatch(/q4\s*->\s*box_0_1:in/);
+  expect(dot).toMatch(/q4\s*->\s*box_2_3:in/);
+  expect(dot).toMatch(/box_0_1:out\s*->\s*q5/);
+  expect(dot).toMatch(/box_2_3:out\s*->\s*q5/);
+
+  // Start marker points to q4
+  expect(dot).toMatch(/__start\s*->\s*q4/);
+});
+
+test('[T09-6] toDot with view="textbook" on concat renders operands as boxes, sets peripheries=2 on accept box, and VizRenderer renders SVG', async () => {
+  const renderer = new VizRenderer();
+  const analysis = analyze('(a|b)*a');
+  if (!analysis.ok) throw new Error(analysis.message);
+
+  // Step 6: CONCAT of (a|b)* (6->7) and a (8->9)
+  const snap6 = getStepSnapshot(analysis.steps, 6);
+  const dot = toDot(snap6, { view: 'textbook' });
+
+  // Both operands rendered as boxes
+  expect(dot).toContain('id="frag-6-7"');
+  expect(dot).toContain('id="frag-8-9"');
+
+  // Accept fragment has peripheries=2
+  expect(dot).toMatch(/box_8_9\s*\[[^\]]*peripheries=2/);
+
+  // Start marker points to box_6_7:in
+  expect(dot).toMatch(/__start\s*->\s*box_6_7:in/);
+
+  // Transition connects out-port of box_6_7 to in-port of box_8_9
+  expect(dot).toMatch(/box_6_7:out\s*->\s*box_8_9:in/);
+
+  // Real VizRenderer renders to valid SVG without throwing
+  const res = await renderer.render(dot, { format: 'svg' });
+  expect(res.ok).toBe(true);
+  if (res.ok) {
+    // Viz.js escapes '-' as '&#45;' in raw SVG attributes
+    expect(res.svg).toMatch(/id="frag(&#45;|-)6(&#45;|-)7"/);
+    expect(res.svg).toMatch(/id="frag(&#45;|-)8(&#45;|-)9"/);
+    expect(res.svg).toMatch(/id="start(&#45;|-)node"/);
+  }
+
+  // Also test merge mode concat in textbook view
+  const mergeAnalysis = analyze('(a|b)*a', { concatenation: 'merge' });
+  if (!mergeAnalysis.ok) throw new Error(mergeAnalysis.message);
+  const mergeSnap6 = getStepSnapshot(mergeAnalysis.steps, 6);
+  const mergeDot = toDot(mergeSnap6, { view: 'textbook' });
+  const mergeRes = await renderer.render(mergeDot, { format: 'svg' });
+  expect(mergeRes.ok).toBe(true);
+});
+
+test('[T09-7] Cap boundary 1: flat view is permitted at 150 postfix tokens and disabled at 151 tokens with message stating limit 150', () => {
+  const analysis = analyze('(a|b)*a');
+  if (!analysis.ok) throw new Error(analysis.message);
+  const snap = getStepSnapshot(analysis.steps, 1);
+
+  // Boundary check at exactly 150 tokens: allowed
+  const check150 = checkDiagramCap(150, 'flat');
+  expect(check150.allowed).toBe(true);
+  expect(check150.recommendedView).toBe('flat');
+  expect(() => toDot(snap, { view: 'flat', postfixCount: 150 })).not.toThrow();
+
+  // Boundary check at 151 tokens: flat disabled, message states limit of 150, recommends textbook
+  const check151 = checkDiagramCap(151, 'flat');
+  expect(check151.allowed).toBe(false);
+  expect(check151.recommendedView).toBe('textbook');
+  expect(check151.message).toContain('150');
+  expect(check151.message?.toLowerCase()).toContain('flat');
+  expect(() => toDot(snap, { view: 'flat', postfixCount: 151 })).toThrow(/150/);
+});
+
+test('[T09-8] Cap boundary 2: textbook view is permitted at 400 postfix tokens and diagram is disabled at 401 tokens with message stating limit 400', () => {
+  const analysis = analyze('(a|b)*a');
+  if (!analysis.ok) throw new Error(analysis.message);
+  const snap = getStepSnapshot(analysis.steps, 1);
+
+  // Boundary check at exactly 400 tokens: allowed
+  const check400 = checkDiagramCap(400, 'textbook');
+  expect(check400.allowed).toBe(true);
+  expect(() => toDot(snap, { view: 'textbook', postfixCount: 400 })).not.toThrow();
+
+  // Boundary check at 401 tokens: diagram disabled, message states limit of 400
+  const check401 = checkDiagramCap(401, 'textbook');
+  expect(check401.allowed).toBe(false);
+  expect(check401.message).toContain('400');
+  expect(check401.message?.toLowerCase()).toContain('disabled');
+  expect(() => toDot(snap, { view: 'textbook', postfixCount: 401 })).toThrow(/400/);
+});
+
+test('[T09-9] Cap boundary 3: engine cap boundary at 2,000 vs 2,001 tokens produces build refusal stating limit 2,000', () => {
+  // Boundary check at exactly 2,000 tokens: build succeeds
+  const exactly2000 = analyze('a'.repeat(2000));
+  expect(exactly2000.ok).toBe(true);
+  if (exactly2000.ok) {
+    expect(exactly2000.tokens).toHaveLength(2000);
+  }
+
+  // Boundary check at 2,001 tokens: build refused, message states limit of 2,000
+  const over2000 = analyze('a'.repeat(2001));
+  expect(over2000.ok).toBe(false);
+  if (!over2000.ok) {
+    expect(over2000.code).toBe('EXCEEDED_TOKEN_CAP');
+    expect(over2000.message).toContain('2,000');
+    expect(over2000.message?.toLowerCase()).toContain('limit');
+  }
+});
+
+
+
+
+
+
 
 
 

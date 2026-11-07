@@ -818,6 +818,108 @@ const assert = require('node:assert');
     'Step 1 must now display unpinned render after cache invalidation'
   );
 
+  // ---- Ticket 09: Textbook view and size caps ----
+  console.log('Testing Ticket 09: View toggle, textbook view, and size caps...');
+
+  // Reset to (a|b)*a
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
+
+  // 1. view-toggle switches between flat and textbook
+  await page.selectOption('#view-toggle', 'textbook');
+  // Jump to step 4 (star step)
+  await page.click('#step-next'); // step 2
+  await page.click('#step-next'); // step 3
+  await page.click('#step-next'); // step 4
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 4 / 6'));
+
+  // In textbook view, canvas SVG must have record box for (a|b)
+  const hasTextbookBox = await page.evaluate(() => {
+    const svgText = document.querySelector('#canvas svg')?.innerHTML || '';
+    return svgText.includes('frag&#45;4&#45;5') || svgText.includes('frag-4-5') || svgText.includes('(a|b)');
+  });
+  assert(hasTextbookBox, 'Textbook view on step 4 must render collapsed fragment box for (a|b)');
+
+  // Switch back to flat view
+  await page.selectOption('#view-toggle', 'flat');
+  const hasFlatStateNodes = await page.evaluate(() => {
+    return document.querySelectorAll('#canvas svg g.node').length >= 6;
+  });
+  assert(hasFlatStateNodes, 'Flat view must render individual state circle nodes');
+
+  // 2. Build a 160-token expression:
+  // '(a|b)' repeated 40 times followed by 'a' gives 161 postfix tokens
+  const expr160 = '(a|b)'.repeat(40) + 'a';
+  await page.fill('#regex-input', expr160);
+  await page.click('#build-button');
+
+  // Wait for build to complete
+  await page.waitForFunction(() => {
+    const counter = document.querySelector('#step-counter')?.textContent || '';
+    return counter.includes('step 1 / 161');
+  });
+
+  // Verify textbook view offered, flat stepping disabled with message
+  const viewToggleVal = await page.evaluate(() => document.querySelector('#view-toggle')?.value);
+  assert.strictEqual(viewToggleVal, 'textbook', 'Textbook view must be active for 160+ tokens');
+
+  const flatOptionDisabled = await page.evaluate(() => {
+    const opt = document.querySelector('#view-toggle option[value="flat"]');
+    return opt ? opt.disabled : false;
+  });
+  assert.strictEqual(flatOptionDisabled, true, 'Flat view option must be disabled for 160+ tokens');
+
+  const capNote = await page.textContent('#layout-note');
+  console.log('Cap note for 160+ tokens:', capNote);
+  assert(capNote && capNote.includes('150'), 'Note must state flat stepping limit of 150');
+
+  // Check SVG is rendered
+  const has160Svg = await page.evaluate(() => !!document.querySelector('#canvas svg'));
+  assert(has160Svg, 'Canvas must render textbook SVG for 160+ tokens');
+
+  // Transition table works
+  const tableRows160 = await page.evaluate(() => document.querySelectorAll('#transition-table tbody tr').length);
+  assert(tableRows160 > 0, 'Transition table must be populated for 160+ tokens');
+
+  // Simulation still works
+  await page.fill('#test-input', 'a'.repeat(41));
+  await page.click('#run-button');
+  const verdict160 = await page.textContent('#verdict');
+  assert(verdict160 && (verdict160.includes('ACCEPT') || verdict160.includes('REJECT')), 'Simulation must return verdict');
+
+  // 3. Beyond 400 postfix tokens: diagram is disabled, table/simulation still work
+  // 'a'.repeat(210) gives 210 symbols + 209 concats = 419 postfix tokens
+  const expr400 = 'a'.repeat(210);
+  await page.fill('#regex-input', expr400);
+  await page.click('#build-button');
+  await page.waitForFunction(() => {
+    const note = document.querySelector('#layout-note')?.textContent || '';
+    return note.includes('400');
+  });
+
+  const canvasMsg = await page.textContent('#canvas');
+  console.log('Canvas message for 400+ tokens:', canvasMsg);
+  assert(canvasMsg && canvasMsg.includes('400'), 'Canvas must state limit 400 when diagram is disabled');
+
+  const stepNextDisabled = await page.evaluate(() => document.querySelector('#step-next')?.disabled);
+  assert.strictEqual(stepNextDisabled, true, 'Stepper buttons must be disabled when diagram is off');
+
+  const tableRows400 = await page.evaluate(() => document.querySelectorAll('#transition-table tbody tr').length);
+  assert(tableRows400 > 0, 'Transition table must still work beyond 400 tokens');
+
+  // 4. Beyond 2,000 tokens: build refused
+  const expr2000 = 'a'.repeat(2001);
+  await page.fill('#regex-input', expr2000);
+  await page.click('#build-button');
+  await page.waitForFunction(() => {
+    const err = document.querySelector('#error-message')?.textContent || '';
+    return err.includes('2,000');
+  });
+  const error2000 = await page.textContent('#error-message');
+  console.log('Error for 2000+ tokens:', error2000);
+  assert(error2000 && error2000.includes('2,000'), 'Error message must state limit of 2,000 tokens');
+
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
 
 
