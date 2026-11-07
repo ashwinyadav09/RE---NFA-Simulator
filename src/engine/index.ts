@@ -173,6 +173,15 @@ export interface AnalyzeOptions {
   caps?: Partial<SizeCaps>;
 }
 
+const ANALYZE_OPTION_KEYS: Record<keyof AnalyzeOptions, true> = {
+  notation: true,
+  concatenation: true,
+  alphabet: true,
+  caps: true
+};
+
+const ALLOWED_ANALYZE_OPTION_KEYS = new Set<string>(Object.keys(ANALYZE_OPTION_KEYS));
+
 function tokenize(source: string, notation: 'standard' | 'textbook' = 'standard'): Token[] {
   const codePoints = Array.from(source);
   const rawTokens: Token[] = [];
@@ -867,11 +876,10 @@ function astFromPostfix(postfix: Token[]): ParseNode {
 }
 
 export function analyze(source: string, options: AnalyzeOptions = {}): AnalysisResult {
-  const allowedKeys = new Set(['notation', 'concatenation', 'alphabet', 'caps']);
   for (const key of Object.keys(options)) {
-    if (!allowedKeys.has(key)) {
+    if (!ALLOWED_ANALYZE_OPTION_KEYS.has(key)) {
       throw new Error(
-        `Unknown option '${key}' passed to analyze. Valid options are: notation, concatenation, alphabet, caps.`
+        `Unknown option '${key}' passed to analyze. Valid options are: ${Object.keys(ANALYZE_OPTION_KEYS).join(', ')}.`
       );
     }
   }
