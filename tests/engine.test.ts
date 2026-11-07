@@ -1269,6 +1269,107 @@ test('analyze rejects unknown option keys with an Error', () => {
   }).toThrow(/Unknown option 'concatMode'/);
 });
 
+// ---- Ticket 12: Mutation gate ----
+
+test('[T12-1] Production code carries no mutation switches or debug flags', () => {
+  const engineSource = readFileSync(resolve(__dirname, '../src/engine/index.ts'), 'utf-8');
+  // Production code must carry no mutation switches or process.env checks
+  expect(engineSource).not.toMatch(/process\.env/);
+  expect(engineSource).not.toMatch(/\bMUTANT\b/);
+  expect(engineSource).not.toMatch(/\b__mutant\b/);
+  expect(engineSource).not.toMatch(/\bmutat/i);
+
+  // Engine functions accept only valid domain options
+  const res = analyze('a');
+  assertSuccess(res);
+  expect(res.stats.states).toBe(2);
+});
+
+test('[T12-2] Parse-tree check at Engine seam specifically detects right-associative syntax trees on multi-operator expressions', () => {
+  // Concat: abc must be left-nested cat(cat(a,b), c)
+  const rConcat = analyze('abc');
+  assertSuccess(rConcat);
+  const leftNestedConcat = {
+    k: 'cat',
+    l: { k: 'cat', l: { k: 'sym', v: 'a' }, r: { k: 'sym', v: 'b' } },
+    r: { k: 'sym', v: 'c' }
+  };
+  const rightNestedConcat = {
+    k: 'cat',
+    l: { k: 'sym', v: 'a' },
+    r: { k: 'cat', l: { k: 'sym', v: 'b' }, r: { k: 'sym', v: 'c' } }
+  };
+  expect(rConcat.parseTree).toEqual(leftNestedConcat);
+  expect(rConcat.parseTree).not.toEqual(rightNestedConcat);
+
+  // Union: a|b|c must be left-nested union(union(a,b), c)
+  const rUnion = analyze('a|b|c');
+  assertSuccess(rUnion);
+  const leftNestedUnion = {
+    k: 'union',
+    l: { k: 'union', l: { k: 'sym', v: 'a' }, r: { k: 'sym', v: 'b' } },
+    r: { k: 'sym', v: 'c' }
+  };
+  const rightNestedUnion = {
+    k: 'union',
+    l: { k: 'sym', v: 'a' },
+    r: { k: 'union', l: { k: 'sym', v: 'b' }, r: { k: 'sym', v: 'c' } }
+  };
+  expect(rUnion.parseTree).toEqual(leftNestedUnion);
+  expect(rUnion.parseTree).not.toEqual(rightNestedUnion);
+});
+
+test('[T12-3] Engine seam language and invariant checks catch fragment builder and simulator mutations', () => {
+  // 1. STAR semantics: repetition (needs back-edge) and zero occurrences (needs skip-edge)
+  const resStar = analyze('a*');
+  assertSuccess(resStar);
+  expect(run(resStar.nfa, resStar.alphabet, '').accepted).toBe(true);
+  expect(run(resStar.nfa, resStar.alphabet, 'a').accepted).toBe(true);
+  expect(run(resStar.nfa, resStar.alphabet, 'aaaa').accepted).toBe(true);
+  expect(resStar.stats.transitions).toBe(5); // 1 symbol + 4 star ε-transitions
+
+  // 2. UNION semantics: both branches must reach accept (needs B exit edge)
+  const resUnion = analyze('a|b');
+  assertSuccess(resUnion);
+  expect(run(resUnion.nfa, resUnion.alphabet, 'a').accepted).toBe(true);
+  expect(run(resUnion.nfa, resUnion.alphabet, 'b').accepted).toBe(true);
+  expect(resUnion.stats.transitions).toBe(6); // 2 symbols + 4 union ε-transitions
+
+  // 3. PLUS semantics: 1+ repetitions, rejects empty string (no skip-edge)
+  const resPlus = analyze('a+');
+  assertSuccess(resPlus);
+  expect(run(resPlus.nfa, resPlus.alphabet, '').accepted).toBe(false);
+  expect(run(resPlus.nfa, resPlus.alphabet, 'a').accepted).toBe(true);
+  expect(run(resPlus.nfa, resPlus.alphabet, 'aaa').accepted).toBe(true);
+  expect(resPlus.stats.transitions).toBe(4); // 1 symbol + 3 plus ε-transitions
+
+  // 4. OPT semantics: 0 or 1 occurrence, accepts empty string (needs skip-edge)
+  const resOpt = analyze('a?');
+  assertSuccess(resOpt);
+  expect(run(resOpt.nfa, resOpt.alphabet, '').accepted).toBe(true);
+  expect(run(resOpt.nfa, resOpt.alphabet, 'a').accepted).toBe(true);
+  expect(run(resOpt.nfa, resOpt.alphabet, 'aa').accepted).toBe(false);
+  expect(resOpt.stats.transitions).toBe(4); // 1 symbol + 3 opt ε-transitions
+
+  // 5. EPSILON semantics: exactly 1 ε transition, accepts empty string
+  const resEps = analyze('@');
+  assertSuccess(resEps);
+  expect(resEps.stats.transitions).toBe(1);
+  expect(run(resEps.nfa, ['a'], '').accepted).toBe(true);
+
+  // 6. EMPTY semantics: 0 transitions, rejects empty string
+  const resEmpty = analyze('#');
+  assertSuccess(resEmpty);
+  expect(resEmpty.stats.transitions).toBe(0);
+  expect(run(resEmpty.nfa, ['a'], '').accepted).toBe(false);
+
+  // 7. Multi-step ε-closure in simulation: chained ε-transitions must be explored
+  const resMultiEps = analyze('(a|@)*');
+  assertSuccess(resMultiEps);
+  expect(run(resMultiEps.nfa, resMultiEps.alphabet, 'a').accepted).toBe(true);
+  expect(run(resMultiEps.nfa, resMultiEps.alphabet, '').accepted).toBe(true);
+});
+
 
 
 
