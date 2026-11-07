@@ -390,9 +390,17 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 import { BaseSequencer } from 'vitest/node';
 import path from 'node:path';
 
+const fileOrder = ['engine.test.ts', 'properties.test.ts', 'diagram.test.ts'];
 class PathSequencer extends BaseSequencer {
   async sort(files) {
-    return [...files].sort((a, b) => a.moduleId.localeCompare(b.moduleId));
+    return [...files].sort((a, b) => {
+      const idxA = fileOrder.findIndex((name) => a.moduleId.includes(name));
+      const idxB = fileOrder.findIndex((name) => b.moduleId.includes(name));
+      const rankA = idxA === -1 ? 99 : idxA;
+      const rankB = idxB === -1 ? 99 : idxB;
+      if (rankA !== rankB) return rankA - rankB;
+      return a.moduleId < b.moduleId ? -1 : a.moduleId > b.moduleId ? 1 : 0;
+    });
   }
 }
 
