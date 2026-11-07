@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { makeAstArb, astSize, printAst } from './generator';
+import { makeAstArb, astSize, printAst, countAstNodes } from './generator';
 import {
   lang,
   derivMatch,
@@ -46,6 +46,27 @@ describe('Property suite and generator', () => {
     expect(failureMsg).toMatch(/Counterexample:\s*\[[a-zA-Z0-9@#\(\)\|\+\*\?]+\]/);
     expect(failureMsg).not.toContain('"k": "sym"');
     expect(failureMsg).not.toContain("{ k: 'sym'");
+
+    // Textbook notation: must format union as '+' and NEVER as '|'
+    let failureMsgTextbook = '';
+    try {
+      fc.assert(
+        fc.property(makeAstArb({ notation: 'textbook' }), (ast) => {
+          // Fail on union so we verify union formats with '+'
+          if (ast.k === 'union') return false;
+          return true;
+        }),
+        { numRuns: 100, seed: 12345 }
+      );
+    } catch (err: any) {
+      failureMsgTextbook = err.message;
+    }
+
+    expect(failureMsgTextbook).toContain('seed: 12345');
+    expect(failureMsgTextbook).toContain('path:');
+    expect(failureMsgTextbook).toMatch(/Counterexample:\s*\[[a-zA-Z0-9@#\(\)\+\*\?]+\]/);
+    expect(failureMsgTextbook).toContain('+');
+    expect(failureMsgTextbook).not.toContain('|');
   });
 
   test('[T11-03] Test support oracles agree with each other on generated ASTs up to length 6', async () => {
@@ -53,6 +74,8 @@ describe('Property suite and generator', () => {
     const alphabet = ['a', 'b'];
     const maxLen = 6;
     const testStrings = allStrings(alphabet, maxLen);
+    let totalComparisons = 0;
+    let regExpComparisons = 0;
 
     try {
       await fc.assert(
@@ -69,8 +92,21 @@ describe('Property suite and generator', () => {
           }
 
           // 2. Wrapping RegExp runner with 2s timeout
+          totalComparisons += testStrings.length;
           const reResult = await runner.testMatches(toJs(ast), testStrings);
-          if (!reResult.timeout && reResult.matches) {
+
+          // A worker error (bad pattern, crash) must fail the property
+          if (reResult.error) {
+            throw new Error(`RegExp worker error on pattern "${toJs(ast)}": ${reResult.error}`);
+          }
+
+          // A timeout counts as skipped
+          if (reResult.timeout) {
+            return true;
+          }
+
+          if (reResult.matches) {
+            regExpComparisons += testStrings.length;
             for (let i = 0; i < testStrings.length; i++) {
               const w = testStrings[i];
               const inEnumerator = expectedSet.has(w);
@@ -80,12 +116,15 @@ describe('Property suite and generator', () => {
               }
             }
           }
-          // If timeout, skipped, not failed.
 
           return true;
         }),
         { numRuns: 50, seed: 101 }
       );
+
+      // Assert that at least 80% of (expression, string) comparisons actually ran
+      expect(totalComparisons).toBeGreaterThan(0);
+      expect(regExpComparisons / totalComparisons).toBeGreaterThanOrEqual(0.8);
     } finally {
       await runner.close();
     }
@@ -182,29 +221,18 @@ describe('Property suite and generator', () => {
             expect(inv.I4).toBe(true);
             expect(inv.noDanglingEdges).toBe(true);
 
-            // 2. Exact size formula
-            const atoms = res.postfix.filter(
-              (t) => t.type === 'SYMBOL' || t.type === 'EPSILON' || t.type === 'EMPTY'
-            ).length;
-            const symbolAtoms = res.postfix.filter((t) => t.type === 'SYMBOL').length;
-            const epsAtoms = res.postfix.filter((t) => t.type === 'EPSILON').length;
-            const unions = res.postfix.filter((t) => t.type === 'UNION').length;
-            const stars = res.postfix.filter((t) => t.type === 'STAR').length;
-            const plusAndOpt = res.postfix.filter(
-              (t) => t.type === 'PLUS' || t.type === 'OPT'
-            ).length;
-            const unary = stars + plusAndOpt;
-            const concats = res.postfix.filter((t) => t.type === 'CONCAT').length;
-
+            // 2. Exact size formula from AST walk (never from res.postfix)
+            const counts = countAstNodes(ast);
             const expectedStates =
-              2 * (atoms + unions + unary) - (concatenation === 'merge' ? concats : 0);
+              2 * (counts.atoms + counts.unions + counts.stars + counts.plusAndOpt) -
+              (concatenation === 'merge' ? counts.concats : 0);
             const expectedTransitions =
-              symbolAtoms +
-              epsAtoms +
-              4 * unions +
-              4 * stars +
-              3 * plusAndOpt +
-              (concatenation === 'merge' ? 0 : concats);
+              counts.symbols +
+              counts.epsAtoms +
+              4 * counts.unions +
+              4 * counts.stars +
+              3 * counts.plusAndOpt +
+              (concatenation === 'merge' ? 0 : counts.concats);
 
             expect(res.nfa.states.length).toBe(expectedStates);
             expect(res.nfa.transitions.length).toBe(expectedTransitions);
@@ -287,7 +315,7 @@ describe('Property suite and generator', () => {
           const resMerge = analyze(src, { notation, concatenation: 'merge' });
           if (!resEps.ok || !resMerge.ok) return false;
 
-          const numConcats = resEps.postfix.filter((t) => t.type === 'CONCAT').length;
+          const numConcats = countAstNodes(ast).concats;
 
           // Differ by exactly the number of concatenations
           expect(resEps.nfa.states.length - resMerge.nfa.states.length).toBe(numConcats);

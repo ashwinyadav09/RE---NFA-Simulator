@@ -11,6 +11,66 @@ export function astSize(ast: ParseNode): number {
   return 1;
 }
 
+export interface AstCounts {
+  atoms: number;
+  symbols: number;
+  epsAtoms: number;
+  unions: number;
+  stars: number;
+  plusAndOpt: number;
+  concats: number;
+}
+
+export function countAstNodes(ast: ParseNode): AstCounts {
+  const counts: AstCounts = {
+    atoms: 0,
+    symbols: 0,
+    epsAtoms: 0,
+    unions: 0,
+    stars: 0,
+    plusAndOpt: 0,
+    concats: 0,
+  };
+
+  function walk(n: ParseNode): void {
+    switch (n.k) {
+      case 'sym':
+        counts.atoms++;
+        counts.symbols++;
+        break;
+      case 'eps':
+        counts.atoms++;
+        counts.epsAtoms++;
+        break;
+      case 'empty':
+        counts.atoms++;
+        break;
+      case 'star':
+        counts.stars++;
+        walk(n.c);
+        break;
+      case 'plus':
+      case 'opt':
+        counts.plusAndOpt++;
+        walk(n.c);
+        break;
+      case 'union':
+        counts.unions++;
+        walk(n.l);
+        walk(n.r);
+        break;
+      case 'cat':
+        counts.concats++;
+        walk(n.l);
+        walk(n.r);
+        break;
+    }
+  }
+
+  walk(ast);
+  return counts;
+}
+
 const prec: Record<ParseNode['k'], number> = {
   union: 1,
   cat: 2,
@@ -54,17 +114,20 @@ export function printAst(ast: ParseNode, notation: 'standard' | 'textbook' = 'st
   }
 }
 
-export function attachFormat<T extends ParseNode>(node: T): T {
+export function attachFormat<T extends ParseNode>(
+  node: T,
+  notation: 'standard' | 'textbook' = 'standard'
+): T {
   Object.defineProperty(node, fc.toStringMethod, {
     value: function () {
-      return printAst(this);
+      return printAst(this, notation);
     },
     enumerable: false,
     configurable: true,
   });
   Object.defineProperty(node, 'toString', {
     value: function () {
-      return printAst(this);
+      return printAst(this, notation);
     },
     enumerable: false,
     configurable: true,
@@ -81,11 +144,11 @@ export function makeAstArb(options: AstArbOptions = {}): fc.Arbitrary<ParseNode>
   const notation = options.notation ?? 'standard';
   const alphabet = options.alphabet ?? ['a', 'b'];
 
-  const letterArb = fc.constantFrom(...alphabet).map(v => attachFormat({ k: 'sym', v } as ParseNode));
+  const letterArb = fc.constantFrom(...alphabet).map(v => attachFormat({ k: 'sym', v } as ParseNode, notation));
   const leafArb = fc.oneof(
     { weight: 6, arbitrary: letterArb },
-    { weight: 1, arbitrary: fc.constant(attachFormat({ k: 'eps' } as ParseNode)) },
-    { weight: 1, arbitrary: fc.constant(attachFormat({ k: 'empty' } as ParseNode)) }
+    { weight: 1, arbitrary: fc.constant(attachFormat({ k: 'eps' } as ParseNode, notation)) },
+    { weight: 1, arbitrary: fc.constant(attachFormat({ k: 'empty' } as ParseNode, notation)) }
   );
 
   const unaryOps = notation === 'standard'
@@ -102,11 +165,11 @@ export function makeAstArb(options: AstArbOptions = {}): fc.Arbitrary<ParseNode>
     unary: fc.record({
       k: fc.constantFrom(...unaryOps),
       c: tie('expr'),
-    }).map(u => attachFormat(u as ParseNode)),
+    }).map(u => attachFormat(u as ParseNode, notation)),
     binary: fc.record({
       k: fc.constantFrom('union' as const, 'cat' as const),
       l: tie('expr'),
       r: tie('expr'),
-    }).map(b => attachFormat(b as ParseNode)),
+    }).map(b => attachFormat(b as ParseNode, notation)),
   })).expr.filter(ast => astSize(ast) <= 60);
 }

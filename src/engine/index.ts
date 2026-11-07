@@ -867,6 +867,14 @@ function astFromPostfix(postfix: Token[]): ParseNode {
 }
 
 export function analyze(source: string, options: AnalyzeOptions = {}): AnalysisResult {
+  const allowedKeys = new Set(['notation', 'concatenation', 'alphabet', 'caps']);
+  for (const key of Object.keys(options)) {
+    if (!allowedKeys.has(key)) {
+      throw new Error(
+        `Unknown option '${key}' passed to analyze. Valid options are: notation, concatenation, alphabet, caps.`
+      );
+    }
+  }
   const notation = options.notation ?? 'standard';
   const concatenation = options.concatenation ?? 'epsilon-link';
   const tokens = tokenize(source, notation);

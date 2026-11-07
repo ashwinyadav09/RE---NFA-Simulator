@@ -1263,6 +1263,12 @@ test('[T10-2] Engine seam: analyze returns compactLabelMap matching fixture expe
   expect(resMerge.nfa.accept).toBe(9);
 });
 
+test('analyze rejects unknown option keys with an Error', () => {
+  expect(() => {
+    analyze('a', { concatMode: 'merge' } as any);
+  }).toThrow(/Unknown option 'concatMode'/);
+});
+
 
 
 
