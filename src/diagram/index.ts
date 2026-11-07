@@ -158,35 +158,20 @@ export interface DiagramOptions {
   splines?: boolean;
 }
 
-export interface DiagramCapCheck {
-  allowed: boolean;
-  message?: string;
-  recommendedView?: 'flat' | 'textbook';
-}
+export type DiagramCapMode = 'flat' | 'textbook' | 'off';
 
 export function checkDiagramCap(
-  postfixTokens: number,
-  view: 'flat' | 'textbook' = 'flat',
+  postfixCount: number,
   customCaps?: Partial<SizeCaps>
-): DiagramCapCheck {
+): DiagramCapMode {
   const caps = { ...CAPS, ...customCaps };
-  if (postfixTokens > caps.textbookStepping) {
-    return {
-      allowed: false,
-      message: `Diagram is disabled for expressions over ${caps.textbookStepping} postfix tokens (limit: ${caps.textbookStepping}). Table, simulation, and tests remain available.`
-    };
+  if (postfixCount > caps.textbookStepping) {
+    return 'off';
   }
-  if (view === 'flat' && postfixTokens > caps.flatStepping) {
-    return {
-      allowed: false,
-      recommendedView: 'textbook',
-      message: `Flat stepping is disabled for expressions over ${caps.flatStepping} postfix tokens (limit: ${caps.flatStepping}). Showing textbook view.`
-    };
+  if (postfixCount > caps.flatStepping) {
+    return 'textbook';
   }
-  return {
-    allowed: true,
-    recommendedView: view
-  };
+  return 'flat';
 }
 
 function escapeLabel(label: string): string {
@@ -305,7 +290,7 @@ function toTextbookDot(snapshot: StepSnapshot, options?: DiagramOptions): string
   if (snapshot.mergedPair && newTransitions.length === 0 && operands.length === 2) {
     const src = `box_${operands[0].start}_${operands[0].accept}:out`;
     const dst = `box_${operands[1].start}_${operands[1].accept}:in`;
-    lines.push(`  ${src} -> ${dst} [id="e${edgeIndex++}", label="ε (merged)", style=dashed, color="#d62728", penwidth=2.5];`);
+    lines.push(`  ${src} -> ${dst} [id="e${edgeIndex++}", color="#d62728", penwidth=2.5];`);
   }
 
   lines.push('}');

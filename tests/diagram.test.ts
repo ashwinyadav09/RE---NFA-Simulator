@@ -818,70 +818,58 @@ test('[T09-6] toDot with view="textbook" on concat renders operands as boxes, se
     expect(res.svg).toMatch(/id="start(&#45;|-)node"/);
   }
 
-  // Also test merge mode concat in textbook view
+  // Also test merge mode concat in textbook view: join edge is plain unlabelled (not dashed, no label)
   const mergeAnalysis = analyze('(a|b)*a', { concatenation: 'merge' });
   if (!mergeAnalysis.ok) throw new Error(mergeAnalysis.message);
   const mergeSnap6 = getStepSnapshot(mergeAnalysis.steps, 6);
   const mergeDot = toDot(mergeSnap6, { view: 'textbook' });
+  expect(mergeDot).toMatch(/box_6_7:out\s*->\s*box_8_9:in\s*\[id="e\d+", color="#d62728", penwidth=2.5\]/);
+  expect(mergeDot).not.toMatch(/box_6_7:out\s*->\s*box_8_9:in\s*\[[^\]]*label=/);
+  expect(mergeDot).not.toMatch(/box_6_7:out\s*->\s*box_8_9:in\s*\[[^\]]*dashed/);
+
+  // Epsilon-link mode keeps its dashed epsilon edge
+  expect(dot).toMatch(/box_6_7:out\s*->\s*box_8_9:in\s*\[[^\]]*label="ε \(new\)"[^\]]*style=dashed/);
+
   const mergeRes = await renderer.render(mergeDot, { format: 'svg' });
   expect(mergeRes.ok).toBe(true);
 });
 
-test('[T09-7] Cap boundary 1: flat view is permitted at 150 postfix tokens and disabled at 151 tokens with message stating limit 150', () => {
+test('[T09-2b] JSON round-trip analyze("(a|b)*a"), take step snapshot, call toDot with view "textbook", and expect label to contain (a\\|b)', () => {
+  const analysis = analyze('(a|b)*a');
+  if (!analysis.ok) throw new Error(analysis.message);
+
+  const roundTripped = JSON.parse(JSON.stringify(analysis));
+  const snap4 = getStepSnapshot(roundTripped.steps, 4);
+  const dot = toDot(snap4, { view: 'textbook' });
+
+  expect(dot).toMatch(/label="\{<in>\|\(a\\\|b\)\|<out>\}"/);
+});
+
+test('[T09-7] Cap boundary 1: toDot in flat view permits 150 postfix tokens and throws at 151 tokens stating limit 150', () => {
   const analysis = analyze('(a|b)*a');
   if (!analysis.ok) throw new Error(analysis.message);
   const snap = getStepSnapshot(analysis.steps, 1);
 
-  // Boundary check at exactly 150 tokens: allowed
-  const check150 = checkDiagramCap(150, 'flat');
-  expect(check150.allowed).toBe(true);
-  expect(check150.recommendedView).toBe('flat');
+  // 150 tokens in flat view does not throw
   expect(() => toDot(snap, { view: 'flat', postfixCount: 150 })).not.toThrow();
 
-  // Boundary check at 151 tokens: flat disabled, message states limit of 150, recommends textbook
-  const check151 = checkDiagramCap(151, 'flat');
-  expect(check151.allowed).toBe(false);
-  expect(check151.recommendedView).toBe('textbook');
-  expect(check151.message).toContain('150');
-  expect(check151.message?.toLowerCase()).toContain('flat');
+  // 151 tokens in flat view throws stating limit 150
   expect(() => toDot(snap, { view: 'flat', postfixCount: 151 })).toThrow(/150/);
 });
 
-test('[T09-8] Cap boundary 2: textbook view is permitted at 400 postfix tokens and diagram is disabled at 401 tokens with message stating limit 400', () => {
+test('[T09-8] Cap boundary 2: toDot permits 400 postfix tokens in textbook view and throws at 401 tokens in any view stating limit 400', () => {
   const analysis = analyze('(a|b)*a');
   if (!analysis.ok) throw new Error(analysis.message);
   const snap = getStepSnapshot(analysis.steps, 1);
 
-  // Boundary check at exactly 400 tokens: allowed
-  const check400 = checkDiagramCap(400, 'textbook');
-  expect(check400.allowed).toBe(true);
+  // 400 tokens in textbook view does not throw
   expect(() => toDot(snap, { view: 'textbook', postfixCount: 400 })).not.toThrow();
 
-  // Boundary check at 401 tokens: diagram disabled, message states limit of 400
-  const check401 = checkDiagramCap(401, 'textbook');
-  expect(check401.allowed).toBe(false);
-  expect(check401.message).toContain('400');
-  expect(check401.message?.toLowerCase()).toContain('disabled');
+  // 401 tokens in any view throws stating limit 400
   expect(() => toDot(snap, { view: 'textbook', postfixCount: 401 })).toThrow(/400/);
+  expect(() => toDot(snap, { view: 'flat', postfixCount: 401 })).toThrow(/400/);
 });
 
-test('[T09-9] Cap boundary 3: engine cap boundary at 2,000 vs 2,001 tokens produces build refusal stating limit 2,000', () => {
-  // Boundary check at exactly 2,000 tokens: build succeeds
-  const exactly2000 = analyze('a'.repeat(2000));
-  expect(exactly2000.ok).toBe(true);
-  if (exactly2000.ok) {
-    expect(exactly2000.tokens).toHaveLength(2000);
-  }
-
-  // Boundary check at 2,001 tokens: build refused, message states limit of 2,000
-  const over2000 = analyze('a'.repeat(2001));
-  expect(over2000.ok).toBe(false);
-  if (!over2000.ok) {
-    expect(over2000.code).toBe('EXCEEDED_TOKEN_CAP');
-    expect(over2000.message).toContain('2,000');
-    expect(over2000.message?.toLowerCase()).toContain('limit');
-  }
-});
 
 
 

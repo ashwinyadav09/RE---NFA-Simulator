@@ -11,7 +11,7 @@ import {
   validateAlphabet,
   CAPS
 } from '../engine/index';
-import { toDot, VizRenderer, computeMasterLayout } from '../diagram/index';
+import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap } from '../diagram/index';
 import InlineWorker from './worker.ts?worker&inline';
 
 const renderer = new VizRenderer();
@@ -310,6 +310,11 @@ function attachStateHoverListeners(container: HTMLElement): void {
 
 async function navigateToStep(stepIndex: number): Promise<void> {
   if (!currentAnalysis || currentAnalysis.steps.length === 0) return;
+  const mode = checkDiagramCap(currentAnalysis.postfix.length);
+  if (mode === 'off') {
+    stopPlayback();
+    return;
+  }
   const totalSteps = currentAnalysis.steps.length;
   const targetStep = Math.max(1, Math.min(stepIndex, totalSteps));
   currentStepIndex = targetStep;
@@ -568,10 +573,11 @@ async function handleBuild() {
   }
 
   const postfixLen = analysis.postfix.length;
+  const capMode = checkDiagramCap(postfixLen);
   const flatOption = viewToggleSelect?.querySelector('option[value="flat"]') as HTMLOptionElement | null;
   const textbookOption = viewToggleSelect?.querySelector('option[value="textbook"]') as HTMLOptionElement | null;
 
-  if (postfixLen > CAPS.textbookStepping) {
+  if (capMode === 'off') {
     if (stepFirstBtn) stepFirstBtn.disabled = true;
     if (stepPrevBtn) stepPrevBtn.disabled = true;
     if (stepPlayBtn) stepPlayBtn.disabled = true;
@@ -592,7 +598,7 @@ async function handleBuild() {
     return;
   }
 
-  if (postfixLen > CAPS.flatStepping) {
+  if (capMode === 'textbook') {
     if (flatOption) flatOption.disabled = true;
     if (textbookOption) textbookOption.disabled = false;
     currentView = 'textbook';
@@ -613,43 +619,48 @@ async function handleBuild() {
     }
   }
 
-  let epsNfa = analysis.nfa;
-  if (concatenation !== 'epsilon-link') {
-    const epsAnalysis = analyze(source, {
-      notation,
-      concatenation: 'epsilon-link',
-      ...(userEditedAlphabet ? { alphabet: userEditedAlphabet } : {})
-    });
-    if (epsAnalysis.ok) {
-      epsNfa = epsAnalysis.nfa;
-    }
-  }
-
-  if ((window as any).__testForceLayoutFailure) {
-    masterPositions = null;
-    layoutFailed = true;
-    if (layoutNoteEl) {
-      layoutNoteEl.textContent = 'Note: Master layout failed (Forced test failure); falling back to unpinned layout.';
-      layoutNoteEl.className = 'warning';
-    }
-  } else {
-    const layoutRes = await computeMasterLayout(epsNfa, renderer);
-    if (gen !== buildGeneration) return;
-    if (layoutRes.ok) {
-      masterPositions = layoutRes.positions;
-      layoutFailed = false;
-      if (layoutNoteEl && postfixLen <= CAPS.flatStepping) {
-        layoutNoteEl.textContent = '';
-        layoutNoteEl.className = '';
+  if (postfixLen <= CAPS.flatStepping) {
+    let epsNfa = analysis.nfa;
+    if (concatenation !== 'epsilon-link') {
+      const epsAnalysis = analyze(source, {
+        notation,
+        concatenation: 'epsilon-link',
+        ...(userEditedAlphabet ? { alphabet: userEditedAlphabet } : {})
+      });
+      if (epsAnalysis.ok) {
+        epsNfa = epsAnalysis.nfa;
       }
-    } else {
+    }
+
+    if ((window as any).__testForceLayoutFailure) {
       masterPositions = null;
       layoutFailed = true;
       if (layoutNoteEl) {
-        layoutNoteEl.textContent = `Note: Master layout failed (${layoutRes.error}); falling back to unpinned layout.`;
+        layoutNoteEl.textContent = 'Note: Master layout failed (Forced test failure); falling back to unpinned layout.';
         layoutNoteEl.className = 'warning';
       }
+    } else {
+      const layoutRes = await computeMasterLayout(epsNfa, renderer);
+      if (gen !== buildGeneration) return;
+      if (layoutRes.ok) {
+        masterPositions = layoutRes.positions;
+        layoutFailed = false;
+        if (layoutNoteEl) {
+          layoutNoteEl.textContent = '';
+          layoutNoteEl.className = '';
+        }
+      } else {
+        masterPositions = null;
+        layoutFailed = true;
+        if (layoutNoteEl) {
+          layoutNoteEl.textContent = `Note: Master layout failed (${layoutRes.error}); falling back to unpinned layout.`;
+          layoutNoteEl.className = 'warning';
+        }
+      }
     }
+  } else {
+    masterPositions = null;
+    layoutFailed = false;
   }
 
   if (gen !== buildGeneration) return;

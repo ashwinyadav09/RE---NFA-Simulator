@@ -63,9 +63,9 @@ test('step-by-step construction for "(a|b)*a" matches worked-example fixture exa
     expect(actualStep.rule).toBe(expectedStep.rule);
     expect(actualStep.newStates).toEqual(expectedStep.newStates);
     expect(actualStep.newTransitions).toEqual(expectedStep.newTransitions);
-    expect(actualStep.result).toEqual(expectedStep.result);
+    expect({ start: actualStep.result.start, accept: actualStep.result.accept }).toEqual(expectedStep.result);
     expect(actualStep.stackDepthAfter).toBe(expectedStep.stackDepthAfter);
-    expect(actualStep.stackAfter).toEqual(expectedStep.stackAfter);
+    expect(actualStep.stackAfter.map((f) => ({ start: f.start, accept: f.accept }))).toEqual(expectedStep.stackAfter);
   }
 });
 
@@ -1098,7 +1098,7 @@ test('[T07-3] Engine seam: getStepSnapshot returns replayed fragments on stack, 
   assertSuccess(result);
   const snap2 = getStepSnapshot(result.steps, 2);
   expect(snap2.stepIndex).toBe(2);
-  expect(snap2.stack).toEqual(workedExample.steps[1].stackAfter);
+  expect(snap2.stack.map((f) => ({ start: f.start, accept: f.accept }))).toEqual(workedExample.steps[1].stackAfter);
   expect(snap2.newStates).toEqual(workedExample.steps[1].newStates);
   expect(snap2.newTransitions).toEqual(workedExample.steps[1].newTransitions);
 
@@ -1121,7 +1121,7 @@ test('[T07-4] Engine seam: getStepSnapshot in merge mode reflects merged state r
   expect(snap6.stepIndex).toBe(6);
   expect(snap6.states).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 9]);
   expect(snap6.states).not.toContain(workedExample.mergeMode.mergedAtStep6.removed);
-  expect(snap6.stack).toEqual(workedExample.steps[5].stackAfter);
+  expect(snap6.stack.map((f) => ({ start: f.start, accept: f.accept }))).toEqual(workedExample.steps[5].stackAfter);
   expect(snap6.mergedPair).toEqual(workedExample.mergeMode.mergedAtStep6);
   expect(snap6.newStates).toEqual(workedExample.steps[5].newStates);
   expect(snap6.newTransitions).toEqual([]);

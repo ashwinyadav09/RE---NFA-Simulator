@@ -73,12 +73,7 @@ export interface Fragment {
 export function makeFragment(start: number, accept: number, expression?: string): Fragment {
   const frag: Fragment = { start, accept };
   if (expression !== undefined) {
-    Object.defineProperty(frag, 'expression', {
-      value: expression,
-      enumerable: false,
-      writable: true,
-      configurable: true
-    });
+    frag.expression = expression;
   }
   return frag;
 }

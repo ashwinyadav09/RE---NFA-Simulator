@@ -841,6 +841,15 @@ const assert = require('node:assert');
   });
   assert(hasTextbookBox, 'Textbook view on step 4 must render collapsed fragment box for (a|b)');
 
+  // Assert at least one frag-* box in the browser has a non-empty label
+  const boxLabels = await page.evaluate(() => {
+    const nodes = Array.from(document.querySelectorAll('#canvas svg g.node'));
+    const fragNodes = nodes.filter(n => (n.id && n.id.startsWith('frag')));
+    return fragNodes.map(n => Array.from(n.querySelectorAll('text')).map(t => t.textContent.trim()).filter(Boolean).join(' ')).filter(Boolean);
+  });
+  console.log('Textbook box labels in step 4:', boxLabels);
+  assert(boxLabels.length > 0 && boxLabels.some(l => l.length > 0), 'At least one frag-* box must have a non-empty label');
+
   // Switch back to flat view
   await page.selectOption('#view-toggle', 'flat');
   const hasFlatStateNodes = await page.evaluate(() => {
@@ -888,6 +897,29 @@ const assert = require('node:assert');
   const verdict160 = await page.textContent('#verdict');
   assert(verdict160 && (verdict160.includes('ACCEPT') || verdict160.includes('REJECT')), 'Simulation must return verdict');
 
+  // 2b. Round-trip: build 161 tokens, then build (a|b)*a
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
+
+  // Assert flat option is enabled again
+  const flatOptionReEnabled = await page.evaluate(() => {
+    const opt = document.querySelector('#view-toggle option[value="flat"]');
+    return opt ? !opt.disabled : false;
+  });
+  assert.strictEqual(flatOptionReEnabled, true, 'Flat view option must be enabled again after building (a|b)*a');
+
+  // Assert stepper is enabled again
+  const stepNextReEnabled = await page.evaluate(() => {
+    const btn = document.querySelector('#step-next');
+    return btn ? !btn.disabled : false;
+  });
+  assert.strictEqual(stepNextReEnabled, true, 'Stepper buttons must be enabled again after building (a|b)*a');
+
+  // Assert canvas shows the small NFA, not a cached SVG from previous build
+  const smallNodeCount = await page.evaluate(() => document.querySelectorAll('#canvas svg g.node').length);
+  assert(smallNodeCount <= 4, `Canvas must show small NFA for step 1 of (a|b)*a, got ${smallNodeCount} nodes`);
+
   // 3. Beyond 400 postfix tokens: diagram is disabled, table/simulation still work
   // 'a'.repeat(210) gives 210 symbols + 209 concats = 419 postfix tokens
   const expr400 = 'a'.repeat(210);
@@ -904,6 +936,34 @@ const assert = require('node:assert');
 
   const stepNextDisabled = await page.evaluate(() => document.querySelector('#step-next')?.disabled);
   assert.strictEqual(stepNextDisabled, true, 'Stepper buttons must be disabled when diagram is off');
+
+  // Collect page errors, then click a postfix token, click a step-log row if one exists, and press ArrowRight
+  const errorsBeforeClicks = errors.length;
+
+  const firstPostfixTok = await page.$('#postfix-view .postfix-token');
+  if (firstPostfixTok) {
+    await firstPostfixTok.click();
+  }
+
+  const firstStepLogRow = await page.$('#step-log .step-log-item');
+  if (firstStepLogRow) {
+    await firstStepLogRow.click();
+  }
+
+  await page.keyboard.press('ArrowRight');
+
+  // Assert zero page errors, #step-next still disabled, and cap message still shown
+  assert.strictEqual(
+    errors.length,
+    errorsBeforeClicks,
+    `No page errors should occur during cap disabled interactions: ${errors.slice(errorsBeforeClicks).join(', ')}`
+  );
+
+  const stepNextStillDisabled = await page.evaluate(() => document.querySelector('#step-next')?.disabled);
+  assert.strictEqual(stepNextStillDisabled, true, '#step-next must still be disabled after interactions');
+
+  const canvasMsgAfterClicks = await page.textContent('#canvas');
+  assert(canvasMsgAfterClicks && canvasMsgAfterClicks.includes('400'), 'Canvas must still show cap message after interactions');
 
   const tableRows400 = await page.evaluate(() => document.querySelectorAll('#transition-table tbody tr').length);
   assert(tableRows400 > 0, 'Transition table must still work beyond 400 tokens');
