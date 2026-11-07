@@ -832,6 +832,19 @@ test('[T09-6] toDot with view="textbook" on concat renders operands as boxes, se
 
   const mergeRes = await renderer.render(mergeDot, { format: 'svg' });
   expect(mergeRes.ok).toBe(true);
+
+  // Merge mode concat with compound right operand: a(b|a) at concat step (step 5)
+  const compoundAnalysis = analyze('a(b|a)', { concatenation: 'merge' });
+  if (!compoundAnalysis.ok) throw new Error(compoundAnalysis.message);
+  const concatStep = compoundAnalysis.steps.findIndex((s) => s.rule === 'concatenation') + 1;
+  const compoundSnap = getStepSnapshot(compoundAnalysis.steps, concatStep);
+  const compoundDot = toDot(compoundSnap, { view: 'textbook' });
+  expect(compoundDot).toMatch(/box_0_1:out\s*->\s*box_6_7:in\s*\[id="e\d+", color="#d62728", penwidth=2.5\]/);
+  expect(compoundDot).not.toMatch(/box_0_1:out\s*->\s*box_6_7:in\s*\[[^\]]*label=/);
+  expect(compoundDot).not.toMatch(/box_0_1:out\s*->\s*box_6_7:in\s*\[[^\]]*dashed/);
+
+  const compoundRes = await renderer.render(compoundDot, { format: 'svg' });
+  expect(compoundRes.ok).toBe(true);
 });
 
 test('[T09-2b] JSON round-trip analyze("(a|b)*a"), take step snapshot, call toDot with view "textbook", and expect label to contain (a\\|b)', () => {

@@ -1156,7 +1156,14 @@ test('[T09-1] CAPS config object defines flatStepping (150), textbookStepping (4
 });
 
 test('[T09-2] analyze() returns EXCEEDED_TOKEN_CAP error stating limit of 2,000 when tokens exceed 2,000, and succeeds at 2,000', () => {
-  // Test boundary at 2000 vs 2001
+  // Boundary check at exactly 2,000 tokens: build succeeds
+  const exactly2000 = analyze('a'.repeat(2000));
+  expect(exactly2000.ok).toBe(true);
+  if (exactly2000.ok) {
+    expect(exactly2000.tokens).toHaveLength(2000);
+  }
+
+  // Boundary check at 2,001 tokens: build refused, message states limit of 2,000
   const overCap = 'a'.repeat(2001);
   const failRes = analyze(overCap);
   expect(failRes.ok).toBe(false);

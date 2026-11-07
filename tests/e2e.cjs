@@ -897,8 +897,8 @@ const assert = require('node:assert');
   const verdict160 = await page.textContent('#verdict');
   assert(verdict160 && (verdict160.includes('ACCEPT') || verdict160.includes('REJECT')), 'Simulation must return verdict');
 
-  // 2b. Round-trip: build 161 tokens, then build (a|b)*a
-  await page.fill('#regex-input', '(a|b)*a');
+  // 2b. Round-trip: build 161 tokens, then build (b|a)*b
+  await page.fill('#regex-input', '(b|a)*b');
   await page.click('#build-button');
   await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
 
@@ -907,18 +907,27 @@ const assert = require('node:assert');
     const opt = document.querySelector('#view-toggle option[value="flat"]');
     return opt ? !opt.disabled : false;
   });
-  assert.strictEqual(flatOptionReEnabled, true, 'Flat view option must be enabled again after building (a|b)*a');
+  assert.strictEqual(flatOptionReEnabled, true, 'Flat view option must be enabled again after building (b|a)*b');
 
   // Assert stepper is enabled again
   const stepNextReEnabled = await page.evaluate(() => {
     const btn = document.querySelector('#step-next');
     return btn ? !btn.disabled : false;
   });
-  assert.strictEqual(stepNextReEnabled, true, 'Stepper buttons must be enabled again after building (a|b)*a');
+  assert.strictEqual(stepNextReEnabled, true, 'Stepper buttons must be enabled again after building (b|a)*b');
 
   // Assert canvas shows the small NFA, not a cached SVG from previous build
   const smallNodeCount = await page.evaluate(() => document.querySelectorAll('#canvas svg g.node').length);
-  assert(smallNodeCount <= 4, `Canvas must show small NFA for step 1 of (a|b)*a, got ${smallNodeCount} nodes`);
+  assert(smallNodeCount <= 4, `Canvas must show small NFA for step 1 of (b|a)*b, got ${smallNodeCount} nodes`);
+
+  // Assert step 1 on canvas has an edge labelled "b" and none labelled "a"
+  const edgeLabels = await page.evaluate(() => {
+    const texts = Array.from(document.querySelectorAll('#canvas svg g.edge text'));
+    return texts.map((t) => t.textContent.trim()).filter(Boolean);
+  });
+  console.log('Step 1 edge labels for (b|a)*b:', edgeLabels);
+  assert(edgeLabels.some((l) => l.includes('b')), `Step 1 on canvas must have an edge labelled "b", got: ${JSON.stringify(edgeLabels)}`);
+  assert(!edgeLabels.some((l) => l.includes('a')), `Step 1 on canvas must have no edge labelled "a", got: ${JSON.stringify(edgeLabels)}`);
 
   // 3. Beyond 400 postfix tokens: diagram is disabled, table/simulation still work
   // 'a'.repeat(210) gives 210 symbols + 209 concats = 419 postfix tokens
