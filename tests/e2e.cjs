@@ -25,6 +25,28 @@ const assert = require('node:assert');
   const distHtmlPath = path.resolve(__dirname, '../dist/index.html');
   const fs = require('node:fs');
   const distHtml = fs.readFileSync(distHtmlPath, 'utf-8');
+  // Pattern check for assignments to window, globalThis, or self in dist
+  const assignRegex = /\b(window|globalThis|self)(?:\.([a-zA-Z_$][a-zA-Z0-9_$]*)|\[\s*['"]([^'"]+)['"]\s*\])\s*=(?!=)/g;
+  let m;
+  const assignments = [];
+  while ((m = assignRegex.exec(distHtml)) !== null) {
+    const target = m[1];
+    const prop = m[2] || m[3];
+    assignments.push({ full: m[0], target, prop });
+  }
+  const ALLOWLIST = new Set([
+    'window.VizRenderer',
+    'self.onmessage'
+  ]);
+  for (const a of assignments) {
+    const key = `${a.target}.${a.prop}`;
+    assert(
+      ALLOWLIST.has(key),
+      `dist/index.html contains forbidden global assignment "${a.full}" (${key})`
+    );
+  }
+
+  // Second belt-and-braces check: legacy hook names, __force, __e2e, and __liveMutations
   assert(!distHtml.includes('__force'), 'dist/index.html must not contain __force test hooks');
   const FORBIDDEN_HOOKS = [
     '__ready',
@@ -42,7 +64,9 @@ const assert = require('node:assert');
     '__diffResult',
     '__stressDone',
     '__stressRowAdded',
-    '__stressPoints'
+    '__stressPoints',
+    '__e2e',
+    '__liveMutations'
   ];
   for (const hook of FORBIDDEN_HOOKS) {
     assert(!distHtml.includes(hook), `dist/index.html must not contain test hook "${hook}"`);
