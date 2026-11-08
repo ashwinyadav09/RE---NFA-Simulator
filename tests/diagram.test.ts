@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { toDot, FakeRenderer, VizRenderer, computeMasterLayout, checkDiagramCap, CAPS, type DiagramRenderer } from '../src/diagram/index';
+import { toDot, FakeRenderer, VizRenderer, computeMasterLayout, checkDiagramCap, CAPS, renderStressChartSvg, type StressChartPoint, type DiagramRenderer } from '../src/diagram/index';
 import { type StepSnapshot, analyze, getStepSnapshot } from '../src/engine/index';
 
 test('toDot produces DOT text with id on every node and edge, start arrow, and double-circle accept', () => {
@@ -1017,6 +1017,55 @@ test('[T10-7] Diagram seam: toDot on StepSnapshot ignores compactLabels and labe
   // Node 9 must retain its engine id "9", NOT mapped to "8" (which would collide with merged state 8)
   expect(dot).toMatch(/q9\s*\[[^\]]*label="9"/);
   expect(dot).not.toMatch(/q9\s*\[[^\]]*label="8"/);
+});
+
+test('[T14-05] Diagram seam: renderStressChartSvg produces valid inline SVG chart for stress data', () => {
+  // 1. Empty data renders placeholder
+  const emptySvg = renderStressChartSvg([]);
+  expect(emptySvg).toContain('<svg');
+  expect(emptySvg).toContain('</svg>');
+  expect(emptySvg).toContain('Run stress test to see comparison chart');
+
+  // 2. Data with RegExp explosion and timeout, plus NFA linear scaling
+  const samplePoints: StressChartPoint[] = [
+    { n: 12, regExpTime: 0.3, nfaTime: 0.1 },
+    { n: 14, regExpTime: 1.1, nfaTime: 0.12 },
+    { n: 16, regExpTime: 4.6, nfaTime: 0.15 },
+    { n: 18, regExpTime: 18.2, nfaTime: 0.18 },
+    { n: 20, regExpTime: 72.1, nfaTime: 0.2 },
+    { n: 22, regExpTime: 294.6, nfaTime: 0.22 },
+    { n: 24, regExpTime: 1300.7, nfaTime: 0.25 },
+    { n: 26, regExpTime: 4937.9, nfaTime: 0.28 },
+    { n: 28, regExpTime: 8000, regExpTimeout: true, nfaTime: 0.31 },
+    { n: 30, regExpTime: null, nfaTime: 0.34 },
+    { n: 50, regExpTime: null, nfaTime: 0.6 },
+    { n: 100, regExpTime: null, nfaTime: 1.2 },
+    { n: 1000, regExpTime: null, nfaTime: 5.3 }
+  ];
+
+  const svg = renderStressChartSvg(samplePoints, { title: 'Backtracking vs Thompson NFA' });
+
+  // Valid SVG structure
+  expect(svg).toContain('<svg');
+  expect(svg).toContain('viewBox=');
+  expect(svg).toContain('</svg>');
+
+  // Title and legend
+  expect(svg).toContain('Backtracking vs Thompson NFA');
+  expect(svg).toContain('RegExp');
+  expect(svg).toContain('Thompson NFA');
+
+  // Axes ticks
+  expect(svg).toContain('12');
+  expect(svg).toContain('1000');
+  expect(svg).toContain('8000');
+
+  // Timeout indicator
+  expect(svg).toContain('timeout');
+
+  // Data elements: polylines and circles
+  expect(svg).toContain('<polyline');
+  expect(svg).toContain('<circle');
 });
 
 

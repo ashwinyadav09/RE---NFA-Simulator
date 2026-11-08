@@ -18,9 +18,14 @@ import {
   runDifferential,
   allStrings,
   toJs,
-  CheckResult
+  CheckResult,
+  STRESS_FAMILIES,
+  STRESS_N_SERIES,
+  STRESS_SCALE_N_SERIES,
+  runStressNfa,
+  detectBrowserEngine
 } from '../engine/index';
-import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions } from '../diagram/index';
+import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions, renderStressChartSvg, type StressChartPoint } from '../diagram/index';
 import InlineWorker from './worker.ts?worker&inline';
 
 const renderer = new VizRenderer();
@@ -59,12 +64,19 @@ function getWorker(): Worker {
   return workerInstance;
 }
 
+let activeWorkerCanceller: (() => void) | null = null;
+
 function resetWorker(): void {
   if (workerInstance) {
     try {
       workerInstance.terminate();
     } catch {}
     workerInstance = null;
+  }
+  if (activeWorkerCanceller) {
+    const cb = activeWorkerCanceller;
+    activeWorkerCanceller = null;
+    cb();
   }
 }
 
@@ -81,14 +93,23 @@ function runRegExpInWorker(
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
+      activeWorkerCanceller = null;
       resetWorker();
       resolve({ timeout: true });
     }, timeoutMs);
+
+    activeWorkerCanceller = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ timeout: true });
+    };
 
     const onMessage = (e: MessageEvent) => {
       if (e.data && e.data.type === 'regexp-result' && e.data.id === id) {
         if (settled) return;
         settled = true;
+        activeWorkerCanceller = null;
         clearTimeout(timer);
         worker.removeEventListener('message', onMessage);
         resolve({ matches: e.data.matches, error: e.data.error, timeout: false });
@@ -1422,6 +1443,203 @@ if (diffRunBtn) {
       (window as any).__diffResult = diffResult;
     } finally {
       diffRunBtn.disabled = false;
+    }
+  });
+}
+
+// -------------------------------------------------------------
+// Stress Panel Controller
+// -------------------------------------------------------------
+const stressBrowserInfoEl = document.getElementById('stress-browser-info');
+if (stressBrowserInfoEl) {
+  const info = detectBrowserEngine();
+  stressBrowserInfoEl.textContent = `Browser engine: ${info.label}`;
+}
+
+const stressChartContainer = document.getElementById('stress-chart-container');
+if (stressChartContainer) {
+  stressChartContainer.innerHTML = renderStressChartSvg([]);
+}
+
+const stressRunBtn = document.getElementById('stress-run') as HTMLButtonElement | null;
+const stressCancelBtn = document.getElementById('stress-cancel') as HTMLButtonElement | null;
+const stressFamilySelect = document.getElementById('stress-family') as HTMLSelectElement | null;
+const stressTableBody = document.querySelector('#stress-table tbody') as HTMLElement | null;
+const stressStatusEl = document.getElementById('stress-status');
+
+let stressCancelled = false;
+let stressGeneration = 0;
+
+if (stressCancelBtn) {
+  stressCancelBtn.addEventListener('click', () => {
+    stressCancelled = true;
+    resetWorker();
+    if (stressStatusEl) {
+      stressStatusEl.textContent = 'Stress test cancelling...';
+    }
+  });
+}
+
+if (stressRunBtn) {
+  stressRunBtn.addEventListener('click', async () => {
+    stressCancelled = false;
+    const gen = ++stressGeneration;
+    stressRunBtn.disabled = true;
+    if (stressCancelBtn) {
+      stressCancelBtn.style.display = 'inline-block';
+    }
+    if (stressTableBody) {
+      stressTableBody.innerHTML = '';
+    }
+    (window as any).__stressDone = false;
+    (window as any).__stressRowAdded = false;
+
+    const familyId = stressFamilySelect ? stressFamilySelect.value : 'star-star-b';
+    const family = STRESS_FAMILIES[familyId] || STRESS_FAMILIES['star-star-b'];
+
+    const analysis = analyze(family.expression, { notation: family.notation });
+    const jsPattern = analysis.ok ? toJs(analysis.parseTree) : family.expression;
+
+    const chartPoints: StressChartPoint[] = [];
+    let regExpStopped = false;
+
+    if (stressChartContainer) {
+      stressChartContainer.innerHTML = renderStressChartSvg([], {
+        title: `${family.name} - Backtracking vs Thompson NFA`
+      });
+    }
+
+    try {
+      // 1. Series n = 12..30 in steps of 2
+      for (const n of STRESS_N_SERIES) {
+        if (stressCancelled || gen !== stressGeneration) break;
+        if (stressStatusEl) {
+          stressStatusEl.textContent = `Testing n = ${n}...`;
+        }
+
+        const input = family.generateInput(n);
+        await new Promise((r) => setTimeout(r, 0));
+        if (stressCancelled || gen !== stressGeneration) break;
+
+        // Run NFA
+        const nfaRes = runStressNfa(family.id, n);
+
+        // Run RegExp (in worker, 8s cap)
+        let regExpTimeDisplay = '—';
+        let regExpVerdictDisplay = '—';
+        let regExpDurationMs: number | null = null;
+        let regExpTimedOut = false;
+
+        if (!regExpStopped) {
+          const t0 = performance.now();
+          const res = await runRegExpInWorker(jsPattern, [input], 8000);
+          const elapsed = performance.now() - t0;
+
+          if (res.timeout || elapsed >= 8000) {
+            regExpStopped = true;
+            regExpTimedOut = true;
+            regExpDurationMs = 8000;
+            regExpTimeDisplay = '> 8,000 ms (timeout)';
+            regExpVerdictDisplay = 'TIMEOUT';
+          } else if (res.error) {
+            regExpTimeDisplay = 'Error';
+            regExpVerdictDisplay = 'ERROR';
+          } else {
+            regExpDurationMs = elapsed;
+            regExpTimeDisplay = `${elapsed.toFixed(1)} ms`;
+            const matched = res.matches && res.matches[0];
+            regExpVerdictDisplay = matched ? 'ACCEPT' : 'REJECT';
+          }
+        } else {
+          regExpTimeDisplay = '— (skipped)';
+          regExpVerdictDisplay = '—';
+        }
+
+        chartPoints.push({
+          n,
+          regExpTime: regExpDurationMs,
+          regExpTimeout: regExpTimedOut,
+          nfaTime: nfaRes.durationMs
+        });
+
+        if (stressTableBody && gen === stressGeneration) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${n}</td>
+            <td>${input.length}</td>
+            <td>${regExpTimeDisplay}</td>
+            <td>${nfaRes.durationMs.toFixed(2)} ms</td>
+            <td>${regExpVerdictDisplay}</td>
+            <td>${nfaRes.verdict}</td>
+          `;
+          stressTableBody.appendChild(tr);
+          (window as any).__stressRowAdded = true;
+        }
+
+        if (stressChartContainer && gen === stressGeneration) {
+          stressChartContainer.innerHTML = renderStressChartSvg(chartPoints, {
+            title: `${family.name} - Backtracking vs Thompson NFA`
+          });
+        }
+
+        await new Promise((r) => setTimeout(r, 0));
+      }
+
+      // 2. Scale NFA series up to 1,000
+      for (const n of STRESS_SCALE_N_SERIES) {
+        if (stressCancelled || gen !== stressGeneration) break;
+        if (stressStatusEl) {
+          stressStatusEl.textContent = `Testing NFA scale n = ${n}...`;
+        }
+
+        const input = family.generateInput(n);
+        await new Promise((r) => setTimeout(r, 0));
+        if (stressCancelled || gen !== stressGeneration) break;
+
+        const nfaRes = runStressNfa(family.id, n);
+
+        chartPoints.push({
+          n,
+          regExpTime: null,
+          nfaTime: nfaRes.durationMs
+        });
+
+        if (stressTableBody && gen === stressGeneration) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${n}</td>
+            <td>${input.length}</td>
+            <td>— (skipped)</td>
+            <td>${nfaRes.durationMs.toFixed(2)} ms</td>
+            <td>—</td>
+            <td>${nfaRes.verdict}</td>
+          `;
+          stressTableBody.appendChild(tr);
+        }
+
+        if (stressChartContainer && gen === stressGeneration) {
+          stressChartContainer.innerHTML = renderStressChartSvg(chartPoints, {
+            title: `${family.name} - Backtracking vs Thompson NFA`
+          });
+        }
+
+        await new Promise((r) => setTimeout(r, 0));
+      }
+
+      if (gen === stressGeneration && stressStatusEl) {
+        stressStatusEl.textContent = stressCancelled
+          ? 'Stress test cancelled.'
+          : 'Stress test complete: NFA completed all inputs up to n = 1,000 in linear time.';
+      }
+    } finally {
+      if (gen === stressGeneration) {
+        stressRunBtn.disabled = false;
+        if (stressCancelBtn) {
+          stressCancelBtn.style.display = 'none';
+        }
+        (window as any).__stressDone = true;
+        (window as any).__stressPoints = chartPoints;
+      }
     }
   });
 }

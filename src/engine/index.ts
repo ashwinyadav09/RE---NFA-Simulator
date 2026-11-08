@@ -1978,5 +1978,142 @@ function getCompactLabelMap(states: number[]): Record<number, number> {
   return map;
 }
 
+export interface StressFamilyConfig {
+  id: 'star-star-b' | 'plus-plus';
+  name: string;
+  expression: string;
+  notation: 'standard';
+  description: string;
+  generateInput: (n: number) => string;
+  expectedVerdict: 'REJECT';
+}
+
+export const STRESS_FAMILIES: Record<string, StressFamilyConfig> = {
+  'star-star-b': {
+    id: 'star-star-b',
+    name: '(a*)*b on aⁿ',
+    expression: '(a*)*b',
+    notation: 'standard',
+    description: 'Catastrophic backtracking on aⁿ due to nested Kleene stars',
+    generateInput: (n: number) => 'a'.repeat(n),
+    expectedVerdict: 'REJECT'
+  },
+  'plus-plus': {
+    id: 'plus-plus',
+    name: '(a+)+ on aⁿb',
+    expression: '(a+)+',
+    notation: 'standard',
+    description: 'Catastrophic backtracking on aⁿb due to nested plus quantifiers',
+    generateInput: (n: number) => 'a'.repeat(n) + 'b',
+    expectedVerdict: 'REJECT'
+  }
+};
+
+export const STRESS_N_SERIES = [12, 14, 16, 18, 20, 22, 24, 26, 28, 30];
+export const STRESS_SCALE_N_SERIES = [50, 100, 200, 500, 1000];
+
+export interface StressNfaResult {
+  n: number;
+  inputLength: number;
+  accepted: boolean;
+  verdict: 'ACCEPT' | 'REJECT';
+  durationMs: number;
+}
+
+export function runStressNfa(
+  familyId: 'star-star-b' | 'plus-plus' | string,
+  n: number
+): StressNfaResult {
+  const family = STRESS_FAMILIES[familyId];
+  if (!family) {
+    throw new Error(`Unknown stress family: ${familyId}`);
+  }
+  const analysis = analyze(family.expression, { notation: family.notation });
+  if (!analysis.ok) {
+    throw new Error(`Failed to analyze stress expression: ${analysis.message}`);
+  }
+  const input = family.generateInput(n);
+  const t0 = performance.now();
+  const runRes = run(analysis.nfa, ['a', 'b'], input);
+  const t1 = performance.now();
+  return {
+    n,
+    inputLength: input.length,
+    accepted: runRes.accepted,
+    verdict: runRes.verdict,
+    durationMs: t1 - t0
+  };
+}
+
+export interface BrowserEngineInfo {
+  engine: string;
+  browser: string;
+  label: string;
+}
+
+export function detectBrowserEngine(userAgent?: string): BrowserEngineInfo {
+  const ua = userAgent !== undefined
+    ? userAgent
+    : typeof navigator !== 'undefined'
+      ? navigator.userAgent
+      : typeof process !== 'undefined'
+        ? `Node.js/${process.version} (V8)`
+        : '';
+
+  if (/Firefox\/([0-9.]+)/i.test(ua)) {
+    const match = ua.match(/Firefox\/([0-9.]+)/i);
+    const ver = match ? ` ${match[1]}` : '';
+    return {
+      engine: 'SpiderMonkey',
+      browser: `Firefox${ver}`,
+      label: `SpiderMonkey (Firefox${ver})`
+    };
+  }
+
+  if (/Edg\/([0-9.]+)/i.test(ua)) {
+    const match = ua.match(/Edg\/([0-9.]+)/i);
+    const ver = match ? ` ${match[1]}` : '';
+    return {
+      engine: 'V8',
+      browser: `Edge${ver}`,
+      label: `V8 (Edge${ver})`
+    };
+  }
+
+  if (/Chrome\/([0-9.]+)/i.test(ua)) {
+    const match = ua.match(/Chrome\/([0-9.]+)/i);
+    const ver = match ? ` ${match[1]}` : '';
+    return {
+      engine: 'V8',
+      browser: `Chrome${ver}`,
+      label: `V8 (Chrome${ver})`
+    };
+  }
+
+  if (/Safari\/([0-9.]+)/i.test(ua) && !/Chrome/i.test(ua)) {
+    const verMatch = ua.match(/Version\/([0-9.]+)/i);
+    const ver = verMatch ? ` ${verMatch[1]}` : '';
+    return {
+      engine: 'JavaScriptCore',
+      browser: `Safari${ver}`,
+      label: `JavaScriptCore (Safari${ver})`
+    };
+  }
+
+  if (/Node\.js/i.test(ua)) {
+    return {
+      engine: 'V8',
+      browser: ua,
+      label: `V8 (${ua})`
+    };
+  }
+
+  return {
+    engine: 'Unknown',
+    browser: ua || 'Unknown browser',
+    label: ua ? `Unknown (${ua})` : 'Unknown'
+  };
+}
+
 
 

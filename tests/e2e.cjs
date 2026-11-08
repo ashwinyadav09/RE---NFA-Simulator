@@ -1378,6 +1378,66 @@ const assert = require('node:assert');
     window.__e2eWorkerDelay = 0;
   });
 
+  // -------------------------------------------------------------
+  // Ticket 14: Stress panel
+  // -------------------------------------------------------------
+  console.log('Testing Ticket 14: Stress panel...');
+
+  // 1. Check browser engine info in panel
+  const browserInfoText = await page.textContent('#stress-browser-info');
+  console.log('Stress browser info:', browserInfoText);
+  assert(
+    browserInfoText.includes('V8') || browserInfoText.includes('Chromium') || browserInfoText.includes('Chrome'),
+    'Browser info must identify V8 / Chromium / Chrome'
+  );
+
+  // 2. Initial inline-SVG chart exists
+  const initialChartExists = await page.evaluate(() => !!document.querySelector('#stress-chart-container svg'));
+  assert(initialChartExists, 'Initial inline-SVG chart must be rendered in #stress-chart-container');
+
+  // 3. Start run for default family ((a*)*b on a^n)
+  await page.click('#stress-run');
+
+  // 4. Verify a row appears in #stress-table
+  await page.waitForFunction('window.__stressRowAdded === true', null, { timeout: 15000 });
+  const rowCount = await page.evaluate(() => document.querySelectorAll('#stress-table tbody tr').length);
+  console.log('Stress table row count during run:', rowCount);
+  assert(rowCount >= 1, 'Stress table must have at least 1 row after run starts');
+
+  const firstRowText = await page.$eval('#stress-table tbody tr:first-child', (el) => el.textContent);
+  console.log('First stress row text:', firstRowText);
+  assert(firstRowText.includes('12'), 'First row must test n=12');
+  assert(firstRowText.includes('REJECT'), 'First row must report verdict REJECT');
+
+  // 5. Verify page controls remain responsive during run
+  await page.fill('#regex-input', 'abc');
+  const stressInputVal = await page.$eval('#regex-input', (el) => el.value);
+  assert.strictEqual(stressInputVal, 'abc', 'Page input control must remain responsive during stress run');
+
+  // 6. Verify inline-SVG chart updated with data points
+  const circleCount = await page.evaluate(() => document.querySelectorAll('#stress-chart-container svg circle').length);
+  console.log('Stress chart rendered circles:', circleCount);
+  assert(circleCount >= 2, 'Stress chart must contain data circles for both series');
+
+  // 7. Cancel first run cleanly
+  await page.click('#stress-cancel');
+  await page.waitForFunction('window.__stressDone === true', null, { timeout: 15000 });
+
+  // 8. Test second family ((a+)+ on a^n b)
+  await page.selectOption('#stress-family', 'plus-plus');
+  await page.evaluate(() => { window.__stressRowAdded = false; window.__stressDone = false; });
+  await page.click('#stress-run');
+  await page.waitForFunction('window.__stressRowAdded === true', null, { timeout: 15000 });
+
+  const plusRowText = await page.$eval('#stress-table tbody tr:first-child', (el) => el.textContent);
+  console.log('Second family first row text:', plusRowText);
+  assert(plusRowText.includes('12'), 'Second family row must test n=12');
+  assert(plusRowText.includes('13'), 'Second family string length must be 13');
+  assert(plusRowText.includes('REJECT'), 'Second family verdict must be REJECT');
+
+  await page.click('#stress-cancel');
+  await page.waitForFunction('window.__stressDone === true', null, { timeout: 15000 });
+
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
 
 

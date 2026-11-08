@@ -510,3 +510,145 @@ export function toDot(input: NFA | StepSnapshot, options?: DiagramOptions): stri
   return lines.join('\n');
 }
 
+export interface StressChartPoint {
+  n: number;
+  regExpTime?: number | null;
+  regExpTimeout?: boolean;
+  nfaTime: number;
+}
+
+export interface StressChartOptions {
+  width?: number;
+  height?: number;
+  title?: string;
+}
+
+export function renderStressChartSvg(
+  points: StressChartPoint[],
+  options: StressChartOptions = {}
+): string {
+  const width = options.width || 680;
+  const height = options.height || 320;
+  const title = options.title || 'Backtracking vs Thompson NFA';
+
+  const margin = { top: 40, right: 35, bottom: 45, left: 75 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+
+  if (points.length === 0) {
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${title}">
+  <rect width="${width}" height="${height}" fill="#fafafa" rx="6" />
+  <text x="${width / 2}" y="30" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="bold" fill="#333">${title}</text>
+  <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#bbb" stroke-width="1.5" />
+  <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#bbb" stroke-width="1.5" />
+  <text x="${width / 2}" y="${height / 2 + 10}" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#777">Run stress test to see comparison chart</text>
+</svg>`;
+  }
+
+  const maxTime = 8000;
+  const yTicks = [0, 2000, 4000, 6000, 8000];
+
+  const getY = (ms: number): number => {
+    const clamped = Math.max(0, Math.min(ms, maxTime));
+    return margin.top + plotHeight - (clamped / maxTime) * plotHeight;
+  };
+
+  const getX = (index: number): number => {
+    if (points.length === 1) return margin.left + plotWidth / 2;
+    return margin.left + (index / (points.length - 1)) * plotWidth;
+  };
+
+  const lines: string[] = [];
+  lines.push(`<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${title}">`);
+  lines.push(`  <rect width="${width}" height="${height}" fill="#fafafa" rx="6" />`);
+  lines.push(`  <text x="${width / 2}" y="24" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#202124">${title}</text>`);
+
+  // Legend
+  lines.push(`  <g transform="translate(${width - margin.right - 270}, 12)" font-family="sans-serif" font-size="11">`);
+  lines.push(`    <line x1="0" y1="10" x2="16" y2="10" stroke="#d93025" stroke-width="2.5" />`);
+  lines.push(`    <circle cx="8" cy="10" r="3.5" fill="#d93025" />`);
+  lines.push(`    <text x="22" y="14" fill="#333">RegExp (Backtracking)</text>`);
+  lines.push(`    <line x1="150" y1="10" x2="166" y2="10" stroke="#1a73e8" stroke-width="2.5" />`);
+  lines.push(`    <circle cx="158" cy="10" r="3.5" fill="#1a73e8" />`);
+  lines.push(`    <text x="172" y="14" fill="#333">Thompson NFA</text>`);
+  lines.push(`  </g>`);
+
+  // Grid lines & Y ticks
+  for (const yt of yTicks) {
+    const yPos = getY(yt);
+    lines.push(`  <line x1="${margin.left}" y1="${yPos.toFixed(1)}" x2="${width - margin.right}" y2="${yPos.toFixed(1)}" stroke="${yt === 8000 ? '#ea4335' : '#e0e0e0'}" stroke-width="${yt === 8000 ? '1.5' : '1'}" ${yt === 8000 ? 'stroke-dasharray="4,4"' : ''} />`);
+    const label = yt === 8000 ? '8000 ms (timeout)' : `${yt} ms`;
+    lines.push(`  <text x="${margin.left - 8}" y="${(yPos + 4).toFixed(1)}" text-anchor="end" font-family="sans-serif" font-size="11" fill="${yt === 8000 ? '#ea4335' : '#5f6368'}">${label}</text>`);
+  }
+
+  // Axes lines
+  lines.push(`  <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#70757a" stroke-width="1.5" />`);
+  lines.push(`  <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#70757a" stroke-width="1.5" />`);
+
+  // X ticks
+  points.forEach((pt, idx) => {
+    const xPos = getX(idx);
+    lines.push(`  <line x1="${xPos.toFixed(1)}" y1="${height - margin.bottom}" x2="${xPos.toFixed(1)}" y2="${height - margin.bottom + 5}" stroke="#70757a" stroke-width="1" />`);
+    lines.push(`  <text x="${xPos.toFixed(1)}" y="${height - margin.bottom + 18}" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#3c4043">${pt.n}</text>`);
+  });
+  lines.push(`  <text x="${margin.left + plotWidth / 2}" y="${height - 8}" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#5f6368">Input parameter n</text>`);
+
+  // Series 1: RegExp polyline and points
+  const regExpPolylinePoints: string[] = [];
+  points.forEach((pt, idx) => {
+    if (pt.regExpTime !== null && pt.regExpTime !== undefined) {
+      const x = getX(idx);
+      const y = getY(pt.regExpTime);
+      regExpPolylinePoints.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    }
+  });
+
+  if (regExpPolylinePoints.length > 1) {
+    lines.push(`  <polyline fill="none" stroke="#d93025" stroke-width="2.5" stroke-linejoin="round" points="${regExpPolylinePoints.join(' ')}" />`);
+  }
+
+  points.forEach((pt, idx) => {
+    if (pt.regExpTime !== null && pt.regExpTime !== undefined) {
+      const x = getX(idx);
+      const y = getY(pt.regExpTime);
+      if (pt.regExpTimeout) {
+        // Red cross marker for timeout
+        lines.push(`  <g transform="translate(${x.toFixed(1)}, ${y.toFixed(1)})">`);
+        lines.push(`    <circle cx="0" cy="0" r="6" fill="#ea4335" />`);
+        lines.push(`    <line x1="-3" y1="-3" x2="3" y2="3" stroke="#fff" stroke-width="2" />`);
+        lines.push(`    <line x1="-3" y1="3" x2="3" y2="-3" stroke="#fff" stroke-width="2" />`);
+        lines.push(`    <text x="0" y="-10" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="bold" fill="#ea4335">timeout</text>`);
+        lines.push(`    <title>n=${pt.n}: RegExp TIMEOUT (&gt;8000ms)</title>`);
+        lines.push(`  </g>`);
+      } else {
+        lines.push(`  <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="#d93025">`);
+        lines.push(`    <title>n=${pt.n}: RegExp ${pt.regExpTime.toFixed(1)}ms</title>`);
+        lines.push(`  </circle>`);
+      }
+    }
+  });
+
+  // Series 2: NFA polyline and points
+  const nfaPolylinePoints: string[] = [];
+  points.forEach((pt, idx) => {
+    const x = getX(idx);
+    const y = getY(pt.nfaTime);
+    nfaPolylinePoints.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+  });
+
+  if (nfaPolylinePoints.length > 1) {
+    lines.push(`  <polyline fill="none" stroke="#1a73e8" stroke-width="2" stroke-linejoin="round" points="${nfaPolylinePoints.join(' ')}" />`);
+  }
+
+  points.forEach((pt, idx) => {
+    const x = getX(idx);
+    const y = getY(pt.nfaTime);
+    lines.push(`  <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="#1a73e8">`);
+    lines.push(`    <title>n=${pt.n}: NFA ${pt.nfaTime.toFixed(2)}ms</title>`);
+    lines.push(`  </circle>`);
+  });
+
+  lines.push('</svg>');
+  return lines.join('\n');
+}
+

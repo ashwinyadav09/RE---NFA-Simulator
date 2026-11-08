@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { analyze, run, runLines, validateAlphabet, getStepSnapshot, validateInvariants, checkSizeFormula, checkStepReplay, runBuiltinSuite, computeDifferentialK, runDifferential, validate, allStrings, lang, derivMatch, toJs, EPS, CAPS, AnalysisResult, AnalysisSuccess, NFA } from '../src/engine/index';
+import { analyze, run, runLines, validateAlphabet, getStepSnapshot, validateInvariants, checkSizeFormula, checkStepReplay, runBuiltinSuite, computeDifferentialK, runDifferential, validate, allStrings, lang, derivMatch, toJs, EPS, CAPS, AnalysisResult, AnalysisSuccess, NFA, STRESS_FAMILIES, STRESS_N_SERIES, STRESS_SCALE_N_SERIES, runStressNfa, detectBrowserEngine } from '../src/engine/index';
 import { parseRD } from './oracles';
 
 function assertSuccess(result: AnalysisResult): asserts result is AnalysisSuccess {
@@ -1600,6 +1600,142 @@ test('[T13-06] Engine seam: validate combines invariants I1-I4, size formula, st
   expect(valDiff.differential).toBeDefined();
   expect(valDiff.differential!.allPassed).toBe(true);
   expect(valDiff.differential!.k).toBe(8);
+});
+
+test('[T14-01] Engine seam: (a*)*b rejects a^n and accepts a^n b, scaling linearly to n=1000', () => {
+  const result = analyze('(a*)*b');
+  assertSuccess(result);
+
+  // States: 8 (symbol 'a': 2, star: 2, star: 2, symbol 'b': 2 -> 8 states)
+  expect(result.nfa.states.length).toBe(8);
+
+  const testNs = [12, 14, 20, 30];
+  for (const n of testNs) {
+    const rejectRes = run(result.nfa, ['a', 'b'], 'a'.repeat(n));
+    expect(rejectRes.accepted).toBe(false);
+    expect(rejectRes.verdict).toBe('REJECT');
+
+    const acceptRes = run(result.nfa, ['a', 'b'], 'a'.repeat(n) + 'b');
+    expect(acceptRes.accepted).toBe(true);
+    expect(acceptRes.verdict).toBe('ACCEPT');
+  }
+
+  // Linear scaling test for n = 1000
+  const t0 = performance.now();
+  const res1000Reject = run(result.nfa, ['a', 'b'], 'a'.repeat(1000));
+  const t1 = performance.now();
+  expect(res1000Reject.accepted).toBe(false);
+  expect(res1000Reject.verdict).toBe('REJECT');
+  expect(t1 - t0).toBeLessThan(100);
+
+  const res1000Accept = run(result.nfa, ['a', 'b'], 'a'.repeat(1000) + 'b');
+  expect(res1000Accept.accepted).toBe(true);
+  expect(res1000Accept.verdict).toBe('ACCEPT');
+});
+
+test('[T14-02] Engine seam: (a+)+ rejects a^n b and accepts a^n, scaling linearly to n=1000', () => {
+  const result = analyze('(a+)+');
+  assertSuccess(result);
+
+  // States: 6 (symbol 'a': 2, plus: 2, plus: 2 -> 6 states)
+  expect(result.nfa.states.length).toBe(6);
+
+  const testNs = [12, 14, 20, 30];
+  for (const n of testNs) {
+    const rejectRes = run(result.nfa, ['a', 'b'], 'a'.repeat(n) + 'b');
+    expect(rejectRes.accepted).toBe(false);
+    expect(rejectRes.verdict).toBe('REJECT');
+
+    const acceptRes = run(result.nfa, ['a', 'b'], 'a'.repeat(n));
+    expect(acceptRes.accepted).toBe(true);
+    expect(acceptRes.verdict).toBe('ACCEPT');
+  }
+
+  // Linear scaling test for n = 1000
+  const t0 = performance.now();
+  const res1000Reject = run(result.nfa, ['a', 'b'], 'a'.repeat(1000) + 'b');
+  const t1 = performance.now();
+  expect(res1000Reject.accepted).toBe(false);
+  expect(res1000Reject.verdict).toBe('REJECT');
+  expect(t1 - t0).toBeLessThan(100);
+
+  const res1000Accept = run(result.nfa, ['a', 'b'], 'a'.repeat(1000));
+  expect(res1000Accept.accepted).toBe(true);
+  expect(res1000Accept.verdict).toBe('ACCEPT');
+});
+
+test('[T14-03] Engine seam: STRESS_FAMILIES, series constants, and runStressNfa helper', () => {
+  // 1. Check family configs
+  expect(STRESS_FAMILIES['star-star-b']).toBeDefined();
+  expect(STRESS_FAMILIES['star-star-b'].expression).toBe('(a*)*b');
+  expect(STRESS_FAMILIES['star-star-b'].generateInput(12)).toBe('aaaaaaaaaaaa');
+  expect(STRESS_FAMILIES['star-star-b'].expectedVerdict).toBe('REJECT');
+
+  expect(STRESS_FAMILIES['plus-plus']).toBeDefined();
+  expect(STRESS_FAMILIES['plus-plus'].expression).toBe('(a+)+');
+  expect(STRESS_FAMILIES['plus-plus'].generateInput(12)).toBe('aaaaaaaaaaaab');
+  expect(STRESS_FAMILIES['plus-plus'].expectedVerdict).toBe('REJECT');
+
+  // 2. Check N series
+  expect(STRESS_N_SERIES).toEqual([12, 14, 16, 18, 20, 22, 24, 26, 28, 30]);
+  expect(STRESS_SCALE_N_SERIES).toEqual([50, 100, 200, 500, 1000]);
+
+  // 3. Test runStressNfa helper
+  const resStar12 = runStressNfa('star-star-b', 12);
+  expect(resStar12.n).toBe(12);
+  expect(resStar12.inputLength).toBe(12);
+  expect(resStar12.accepted).toBe(false);
+  expect(resStar12.verdict).toBe('REJECT');
+  expect(resStar12.durationMs).toBeGreaterThanOrEqual(0);
+
+  const resPlus12 = runStressNfa('plus-plus', 12);
+  expect(resPlus12.n).toBe(12);
+  expect(resPlus12.inputLength).toBe(13);
+  expect(resPlus12.accepted).toBe(false);
+  expect(resPlus12.verdict).toBe('REJECT');
+  expect(resPlus12.durationMs).toBeGreaterThanOrEqual(0);
+
+  // Large N scaling with helper
+  const resStar1000 = runStressNfa('star-star-b', 1000);
+  expect(resStar1000.n).toBe(1000);
+  expect(resStar1000.inputLength).toBe(1000);
+  expect(resStar1000.verdict).toBe('REJECT');
+  expect(resStar1000.durationMs).toBeLessThan(100);
+});
+
+test('[T14-04] Engine seam: detectBrowserEngine identifies V8, SpiderMonkey, and JavaScriptCore from userAgent', () => {
+  // Chrome / Chromium (V8)
+  const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+  const chromeInfo = detectBrowserEngine(chromeUA);
+  expect(chromeInfo.engine).toBe('V8');
+  expect(chromeInfo.browser).toContain('Chrome');
+  expect(chromeInfo.label).toContain('V8 (Chrome');
+
+  // Edge (V8)
+  const edgeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.80';
+  const edgeInfo = detectBrowserEngine(edgeUA);
+  expect(edgeInfo.engine).toBe('V8');
+  expect(edgeInfo.browser).toContain('Edge');
+  expect(edgeInfo.label).toContain('V8 (Edge');
+
+  // Firefox (SpiderMonkey)
+  const firefoxUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0';
+  const firefoxInfo = detectBrowserEngine(firefoxUA);
+  expect(firefoxInfo.engine).toBe('SpiderMonkey');
+  expect(firefoxInfo.browser).toContain('Firefox');
+  expect(firefoxInfo.label).toContain('SpiderMonkey (Firefox');
+
+  // Safari (JavaScriptCore)
+  const safariUA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15';
+  const safariInfo = detectBrowserEngine(safariUA);
+  expect(safariInfo.engine).toBe('JavaScriptCore');
+  expect(safariInfo.browser).toContain('Safari');
+  expect(safariInfo.label).toContain('JavaScriptCore (Safari');
+
+  // Default / environment fallback (running under Node.js)
+  const defaultInfo = detectBrowserEngine();
+  expect(defaultInfo.engine).toBeDefined();
+  expect(defaultInfo.label).toBeDefined();
 });
 
 
