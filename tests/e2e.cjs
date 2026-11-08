@@ -1383,6 +1383,24 @@ const assert = require('node:assert');
   // -------------------------------------------------------------
   console.log('Testing Ticket 14: Stress panel...');
 
+  // Fix 2: Mutual exclusion check - start #diff-run, confirm #stress-run is disabled, let it finish with no "ORACLE ERROR"
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  await page.evaluate(() => { window.__diffDone = false; });
+  await page.click('#diff-run');
+  const stressDisabledDuringDiff = await page.$eval('#stress-run', (el) => el.disabled);
+  assert.strictEqual(stressDisabledDuringDiff, true, '#stress-run must be disabled while differential run is active');
+
+  await page.waitForFunction('window.__diffDone === true', null, { timeout: 15000 });
+  const stressReEnabledAfterDiff = await page.$eval('#stress-run', (el) => el.disabled);
+  assert.strictEqual(stressReEnabledAfterDiff, false, '#stress-run must be re-enabled after differential run finishes');
+
+  const diffStatusTextAfter = await page.textContent('#diff-status');
+  console.log('Differential status after mutual exclusion check:', diffStatusTextAfter);
+  assert(!diffStatusTextAfter.includes('ORACLE ERROR'), 'Differential run must finish with no ORACLE ERROR');
+
   // 1. Check browser engine info in panel
   const browserInfoText = await page.textContent('#stress-browser-info');
   console.log('Stress browser info:', browserInfoText);
@@ -1397,6 +1415,10 @@ const assert = require('node:assert');
 
   // 3. Start run for default family ((a*)*b on a^n)
   await page.click('#stress-run');
+
+  // Confirm #diff-run is disabled while stress run is active
+  const diffDisabledDuringStress = await page.$eval('#diff-run', (el) => el.disabled);
+  assert.strictEqual(diffDisabledDuringStress, true, '#diff-run must be disabled while stress run is active');
 
   // 4. Verify a row appears in #stress-table
   await page.waitForFunction('window.__stressRowAdded === true', null, { timeout: 15000 });
@@ -1417,11 +1439,23 @@ const assert = require('node:assert');
   // 6. Verify inline-SVG chart updated with data points
   const circleCount = await page.evaluate(() => document.querySelectorAll('#stress-chart-container svg circle').length);
   console.log('Stress chart rendered circles:', circleCount);
-  assert(circleCount >= 2, 'Stress chart must contain data circles for both series');
+  assert(circleCount >= 2, 'Stress chart must contain data circles');
 
-  // 7. Cancel first run cleanly
+  // 7. Fix 1: Cancel run, wait for __stressDone, assert no row contains TIMEOUT or "8,000"
   await page.click('#stress-cancel');
   await page.waitForFunction('window.__stressDone === true', null, { timeout: 15000 });
+
+  const diffReEnabledAfterStress = await page.$eval('#diff-run', (el) => el.disabled);
+  assert.strictEqual(diffReEnabledAfterStress, false, '#diff-run must be re-enabled after stress run finishes or cancels');
+
+  const rowTextsAfterCancel = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#stress-table tbody tr')).map((r) => r.textContent)
+  );
+  console.log('Row texts after cancel count:', rowTextsAfterCancel.length);
+  for (const text of rowTextsAfterCancel) {
+    assert(!text.includes('TIMEOUT'), 'No row must contain TIMEOUT on cancel');
+    assert(!text.includes('8,000'), 'No row must contain 8,000 on cancel');
+  }
 
   // 8. Test second family ((a+)+ on a^n b)
   await page.selectOption('#stress-family', 'plus-plus');

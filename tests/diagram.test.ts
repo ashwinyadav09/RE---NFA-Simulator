@@ -1068,6 +1068,113 @@ test('[T14-05] Diagram seam: renderStressChartSvg produces valid inline SVG char
   expect(svg).toContain('<circle');
 });
 
+test('[T14-06] Diagram seam: adding a point never moves existing points in renderStressChartSvg', () => {
+  const p1: StressChartPoint = { n: 16, regExpTime: 4.6, nfaTime: 0.15 };
+  const p2: StressChartPoint = { n: 20, regExpTime: 72.1, nfaTime: 0.2 };
+
+  const svg1 = renderStressChartSvg([p1]);
+  const svg2 = renderStressChartSvg([p1, p2]);
+
+  // Extract circle elements for n=16
+  const match1 = svg1.match(/<circle[^>]*title[^>]*n=16[^>]*>[^<]*<\/circle>|<circle[^>]*>\s*<title>n=16[^<]*<\/title>\s*<\/circle>/);
+  expect(match1).not.toBeNull();
+
+  // Find cx and cy attributes for n=16 in both renders
+  const getCircleCoords = (svg: string, label: string) => {
+    // Regex matching circle with a title child containing label
+    const circleRegex = new RegExp(`<circle[^>]*cx="([0-9.]+)"[^>]*cy="([0-9.]+)"[^>]*>\\s*<title>${label}[^<]*<\\/title>\\s*<\\/circle>`);
+    const m = svg.match(circleRegex);
+    if (!m) return null;
+    return { cx: parseFloat(m[1]), cy: parseFloat(m[2]) };
+  };
+
+  const c1RegExp = getCircleCoords(svg1, 'n=16: RegExp');
+  const c2RegExp = getCircleCoords(svg2, 'n=16: RegExp');
+  expect(c1RegExp).not.toBeNull();
+  expect(c2RegExp).not.toBeNull();
+  expect(c2RegExp!.cx).toBe(c1RegExp!.cx);
+  expect(c2RegExp!.cy).toBe(c1RegExp!.cy);
+
+  const c1NFA = getCircleCoords(svg1, 'n=16: NFA');
+  const c2NFA = getCircleCoords(svg2, 'n=16: NFA');
+  expect(c1NFA).not.toBeNull();
+  expect(c2NFA).not.toBeNull();
+  expect(c2NFA!.cx).toBe(c1NFA!.cx);
+  expect(c2NFA!.cy).toBe(c1NFA!.cy);
+});
+
+test('[T14-07] Diagram seam: x is strictly proportional to n on fixed domains [12, 30] and [0, 1000]', () => {
+  // Panel A: n in [12, 30]
+  const p12: StressChartPoint = { n: 12, regExpTime: 0.3, nfaTime: 0.1 };
+  const p21: StressChartPoint = { n: 21, regExpTime: 100.0, nfaTime: 0.2 };
+  const p30: StressChartPoint = { n: 30, regExpTime: 5000.0, nfaTime: 0.3 };
+
+  const svgA = renderStressChartSvg([p12, p21, p30]);
+
+  const getPanelACircleX = (svg: string, label: string): number => {
+    const re = new RegExp(`<circle[^>]*cx="([0-9.]+)"[^>]*cy="([0-9.]+)"[^>]*>\\s*<title>${label}[^<]*<\\/title>\\s*<\\/circle>`);
+    const m = svg.match(re);
+    expect(m).not.toBeNull();
+    return parseFloat(m![1]);
+  };
+
+  const x12 = getPanelACircleX(svgA, 'n=12: NFA');
+  const x21 = getPanelACircleX(svgA, 'n=21: NFA');
+  const x30 = getPanelACircleX(svgA, 'n=30: NFA');
+
+  // n=21 is exact midpoint of [12, 30]
+  const ratioA = (x21 - x12) / (x30 - x12);
+  expect(ratioA).toBeCloseTo(0.5, 3);
+
+  // Panel B: n in [0, 1000]
+  const p0: StressChartPoint = { n: 0, nfaTime: 0.0 };
+  const p500: StressChartPoint = { n: 500, nfaTime: 2.5 };
+  const p1000: StressChartPoint = { n: 1000, nfaTime: 5.0 };
+
+  const svgB = renderStressChartSvg([p0, p500, p1000]);
+
+  const getPanelBCircleX = (svg: string, label: string): number => {
+    // In panel B, circles have title 'n=...: NFA scale' or similar
+    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`<circle[^>]*cx="([0-9.]+)"[^>]*cy="([0-9.]+)"[^>]*>\\s*<title>${escapedLabel}[^<]*<\\/title>\\s*<\\/circle>`);
+    const m = svg.match(re);
+    expect(m).not.toBeNull();
+    return parseFloat(m![1]);
+  };
+
+  const x0 = getPanelBCircleX(svgB, 'n=0: NFA (0-1000)');
+  const x500 = getPanelBCircleX(svgB, 'n=500: NFA (0-1000)');
+  const x1000 = getPanelBCircleX(svgB, 'n=1000: NFA (0-1000)');
+
+  const ratioB = (x500 - x0) / (x1000 - x0);
+  expect(ratioB).toBeCloseTo(0.5, 3);
+});
+
+test('[T14-08] Diagram seam: 8 s timeout marker stays at the ceiling of Panel A regardless of points', () => {
+  const pTimeout: StressChartPoint = { n: 28, regExpTime: 8000, regExpTimeout: true, nfaTime: 0.3 };
+  const svgSingle = renderStressChartSvg([pTimeout]);
+
+  // Find timeout marker group or element
+  const getTimeoutY = (svg: string) => {
+    const m = svg.match(/<g[^>]*id="panelA-timeout"[^>]*transform="translate\(([0-9.]+),\s*([0-9.]+)\)"/);
+    if (!m) {
+      // fallback matching translate with timeout inside
+      const m2 = svg.match(/transform="translate\(([0-9.]+),\s*([0-9.]+)\)"[^>]*>[\s\S]*?timeout/);
+      return m2 ? parseFloat(m2[2]) : null;
+    }
+    return parseFloat(m[2]);
+  };
+
+  const ySingle = getTimeoutY(svgSingle);
+  expect(ySingle).not.toBeNull();
+
+  // Ceiling check: y coordinate corresponds to top ceiling
+  const pExtra: StressChartPoint = { n: 1000, nfaTime: 5.0 };
+  const svgMulti = renderStressChartSvg([pTimeout, pExtra]);
+  const yMulti = getTimeoutY(svgMulti);
+  expect(yMulti).toBe(ySingle);
+});
+
 
 
 

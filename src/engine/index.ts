@@ -2051,14 +2051,8 @@ export interface BrowserEngineInfo {
   label: string;
 }
 
-export function detectBrowserEngine(userAgent?: string): BrowserEngineInfo {
-  const ua = userAgent !== undefined
-    ? userAgent
-    : typeof navigator !== 'undefined'
-      ? navigator.userAgent
-      : typeof process !== 'undefined'
-        ? `Node.js/${process.version} (V8)`
-        : '';
+export function detectBrowserEngine(userAgent: string): BrowserEngineInfo {
+  const ua = userAgent;
 
   if (/Firefox\/([0-9.]+)/i.test(ua)) {
     const match = ua.match(/Firefox\/([0-9.]+)/i);

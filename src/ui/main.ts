@@ -64,6 +64,7 @@ function getWorker(): Worker {
   return workerInstance;
 }
 
+let activeWorkerOwner: 'stress' | 'diff' | null = null;
 let activeWorkerCanceller: (() => void) | null = null;
 
 function resetWorker(): void {
@@ -76,6 +77,7 @@ function resetWorker(): void {
   if (activeWorkerCanceller) {
     const cb = activeWorkerCanceller;
     activeWorkerCanceller = null;
+    activeWorkerOwner = null;
     cb();
   }
 }
@@ -83,16 +85,19 @@ function resetWorker(): void {
 function runRegExpInWorker(
   pattern: string,
   strings: string[],
-  timeoutMs = 2000
-): Promise<{ matches?: boolean[]; timeout?: boolean; error?: string }> {
+  timeoutMs = 2000,
+  owner: 'stress' | 'diff' = 'diff'
+): Promise<{ matches?: boolean[]; timeout?: boolean; cancelled?: boolean; error?: string }> {
   return new Promise((resolve) => {
     const worker = getWorker();
     const id = ++workerReqSeq;
     let settled = false;
+    activeWorkerOwner = owner;
 
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
+      activeWorkerOwner = null;
       activeWorkerCanceller = null;
       resetWorker();
       resolve({ timeout: true });
@@ -101,14 +106,17 @@ function runRegExpInWorker(
     activeWorkerCanceller = () => {
       if (settled) return;
       settled = true;
+      activeWorkerOwner = null;
+      activeWorkerCanceller = null;
       clearTimeout(timer);
-      resolve({ timeout: true });
+      resolve({ cancelled: true });
     };
 
     const onMessage = (e: MessageEvent) => {
       if (e.data && e.data.type === 'regexp-result' && e.data.id === id) {
         if (settled) return;
         settled = true;
+        activeWorkerOwner = null;
         activeWorkerCanceller = null;
         clearTimeout(timer);
         worker.removeEventListener('message', onMessage);
@@ -172,6 +180,9 @@ const suiteTableEl = document.getElementById('suite-table');
 const diffRunBtn = document.getElementById('diff-run') as HTMLButtonElement | null;
 const diffStatusEl = document.getElementById('diff-status');
 const diffResultsEl = document.getElementById('diff-results');
+const stressRunBtn = document.getElementById('stress-run') as HTMLButtonElement | null;
+let diffIsActive = false;
+let stressIsActive = false;
 
 function isCompactLabels(): boolean {
   return !!compactLabelsEl?.checked;
@@ -1352,7 +1363,11 @@ if (diffRunBtn) {
     }
 
     const gen = ++diffGeneration;
+    diffIsActive = true;
     diffRunBtn.disabled = true;
+    if (stressRunBtn) {
+      stressRunBtn.disabled = true;
+    }
     (window as any).__diffDone = false;
 
     try {
@@ -1442,7 +1457,11 @@ if (diffRunBtn) {
       (window as any).__diffDone = true;
       (window as any).__diffResult = diffResult;
     } finally {
-      diffRunBtn.disabled = false;
+      diffIsActive = false;
+      diffRunBtn.disabled = stressIsActive;
+      if (stressRunBtn && !stressIsActive) {
+        stressRunBtn.disabled = false;
+      }
     }
   });
 }
@@ -1452,7 +1471,7 @@ if (diffRunBtn) {
 // -------------------------------------------------------------
 const stressBrowserInfoEl = document.getElementById('stress-browser-info');
 if (stressBrowserInfoEl) {
-  const info = detectBrowserEngine();
+  const info = detectBrowserEngine(typeof navigator !== 'undefined' ? navigator.userAgent : '');
   stressBrowserInfoEl.textContent = `Browser engine: ${info.label}`;
 }
 
@@ -1461,7 +1480,6 @@ if (stressChartContainer) {
   stressChartContainer.innerHTML = renderStressChartSvg([]);
 }
 
-const stressRunBtn = document.getElementById('stress-run') as HTMLButtonElement | null;
 const stressCancelBtn = document.getElementById('stress-cancel') as HTMLButtonElement | null;
 const stressFamilySelect = document.getElementById('stress-family') as HTMLSelectElement | null;
 const stressTableBody = document.querySelector('#stress-table tbody') as HTMLElement | null;
@@ -1473,7 +1491,9 @@ let stressGeneration = 0;
 if (stressCancelBtn) {
   stressCancelBtn.addEventListener('click', () => {
     stressCancelled = true;
-    resetWorker();
+    if (activeWorkerOwner === 'stress') {
+      resetWorker();
+    }
     if (stressStatusEl) {
       stressStatusEl.textContent = 'Stress test cancelling...';
     }
@@ -1484,7 +1504,11 @@ if (stressRunBtn) {
   stressRunBtn.addEventListener('click', async () => {
     stressCancelled = false;
     const gen = ++stressGeneration;
+    stressIsActive = true;
     stressRunBtn.disabled = true;
+    if (diffRunBtn) {
+      diffRunBtn.disabled = true;
+    }
     if (stressCancelBtn) {
       stressCancelBtn.style.display = 'inline-block';
     }
@@ -1532,8 +1556,12 @@ if (stressRunBtn) {
 
         if (!regExpStopped) {
           const t0 = performance.now();
-          const res = await runRegExpInWorker(jsPattern, [input], 8000);
+          const res = await runRegExpInWorker(jsPattern, [input], 8000, 'stress');
           const elapsed = performance.now() - t0;
+
+          if (stressCancelled || gen !== stressGeneration || res.cancelled) {
+            break;
+          }
 
           if (res.timeout || elapsed >= 8000) {
             regExpStopped = true;
@@ -1553,6 +1581,10 @@ if (stressRunBtn) {
         } else {
           regExpTimeDisplay = '— (skipped)';
           regExpVerdictDisplay = '—';
+        }
+
+        if (stressCancelled || gen !== stressGeneration) {
+          break;
         }
 
         chartPoints.push({
@@ -1598,6 +1630,8 @@ if (stressRunBtn) {
 
         const nfaRes = runStressNfa(family.id, n);
 
+        if (stressCancelled || gen !== stressGeneration) break;
+
         chartPoints.push({
           n,
           regExpTime: null,
@@ -1632,10 +1666,14 @@ if (stressRunBtn) {
           : 'Stress test complete: NFA completed all inputs up to n = 1,000 in linear time.';
       }
     } finally {
+      stressIsActive = false;
       if (gen === stressGeneration) {
-        stressRunBtn.disabled = false;
+        stressRunBtn.disabled = diffIsActive;
         if (stressCancelBtn) {
           stressCancelBtn.style.display = 'none';
+        }
+        if (diffRunBtn && !diffIsActive) {
+          diffRunBtn.disabled = false;
         }
         (window as any).__stressDone = true;
         (window as any).__stressPoints = chartPoints;

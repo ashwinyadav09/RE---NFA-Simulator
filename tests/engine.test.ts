@@ -1703,7 +1703,12 @@ test('[T14-03] Engine seam: STRESS_FAMILIES, series constants, and runStressNfa 
   expect(resStar1000.durationMs).toBeLessThan(100);
 });
 
-test('[T14-04] Engine seam: detectBrowserEngine identifies V8, SpiderMonkey, and JavaScriptCore from userAgent', () => {
+test('[T14-04] Engine seam: detectBrowserEngine requires userAgent string, pure engine contains no navigator or window', () => {
+  // Pure engine check: src/engine/index.ts must not reference DOM/browser globals
+  const engineSource = readFileSync(resolve(__dirname, '../src/engine/index.ts'), 'utf-8');
+  expect(engineSource).not.toMatch(/\bnavigator\b/);
+  expect(engineSource).not.toMatch(/\bwindow\b/);
+
   // Chrome / Chromium (V8)
   const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
   const chromeInfo = detectBrowserEngine(chromeUA);
@@ -1732,10 +1737,16 @@ test('[T14-04] Engine seam: detectBrowserEngine identifies V8, SpiderMonkey, and
   expect(safariInfo.browser).toContain('Safari');
   expect(safariInfo.label).toContain('JavaScriptCore (Safari');
 
-  // Default / environment fallback (running under Node.js)
-  const defaultInfo = detectBrowserEngine();
-  expect(defaultInfo.engine).toBeDefined();
-  expect(defaultInfo.label).toBeDefined();
+  // Node.js UA string
+  const nodeUA = 'Node.js/v24.21.0 (V8)';
+  const nodeInfo = detectBrowserEngine(nodeUA);
+  expect(nodeInfo.engine).toBe('V8');
+  expect(nodeInfo.label).toContain('V8 (Node.js');
+
+  // Unknown / fallback UA string
+  const unknownInfo = detectBrowserEngine('CustomBot/1.0');
+  expect(unknownInfo.engine).toBe('Unknown');
+  expect(unknownInfo.label).toContain('CustomBot/1.0');
 });
 
 
