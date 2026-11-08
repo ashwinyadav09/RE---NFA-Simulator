@@ -3,7 +3,6 @@ Parked ideas from tickets 08-15, ranked. Nothing here is in scope unless a ticke
 
 | # | Item | From |
 |---|------|------|
-| 3 | Zoom/pan on the step canvas and the textbook canvas | T08, T09 |
 | 4 | Log/linear toggle for stress Panel A | T14 |
 | 5 | Exports: copy-as-CSV for the stress table, SVG of the stress chart, SVG/DOT of the NFA | T14, T15 |
 | 6 | URL query deep links (regex plus settings); depends on the hosting decision (SPEC open question 3) | T15 |
@@ -12,4 +11,7 @@ Parked ideas from tickets 08-15, ranked. Nothing here is in scope unless a ticke
 | 9 | Custom regex or generator in the stress panel (keep the 8 s worker kill) | T14 |
 | 10 | Polish: localStorage for #compact-labels, user-configurable cap overrides, visual badge for repeated live-region announcements, animated trace transitions (respect prefers-reduced-motion) | T09, T10, T15 |
 | 11 | Consolidate early-return build error / notice rendering (layoutNoteEl.textContent vs #canvas innerHTML) into a single helper | T16 |
+| 12 | Two-finger pinch and touch panning on diagram canvases | T17 |
+| 13 | Jump-to-start-state key (Home or 's') on diagram canvas | T17 |
+| 14 | Canvas minimap / viewport overview for large diagrams | T17 |
 | Parked | nop/nop2 layout engines, background pre-render of steps, enumerator language-set cache, DOM class toggle instead of a Graphviz re-run (cache miss about 55-63 ms), "Clear results" button (every build already clears results) | T08, T10, T13, T15 |

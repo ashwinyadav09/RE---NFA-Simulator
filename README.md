@@ -58,6 +58,28 @@ Open the built `dist/index.html` directly in a browser over `file://` (with netw
    - Repeat steps 1 to 3 using keyboard alone (Tab, Enter, Arrow keys).
    - Polite live region (`#live-region`) announces verdicts upon running and step numbers with applied rules upon stepping. All indicators carry explicit textual labels (never colour-only).
 
+## Canvas Navigation & Zoom/Pan Controls
+
+When viewing NFA diagrams (step view, textbook view, or final view), navigation controls allow inspecting large constructions without clutter or page overflow:
+
+- **Toolbar Buttons**:
+  - `+` (Zoom In): Multiplies zoom by 1.2x centered on canvas.
+  - `-` (Zoom Out): Multiplies zoom by 1/1.2x centered on canvas.
+  - `Fit` (Fit to screen): Scales and centers the full diagram within the frame (reaches below 0.1 for very large diagrams).
+  - `100%` (Reset): Resets zoom to 1.0x (100%).
+- **Mouse & Trackpad**:
+  - `Ctrl + Scroll` / `Cmd + Scroll`: Zooms continuously toward/away from the cursor position.
+  - `Drag` (Left click + drag): Pans the diagram canvas smoothly with pointer capture.
+  - `Shift + Scroll` or horizontal scroll: Pans horizontally.
+  - Plain vertical scroll is preserved for native page scrolling.
+- **Keyboard (when canvas is focused)**:
+  - `+` or `=`: Zoom in.
+  - `-` or `_`: Zoom out.
+  - `0`: Reset zoom to 100%.
+  - `f`: Fit entire diagram into canvas.
+  - `Shift + ArrowLeft` / `Shift + ArrowRight` / `Shift + ArrowUp` / `Shift + ArrowDown`: Pan diagram by 10% of frame dimensions.
+  - Plain `ArrowLeft` / `ArrowRight`: Step construction (previous/next step).
+
 ## Publishing & Static Hosting
 
 The production build produced in `dist/index.html` is completely self-contained:

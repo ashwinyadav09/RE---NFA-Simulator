@@ -44,6 +44,10 @@ Words used in the spec, tickets, tests and code. Use these terms; avoid the ones
 
 **Final view** Displays the complete finished NFA. Run switches the view to Final; stepper buttons in Final view return to flat.
 
+**Canvas viewport** The transformable layer (`#canvas-viewport`) hosted inside the fixed diagram container (`#canvas`). Rendered SVG elements sit inside the viewport, allowing CSS transform-based zoom and pan without re-rendering Graphviz diagrams or altering SVG coordinate definitions.
+
+**Viewport mode** The layout positioning mode indicated by `data-viewport-mode`: *fit* (diagram fits inside canvas frame), *start* (anchored at start state at 1.0x scale when fit zoom is below legible threshold 0.5), or *manual* (user interacted via zoom/pan controls).
+
 **Mutant** A deliberately broken copy of a rule used to prove the tests can fail. The suite must kill all thirteen listed in the rules skill.
 
 **Test hooks** State and completion flags (`window.__*`) used by Playwright E2E tests for observation and fault injection. Injected strictly harness-side via `page.addInitScript()`; never present in `dist/index.html`.
