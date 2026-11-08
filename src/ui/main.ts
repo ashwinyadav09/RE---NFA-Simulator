@@ -502,10 +502,6 @@ function clearResults(): void {
     canvasEl.removeAttribute('data-current-step');
     canvasEl.removeAttribute('data-view');
     canvasEl.removeAttribute('data-run-status');
-    canvasEl.removeAttribute('data-zoom');
-    canvasEl.removeAttribute('data-pan-x');
-    canvasEl.removeAttribute('data-pan-y');
-    canvasEl.removeAttribute('data-viewport-mode');
   }
   if (traceEl) {
     traceEl.innerHTML = '';
