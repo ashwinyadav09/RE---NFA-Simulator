@@ -11,5 +11,5 @@ Parked ideas from tickets 08-15, ranked. Nothing here is in scope unless a ticke
 | 8 | Mismatch inspector; suite filter/search | T13 |
 | 9 | Custom regex or generator in the stress panel (keep the 8 s worker kill) | T14 |
 | 10 | Polish: localStorage for #compact-labels, user-configurable cap overrides, visual badge for repeated live-region announcements, animated trace transitions (respect prefers-reduced-motion) | T09, T10, T15 |
-| 12 | Consolidate early-return build error / notice rendering (layoutNoteEl.textContent vs #canvas innerHTML) into a single helper | T16 |
+| 11 | Consolidate early-return build error / notice rendering (layoutNoteEl.textContent vs #canvas innerHTML) into a single helper | T16 |
 | Parked | nop/nop2 layout engines, background pre-render of steps, enumerator language-set cache, DOM class toggle instead of a Graphviz re-run (cache miss about 55-63 ms), "Clear results" button (every build already clears results) | T08, T10, T13, T15 |
