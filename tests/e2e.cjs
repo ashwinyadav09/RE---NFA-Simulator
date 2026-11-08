@@ -1995,6 +1995,78 @@ const assert = require('node:assert');
   assert.strictEqual(activeNodes3, 0, 'Action 3: zero .node.active elements must remain in canvas after switching to merge');
   assert.strictEqual(testInput3, 'ba', 'Action 3: #test-input must keep the user text');
 
+  // Scope C: Clear stale results and status on capped and early-return builds
+  console.log('Testing Scope C: Clear stale results and status on early-return and capped builds...');
+
+  // 1. Capped build (>400 postfix tokens)
+  await page.selectOption('#notation-select', 'standard');
+  await page.selectOption('#concat-select', 'epsilon-link');
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  await page.fill('#test-input', 'ba');
+  await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
+  assert.strictEqual((await page.textContent('#verdict')).trim(), 'ACCEPT');
+  assert((await page.textContent('#trace')).length > 0);
+  assert((await page.textContent('#step-counter')).includes('Final NFA'));
+
+  // Now build expression exceeding 400 postfix tokens (210 symbols + 209 concats = 419 tokens)
+  await page.fill('#regex-input', 'a'.repeat(210));
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const vCap = await page.textContent('#verdict');
+  const tCap = await page.textContent('#trace');
+  const sCap = await page.textContent('#run-status');
+  const stepCounterCap = await page.textContent('#step-counter');
+
+  assert.strictEqual(vCap.trim(), '', 'Capped build: #verdict must be empty');
+  assert.strictEqual(tCap.trim(), '', 'Capped build: #trace must be empty');
+  assert.strictEqual(sCap.trim(), '', 'Capped build: #run-status must be empty');
+  assert.strictEqual(stepCounterCap.trim(), 'step 0 / 0', 'Capped build: #step-counter must be reset to step 0 / 0');
+
+  // 2. Refused build: Engine token limit (>2,000 tokens)
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  await page.fill('#test-input', 'ba');
+  await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
+  assert.strictEqual((await page.textContent('#verdict')).trim(), 'ACCEPT');
+
+  await page.fill('#regex-input', 'a'.repeat(2001));
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  assert.strictEqual((await page.textContent('#verdict')).trim(), '', 'Refused 2000+ build: #verdict must be empty');
+  assert.strictEqual((await page.textContent('#trace')).trim(), '', 'Refused 2000+ build: #trace must be empty');
+  assert.strictEqual((await page.textContent('#run-status')).trim(), '', 'Refused 2000+ build: #run-status must be empty');
+
+  // 3. Refused build: Syntax error
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  await page.fill('#test-input', 'ba');
+  await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
+  assert.strictEqual((await page.textContent('#verdict')).trim(), 'ACCEPT');
+
+  await page.fill('#regex-input', '(a|');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  assert.strictEqual((await page.textContent('#verdict')).trim(), '', 'Syntax error build: #verdict must be empty');
+  assert.strictEqual((await page.textContent('#trace')).trim(), '', 'Syntax error build: #trace must be empty');
+  assert.strictEqual((await page.textContent('#run-status')).trim(), '', 'Syntax error build: #run-status must be empty');
+
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);

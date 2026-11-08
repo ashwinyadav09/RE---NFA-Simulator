@@ -935,11 +935,18 @@ async function handleBuild() {
     if (flatOption) flatOption.disabled = true;
     if (textbookOption) textbookOption.disabled = true;
     if (viewToggleSelect) viewToggleSelect.disabled = false;
+    currentStepIndex = 0;
+    if (stepCounterEl) {
+      stepCounterEl.textContent = 'step 0 / 0';
+    }
 
     const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping} postfix tokens (limit: ${CAPS.textbookStepping}). Table, simulation, and tests remain available.`;
     if (canvasEl) {
       canvasEl.innerHTML = '';
       canvasEl.textContent = message;
+      canvasEl.removeAttribute('data-current-step');
+      canvasEl.removeAttribute('data-view');
+      canvasEl.removeAttribute('data-run-status');
     }
     if (layoutNoteEl) {
       layoutNoteEl.textContent = message;
