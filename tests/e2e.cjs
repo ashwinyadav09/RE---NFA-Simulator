@@ -2051,47 +2051,59 @@ const assert = require('node:assert');
   // Scope C: Clear stale results and status on capped and early-return builds
   console.log('Testing Scope C: Clear stale results and status on early-return and capped builds...');
 
+  async function setupScopeCPriorState() {
+    await page.selectOption('#notation-select', 'standard');
+    await page.selectOption('#concat-select', 'epsilon-link');
+    await page.fill('#regex-input', 'ab');
+    await page.evaluate(() => { window.__buildDone = false; });
+    await page.click('#build-button');
+    await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+    // Stepped trace
+    await page.click('#step-next');
+
+    // Dead run
+    await page.fill('#test-input', 'b');
+    await page.click('#run-button');
+    await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
+    // Click the dead trace step to activate the dead state on canvas
+    await page.click('#trace .trace-step[data-step="1"]');
+    await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-run-status') === 'dead');
+
+    // Final-view toggle
+    await page.selectOption('#view-toggle', 'final');
+    await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+
+    // Ensure all three attributes (data-current-step, data-view, data-run-status) are present
+    await page.evaluate(() => {
+      document.querySelector('#canvas')?.setAttribute('data-current-step', '2');
+    });
+
+    const priorStep = await page.$eval('#canvas', (el) => el.getAttribute('data-current-step'));
+    const priorView = await page.$eval('#canvas', (el) => el.getAttribute('data-view'));
+    const priorRunStatus = await page.$eval('#canvas', (el) => el.getAttribute('data-run-status'));
+    assert.strictEqual(priorStep, '2', 'Prior state must have data-current-step="2"');
+    assert.strictEqual(priorView, 'final', 'Prior state must have data-view="final"');
+    assert.strictEqual(priorRunStatus, 'dead', 'Prior state must have data-run-status="dead"');
+  }
+
   // 1. Capped build (>400 postfix tokens)
-  await page.selectOption('#notation-select', 'standard');
-  await page.selectOption('#concat-select', 'epsilon-link');
-  await page.fill('#regex-input', '(a|b)*a');
-  await page.evaluate(() => { window.__buildDone = false; });
-  await page.click('#build-button');
-  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
-
-  await page.fill('#test-input', 'ba');
-  await page.click('#run-button');
-  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
-  assert.strictEqual((await page.textContent('#verdict')).trim(), 'ACCEPT');
-  assert((await page.textContent('#trace')).length > 0);
-  assert((await page.textContent('#step-counter')).includes('Final NFA'));
-
-  // Now build expression exceeding 400 postfix tokens (210 symbols + 209 concats = 419 tokens)
+  await setupScopeCPriorState();
   await page.fill('#regex-input', 'a'.repeat(210));
   await page.evaluate(() => { window.__buildDone = false; });
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
 
-  const vCap = await page.textContent('#verdict');
-  const tCap = await page.textContent('#trace');
-  const sCap = await page.textContent('#run-status');
-  const stepCounterCap = await page.textContent('#step-counter');
-
-  assert.strictEqual(vCap.trim(), '', 'Capped build: #verdict must be empty');
-  assert.strictEqual(tCap.trim(), '', 'Capped build: #trace must be empty');
-  assert.strictEqual(sCap.trim(), '', 'Capped build: #run-status must be empty');
-  assert.strictEqual(stepCounterCap.trim(), 'step 0 / 0', 'Capped build: #step-counter must be reset to step 0 / 0');
+  assert.strictEqual((await page.textContent('#verdict')).trim(), '', 'Capped build: #verdict must be empty');
+  assert.strictEqual((await page.textContent('#trace')).trim(), '', 'Capped build: #trace must be empty');
+  assert.strictEqual((await page.textContent('#run-status')).trim(), '', 'Capped build: #run-status must be empty');
+  assert.strictEqual((await page.textContent('#step-counter')).trim(), 'step 0 / 0', 'Capped build: #step-counter must be reset to step 0 / 0');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-current-step')), null, 'Capped build: canvas must not have data-current-step');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-view')), null, 'Capped build: canvas must not have data-view');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-run-status')), null, 'Capped build: canvas must not have data-run-status');
 
   // 2. Refused build: Engine token limit (>2,000 tokens)
-  await page.fill('#regex-input', '(a|b)*a');
-  await page.evaluate(() => { window.__buildDone = false; });
-  await page.click('#build-button');
-  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
-  await page.fill('#test-input', 'ba');
-  await page.click('#run-button');
-  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
-  assert.strictEqual((await page.textContent('#verdict')).trim(), 'ACCEPT');
-
+  await setupScopeCPriorState();
   await page.fill('#regex-input', 'a'.repeat(2001));
   await page.evaluate(() => { window.__buildDone = false; });
   await page.click('#build-button');
@@ -2100,17 +2112,13 @@ const assert = require('node:assert');
   assert.strictEqual((await page.textContent('#verdict')).trim(), '', 'Refused 2000+ build: #verdict must be empty');
   assert.strictEqual((await page.textContent('#trace')).trim(), '', 'Refused 2000+ build: #trace must be empty');
   assert.strictEqual((await page.textContent('#run-status')).trim(), '', 'Refused 2000+ build: #run-status must be empty');
+  assert.strictEqual((await page.textContent('#step-counter')).trim(), 'step 0 / 0', 'Refused 2000+ build: #step-counter must be reset to step 0 / 0');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-current-step')), null, 'Refused 2000+ build: canvas must not have data-current-step');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-view')), null, 'Refused 2000+ build: canvas must not have data-view');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-run-status')), null, 'Refused 2000+ build: canvas must not have data-run-status');
 
   // 3. Refused build: Syntax error
-  await page.fill('#regex-input', '(a|b)*a');
-  await page.evaluate(() => { window.__buildDone = false; });
-  await page.click('#build-button');
-  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
-  await page.fill('#test-input', 'ba');
-  await page.click('#run-button');
-  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
-  assert.strictEqual((await page.textContent('#verdict')).trim(), 'ACCEPT');
-
+  await setupScopeCPriorState();
   await page.fill('#regex-input', '(a|');
   await page.evaluate(() => { window.__buildDone = false; });
   await page.click('#build-button');
@@ -2119,6 +2127,10 @@ const assert = require('node:assert');
   assert.strictEqual((await page.textContent('#verdict')).trim(), '', 'Syntax error build: #verdict must be empty');
   assert.strictEqual((await page.textContent('#trace')).trim(), '', 'Syntax error build: #trace must be empty');
   assert.strictEqual((await page.textContent('#run-status')).trim(), '', 'Syntax error build: #run-status must be empty');
+  assert.strictEqual((await page.textContent('#step-counter')).trim(), 'step 0 / 0', 'Syntax error build: #step-counter must be reset to step 0 / 0');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-current-step')), null, 'Syntax error build: canvas must not have data-current-step');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-view')), null, 'Syntax error build: canvas must not have data-view');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-run-status')), null, 'Syntax error build: canvas must not have data-run-status');
 
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
