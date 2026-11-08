@@ -12,6 +12,37 @@ const assert = require('node:assert');
   page.on('pageerror', (err) => errors.push(err.message));
 
   const distHtmlPath = path.resolve(__dirname, '../dist/index.html');
+  const fs = require('node:fs');
+  const distHtml = fs.readFileSync(distHtmlPath, 'utf-8');
+  assert(!distHtml.includes('__force'), 'dist/index.html must not contain __force test hooks');
+
+  await page.addInitScript(() => {
+    const origPostMessage = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function(msg) {
+      if (msg && msg.type === 'test-regexp') {
+        if (window.__e2eWorkerMode === 'timeout') {
+          // Drop message to trigger 2s timeout
+          return;
+        }
+        if (window.__e2eWorkerMode === 'error') {
+          setTimeout(() => {
+            this.dispatchEvent(new MessageEvent('message', {
+              data: { type: 'regexp-result', id: msg.id, error: 'Simulated worker crash error' }
+            }));
+          }, 10);
+          return;
+        }
+        if (window.__e2eWorkerDelay) {
+          setTimeout(() => {
+            origPostMessage.call(this, msg);
+          }, window.__e2eWorkerDelay);
+          return;
+        }
+      }
+      return origPostMessage.call(this, msg);
+    };
+  });
+
   const fileUrl = 'file:///' + distHtmlPath.replace(/\\/g, '/');
 
   console.log(`Opening ${fileUrl}...`);
@@ -1204,6 +1235,148 @@ const assert = require('node:assert');
     return row?.textContent || '';
   });
   assert(rowState9Reverted.startsWith('q9'), 'Unchecking compact labels must revert table state label to q9');
+
+  // ==========================================
+  // Ticket 13: Validation panel, Built-in suite, Differential testing
+  // ==========================================
+  console.log('Testing Ticket 13: Validation panel...');
+
+  // 1. Build (a|b)*a and check all 6 invariants and structural checks
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.fill('#alphabet-input', 'a, b');
+  await page.dispatchEvent('#alphabet-input', 'change');
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.selectOption('#notation-select', 'standard');
+  await page.selectOption('#concat-select', 'epsilon-link');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  for (const checkId of ['#inv-I1', '#inv-I2', '#inv-I3', '#inv-I4', '#inv-size', '#inv-replay']) {
+    const text = await page.textContent(checkId);
+    const passAttr = await page.getAttribute(checkId, 'data-pass');
+    console.log(`${checkId}: ${text}`);
+    assert.strictEqual(passAttr, 'true', `${checkId} must pass`);
+    assert(text.includes('PASS'), `${checkId} must display PASS`);
+  }
+
+  // 2. Run built-in suite and verify suite table
+  await page.evaluate(() => { window.__suiteDone = false; });
+  await page.click('#run-suite');
+  await page.waitForFunction('window.__suiteDone === true', null, { timeout: 15000 });
+
+  const suiteRows = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#suite-table tbody tr')).map((tr) => ({
+      id: tr.getAttribute('data-id'),
+      source: tr.querySelector('td:nth-child(2)')?.textContent || '',
+      expected: tr.querySelector('td:nth-child(4)')?.textContent || '',
+      generated: tr.querySelector('td:nth-child(5)')?.textContent || '',
+      verdict: tr.getAttribute('data-verdict') || '',
+      cellText: tr.querySelector('td:last-child')?.textContent || ''
+    }))
+  );
+  console.log(`Built-in suite executed: ${suiteRows.length} cases`);
+  assert(suiteRows.length >= 20, 'Built-in suite must have at least 20 test cases');
+  assert(suiteRows.every((r) => r.verdict === 'PASS' && r.cellText === 'PASS'), 'All built-in suite cases must pass');
+
+  // Verify (a|b)*abb golden case
+  const abbRow = suiteRows.find((r) => r.source === '(a|b)*abb');
+  assert(abbRow, 'Suite must contain (a|b)*abb');
+  assert(abbRow.expected.includes('abb'), 'Expected must contain abb');
+  assert(abbRow.expected.includes('aabb'), 'Expected must contain aabb');
+  assert(abbRow.expected.includes('babb'), 'Expected must contain babb');
+  assert(abbRow.expected.includes('abab'), 'Expected must contain abab');
+  assert(abbRow.expected.includes('""'), 'Expected must contain empty string');
+  assert.strictEqual(abbRow.verdict, 'PASS', '(a|b)*abb must pass');
+
+  // 3. Differential run on (a|b)*a
+  await page.evaluate(() => { window.__diffDone = false; });
+  await page.click('#diff-run');
+  await page.waitForFunction('window.__diffDone === true', null, { timeout: 30000 });
+
+  const diffStatus = await page.textContent('#diff-status');
+  console.log('Differential status:', diffStatus);
+  assert(diffStatus.includes('k = 8'), 'Differential test must use k = 8 for alphabet of size 2');
+  assert(diffStatus.includes('511 strings'), 'Differential test must report 511 strings for alphabet of size 2');
+
+  const diffResult = await page.evaluate(() => window.__diffResult);
+  assert.strictEqual(diffResult.allPassed, true, 'All oracles must pass on (a|b)*a');
+  assert.strictEqual(diffResult.mismatches.length, 0, 'No mismatches on (a|b)*a');
+  assert.strictEqual(diffResult.oracles.enumerator.status, 'pass');
+  assert.strictEqual(diffResult.oracles.derivatives.status, 'pass');
+  assert.strictEqual(diffResult.oracles.regExp.status, 'pass');
+
+  // 4. Test capped RegExp worker timeout handling (shows 'skipped (timeout)')
+  await page.evaluate(() => {
+    window.__diffDone = false;
+    window.__e2eWorkerMode = 'timeout';
+  });
+  await page.click('#diff-run');
+  await page.waitForFunction('window.__diffDone === true', null, { timeout: 15000 });
+
+  const timeoutStatus = await page.textContent('#diff-status');
+  console.log('Timeout status text:', timeoutStatus);
+  assert(
+    timeoutStatus.includes('ALL PASSED (RegExp oracle skipped: timeout)'),
+    'Status must read ALL PASSED (RegExp oracle skipped: timeout)'
+  );
+
+  const diffResultTimedOut = await page.evaluate(() => window.__diffResult);
+  console.log('RegExp oracle status on timeout:', diffResultTimedOut.oracles.regExp.status);
+  assert.strictEqual(diffResultTimedOut.oracles.regExp.status, 'skipped (timeout)', 'RegExp oracle must show skipped (timeout)');
+  assert.strictEqual(diffResultTimedOut.allPassed, true, 'Overall differential run must remain passed when RegExp is skipped (timeout)');
+  await page.evaluate(() => { window.__e2eWorkerMode = null; });
+
+  // 5. Test worker error -> oracle status 'error', allPassed false, status line "ORACLE ERROR"
+  await page.evaluate(() => {
+    window.__diffDone = false;
+    window.__e2eWorkerMode = 'error';
+  });
+  await page.click('#diff-run');
+  await page.waitForFunction('window.__diffDone === true', null, { timeout: 15000 });
+
+  const errorStatus = await page.textContent('#diff-status');
+  console.log('Worker error status text:', errorStatus);
+  assert(errorStatus.includes('ORACLE ERROR'), 'Status line must read ORACLE ERROR on worker error');
+  assert(!errorStatus.includes('MISMATCH DETECTED'), 'Status line must NOT say MISMATCH DETECTED on worker error');
+
+  const diffResultError = await page.evaluate(() => window.__diffResult);
+  assert.strictEqual(diffResultError.oracles.regExp.status, 'error', 'RegExp oracle status must be error');
+  assert.strictEqual(diffResultError.allPassed, false, 'allPassed must be false on worker error');
+  await page.evaluate(() => { window.__e2eWorkerMode = null; });
+
+  // 6. Deterministic race test: rebuild mid-run, old results must never appear
+  await page.evaluate(() => {
+    window.__diffDone = false;
+    window.__e2eWorkerDelay = 800; // 800ms delay in worker
+  });
+  // Trigger differential run
+  await page.click('#diff-run');
+  // Immediately rebuild mid-run with new expression 'b'
+  await page.fill('#regex-input', 'b');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  // On rebuild, #diff-status and #diff-results must be cleared immediately
+  const statusOnRebuild = await page.textContent('#diff-status');
+  const resultsOnRebuild = await page.textContent('#diff-results');
+  assert.strictEqual(statusOnRebuild, '', '#diff-status must be cleared on build');
+  assert.strictEqual(resultsOnRebuild, '', '#diff-results must be cleared on build');
+
+  // Wait 1200ms to let the delayed worker for old differential run finish
+  await page.waitForTimeout(1200);
+
+  // Stale results must never appear in DOM (discarded by diffGeneration)
+  const statusAfterDelay = await page.textContent('#diff-status');
+  const resultsAfterDelay = await page.textContent('#diff-results');
+  assert.strictEqual(statusAfterDelay, '', 'Stale differential status must not appear after delayed worker finishes');
+  assert.strictEqual(resultsAfterDelay, '', 'Stale differential results must not appear after delayed worker finishes');
+
+  const diffRunDisabled = await page.$eval('#diff-run', (el) => el.disabled);
+  assert.strictEqual(diffRunDisabled, false, '#diff-run button must be re-enabled after mid-run abort or completion');
+
+  await page.evaluate(() => {
+    window.__e2eWorkerDelay = 0;
+  });
 
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
 

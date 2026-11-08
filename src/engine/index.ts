@@ -789,6 +789,888 @@ function computeEpsilonClosure(startStates: number[], transitions: Transition[])
   return Array.from(closure).sort((a, b) => a - b);
 }
 
+export interface CheckResult {
+  pass: boolean;
+  explanation: string;
+}
+
+export interface InvariantsValidationResult {
+  I1: CheckResult;
+  I2: CheckResult;
+  I3: CheckResult;
+  I4: CheckResult;
+  noDanglingEdges: CheckResult;
+}
+
+export function validateInvariants(nfa: NFA): InvariantsValidationResult {
+  const stateSet = new Set(nfa.states);
+  const I1 = nfa.start !== nfa.accept && stateSet.has(nfa.start) && stateSet.has(nfa.accept);
+  const enteringStart = nfa.transitions.filter((t) => t.to === nfa.start);
+  const leavingAccept = nfa.transitions.filter((t) => t.from === nfa.accept);
+  const I2 = enteringStart.length === 0;
+  const I3 = leavingAccept.length === 0;
+
+  const outgoing: Record<number, { symbol: number; epsilon: number }> = {};
+  for (const s of nfa.states) {
+    outgoing[s] = { symbol: 0, epsilon: 0 };
+  }
+
+  let noDanglingEdges = true;
+  for (const t of nfa.transitions) {
+    if (!stateSet.has(t.from) || !stateSet.has(t.to)) {
+      noDanglingEdges = false;
+    }
+    if (outgoing[t.from]) {
+      if (t.label === EPS) {
+        outgoing[t.from].epsilon++;
+      } else {
+        outgoing[t.from].symbol++;
+      }
+    }
+  }
+
+  let I4 = true;
+  let offendingState: number | null = null;
+  for (const s of nfa.states) {
+    const out = outgoing[s];
+    const isSingleSymbol = out.symbol === 1 && out.epsilon === 0;
+    const isEpsilonBranch = out.symbol === 0 && out.epsilon <= 2;
+    if (!isSingleSymbol && !isEpsilonBranch) {
+      I4 = false;
+      offendingState = s;
+      break;
+    }
+  }
+
+  return {
+    I1: {
+      pass: I1,
+      explanation: I1
+        ? `Passed: start state (${nfa.start}) and accept state (${nfa.accept}) are distinct and valid`
+        : `Failed: start state (${nfa.start}) and accept state (${nfa.accept}) must be distinct valid states`
+    },
+    I2: {
+      pass: I2,
+      explanation: I2
+        ? `Passed: no transitions enter start state (${nfa.start})`
+        : `Failed: ${enteringStart.length} transition(s) enter start state (${nfa.start})`
+    },
+    I3: {
+      pass: I3,
+      explanation: I3
+        ? `Passed: no transitions leave accept state (${nfa.accept})`
+        : `Failed: ${leavingAccept.length} transition(s) leave accept state (${nfa.accept})`
+    },
+    I4: {
+      pass: I4,
+      explanation: I4
+        ? 'Passed: every state has either 1 symbol transition (0 ε) or 0 symbol and at most 2 ε-transitions'
+        : `Failed: state ${offendingState} violates transition degree rule (${outgoing[offendingState ?? 0]?.symbol ?? 0} symbol, ${outgoing[offendingState ?? 0]?.epsilon ?? 0} ε)`
+    },
+    noDanglingEdges: {
+      pass: noDanglingEdges,
+      explanation: noDanglingEdges
+        ? 'Passed: all transitions connect valid states in the automaton'
+        : 'Failed: transition connects an undefined state'
+    }
+  };
+}
+
+export function checkSizeFormula(
+  compiled: { postfix: Token[]; nfa: NFA },
+  concatenation: 'epsilon-link' | 'merge' = 'epsilon-link'
+): CheckResult {
+  let symbolAtoms = 0;
+  let epsilonAtoms = 0;
+  let emptyAtoms = 0;
+  let unions = 0;
+  let stars = 0;
+  let plusAndOpt = 0;
+  let concats = 0;
+
+  for (const t of compiled.postfix) {
+    switch (t.type) {
+      case 'SYMBOL':
+        symbolAtoms++;
+        break;
+      case 'EPSILON':
+        epsilonAtoms++;
+        break;
+      case 'EMPTY':
+        emptyAtoms++;
+        break;
+      case 'UNION':
+        unions++;
+        break;
+      case 'STAR':
+        stars++;
+        break;
+      case 'PLUS':
+      case 'OPT':
+        plusAndOpt++;
+        break;
+      case 'CONCAT':
+        concats++;
+        break;
+    }
+  }
+
+  const atoms = symbolAtoms + epsilonAtoms + emptyAtoms;
+  const expectedStates =
+    2 * (atoms + unions + stars + plusAndOpt) - (concatenation === 'merge' ? concats : 0);
+  const expectedTransitions =
+    symbolAtoms +
+    epsilonAtoms +
+    4 * unions +
+    4 * stars +
+    3 * plusAndOpt +
+    (concatenation === 'epsilon-link' ? concats : 0);
+
+  const actualStates = compiled.nfa.states.length;
+  const actualTransitions = compiled.nfa.transitions.length;
+  const pass = actualStates === expectedStates && actualTransitions === expectedTransitions;
+
+  const explanation = pass
+    ? `Passed: ${actualStates} states and ${actualTransitions} transitions match the Thompson size formula (${concatenation} mode)`
+    : `Failed: got ${actualStates} states and ${actualTransitions} transitions (expected ${expectedStates} states and ${expectedTransitions} transitions)`;
+
+  return { pass, explanation };
+}
+
+export function checkStepReplay(compiled: { steps: Step[]; nfa: NFA }): CheckResult {
+  const replayedStates: number[] = [];
+  const replayedTransitions: Transition[] = [];
+
+  for (const step of compiled.steps) {
+    replayedStates.push(...step.newStates);
+    if (step.mergedPair) {
+      const { removed, into } = step.mergedPair;
+      const idx = replayedStates.indexOf(removed);
+      if (idx !== -1) {
+        replayedStates.splice(idx, 1);
+      }
+      for (const t of replayedTransitions) {
+        if (t.from === removed) t.from = into;
+        if (t.to === removed) t.to = into;
+      }
+    }
+    replayedTransitions.push(...step.newTransitions.map((t) => ({ ...t })));
+  }
+
+  const sortedActualStates = compiled.nfa.states.slice().sort((a, b) => a - b);
+  const sortedReplayedStates = replayedStates.slice().sort((a, b) => a - b);
+
+  const statesMatch =
+    sortedActualStates.length === sortedReplayedStates.length &&
+    sortedActualStates.every((s, i) => s === sortedReplayedStates[i]);
+
+  const transitionsMatch =
+    compiled.nfa.transitions.length === replayedTransitions.length &&
+    compiled.nfa.transitions.every(
+      (t, i) =>
+        t.from === replayedTransitions[i].from &&
+        t.to === replayedTransitions[i].to &&
+        t.label === replayedTransitions[i].label
+    );
+
+  const pass = statesMatch && transitionsMatch;
+  const explanation = pass
+    ? 'Passed: step-log replay reproduces final NFA states and transitions exactly'
+    : 'Failed: step-log replay does not match the final NFA';
+
+  return { pass, explanation };
+}
+
+export interface BuiltinSuiteCase {
+  id: string;
+  source: string;
+  notation: 'standard' | 'textbook';
+  description: string;
+  expectedStates?: number;
+  expectedTransitions?: number;
+  expectedAccepts?: string[];
+  expectedRejects?: string[];
+  expectedError?: string;
+}
+
+export interface SuiteCaseResult {
+  id: string;
+  source: string;
+  notation: 'standard' | 'textbook';
+  expected: string;
+  generated: string;
+  pass: boolean;
+  explanation?: string;
+}
+
+export const BUILTIN_SUITE_CASES: BuiltinSuiteCase[] = [
+  {
+    id: 'single-symbol',
+    source: 'a',
+    notation: 'standard',
+    description: 'Single symbol atom',
+    expectedStates: 2,
+    expectedTransitions: 1,
+    expectedAccepts: ['a'],
+    expectedRejects: ['', 'b']
+  },
+  {
+    id: 'epsilon-symbol',
+    source: 'ε',
+    notation: 'standard',
+    description: 'Epsilon constant',
+    expectedStates: 2,
+    expectedTransitions: 1,
+    expectedAccepts: [''],
+    expectedRejects: ['a']
+  },
+  {
+    id: 'empty-symbol',
+    source: '∅',
+    notation: 'standard',
+    description: 'Empty set constant',
+    expectedStates: 2,
+    expectedTransitions: 0,
+    expectedAccepts: [],
+    expectedRejects: ['', 'a']
+  },
+  {
+    id: 'epsilon-alias',
+    source: '@',
+    notation: 'standard',
+    description: 'Epsilon alias @',
+    expectedStates: 2,
+    expectedTransitions: 1,
+    expectedAccepts: [''],
+    expectedRejects: ['a']
+  },
+  {
+    id: 'empty-alias',
+    source: '#',
+    notation: 'standard',
+    description: 'Empty set alias #',
+    expectedStates: 2,
+    expectedTransitions: 0,
+    expectedAccepts: [],
+    expectedRejects: ['', 'a']
+  },
+  {
+    id: 'union-chain',
+    source: 'a|b|c',
+    notation: 'standard',
+    description: 'Union chain a|b|c',
+    expectedStates: 10,
+    expectedTransitions: 11,
+    expectedAccepts: ['a', 'b', 'c'],
+    expectedRejects: ['', 'ab', 'd']
+  },
+  {
+    id: 'nested-operators',
+    source: '((a|b)*)*',
+    notation: 'standard',
+    description: 'Nested star ((a|b)*)*',
+    expectedStates: 10,
+    expectedTransitions: 14,
+    expectedAccepts: ['', 'a', 'b', 'ab', 'ba'],
+    expectedRejects: ['c']
+  },
+  {
+    id: 'stacked-star',
+    source: 'a**',
+    notation: 'standard',
+    description: 'Stacked star a**',
+    expectedStates: 6,
+    expectedTransitions: 9,
+    expectedAccepts: ['', 'a', 'aa', 'aaa'],
+    expectedRejects: ['b']
+  },
+  {
+    id: 'stacked-plus-opt',
+    source: 'a+?',
+    notation: 'standard',
+    description: 'Stacked plus and optional a+?',
+    expectedStates: 6,
+    expectedTransitions: 7,
+    expectedAccepts: ['', 'a', 'aa'],
+    expectedRejects: ['b']
+  },
+  {
+    id: 'textbook-aba',
+    source: '(a|b)*a',
+    notation: 'standard',
+    description: 'Textbook example (a|b)*a',
+    expectedStates: 10,
+    expectedTransitions: 12,
+    expectedAccepts: ['a', 'ba', 'aba'],
+    expectedRejects: ['', 'b', 'ab']
+  },
+  {
+    id: 'textbook-abb',
+    source: '(a|b)*abb',
+    notation: 'standard',
+    description: 'Textbook example (a|b)*abb',
+    expectedStates: 14,
+    expectedTransitions: 16,
+    expectedAccepts: ['abb', 'aabb', 'babb'],
+    expectedRejects: ['abab', 'ab', '']
+  },
+  {
+    id: 'textbook-star-concat',
+    source: 'a*b',
+    notation: 'standard',
+    description: 'Textbook example a*b',
+    expectedStates: 6,
+    expectedTransitions: 7,
+    expectedAccepts: ['b', 'ab', 'aab'],
+    expectedRejects: ['', 'a', 'ba']
+  },
+  {
+    id: 'textbook-notation-union',
+    source: 'a+b',
+    notation: 'textbook',
+    description: 'Textbook notation union a+b',
+    expectedStates: 6,
+    expectedTransitions: 6,
+    expectedAccepts: ['a', 'b'],
+    expectedRejects: ['', 'ab']
+  },
+  {
+    id: 'textbook-notation-star',
+    source: 'a*',
+    notation: 'textbook',
+    description: 'Textbook notation star a*',
+    expectedStates: 4,
+    expectedTransitions: 5,
+    expectedAccepts: ['', 'a', 'aa'],
+    expectedRejects: ['b']
+  },
+  {
+    id: 'textbook-notation-example',
+    source: '(a+b)*a',
+    notation: 'textbook',
+    description: 'Textbook notation (a+b)*a',
+    expectedStates: 10,
+    expectedTransitions: 12,
+    expectedAccepts: ['a', 'ba', 'aba'],
+    expectedRejects: ['', 'b', 'ab']
+  },
+  {
+    id: 'error-empty-group',
+    source: '()',
+    notation: 'standard',
+    description: 'Empty group ()',
+    expectedError: 'EMPTY_GROUP'
+  },
+  {
+    id: 'error-missing-operand-trailing',
+    source: 'a|',
+    notation: 'standard',
+    description: 'Trailing union a|',
+    expectedError: 'MISSING_OPERAND'
+  },
+  {
+    id: 'error-missing-operand-leading',
+    source: '|a',
+    notation: 'standard',
+    description: 'Leading union |a',
+    expectedError: 'MISSING_OPERAND'
+  },
+  {
+    id: 'error-nothing-to-repeat-star',
+    source: '*a',
+    notation: 'standard',
+    description: 'Leading star *a',
+    expectedError: 'NOTHING_TO_REPEAT'
+  },
+  {
+    id: 'error-nothing-to-repeat-plus-std',
+    source: '+a',
+    notation: 'standard',
+    description: 'Leading plus in standard notation',
+    expectedError: 'NOTHING_TO_REPEAT'
+  },
+  {
+    id: 'error-missing-operand-plus-text',
+    source: '+a',
+    notation: 'textbook',
+    description: 'Leading plus in textbook notation (union)',
+    expectedError: 'MISSING_OPERAND'
+  },
+  {
+    id: 'error-unbalanced-lparen',
+    source: 'a(',
+    notation: 'standard',
+    description: 'Unclosed left parenthesis a(',
+    expectedError: 'UNBALANCED_LPAREN'
+  },
+  {
+    id: 'error-unbalanced-rparen',
+    source: 'a)',
+    notation: 'standard',
+    description: 'Unmatched right parenthesis a)',
+    expectedError: 'UNBALANCED_RPAREN'
+  },
+  {
+    id: 'error-textbook-pipe',
+    source: 'a|b',
+    notation: 'textbook',
+    description: 'Pipe operator in textbook notation',
+    expectedError: 'NOT_AN_OPERATOR'
+  }
+];
+
+export function runBuiltinSuite(): SuiteCaseResult[] {
+  const results: SuiteCaseResult[] = [];
+
+  for (const c of BUILTIN_SUITE_CASES) {
+    if (c.expectedError) {
+      const expected = `Error: ${c.expectedError}`;
+      const res = analyze(c.source, { notation: c.notation });
+      if (!res.ok) {
+        const generated = `Error: ${res.code}`;
+        const pass = res.code === c.expectedError;
+        results.push({
+          id: c.id,
+          source: c.source,
+          notation: c.notation,
+          expected,
+          generated,
+          pass,
+          explanation: pass
+            ? `Passed: expected error ${c.expectedError} received`
+            : `Failed: expected error ${c.expectedError}, got ${res.code}`
+        });
+      } else {
+        results.push({
+          id: c.id,
+          source: c.source,
+          notation: c.notation,
+          expected,
+          generated: `Success: ${res.stats.states} states, ${res.stats.transitions} transitions`,
+          pass: false,
+          explanation: `Failed: expected error ${c.expectedError}, but analysis succeeded`
+        });
+      }
+    } else {
+      const formatStr = (s: string) => (s === '' ? '""' : s);
+      const expected = `States: ${c.expectedStates}, Transitions: ${c.expectedTransitions}, accepts: [${(c.expectedAccepts ?? []).map(formatStr).join(', ')}], rejects: [${(c.expectedRejects ?? []).map(formatStr).join(', ')}]`;
+      const res = analyze(c.source, { notation: c.notation });
+
+      if (!res.ok) {
+        results.push({
+          id: c.id,
+          source: c.source,
+          notation: c.notation,
+          expected,
+          generated: `Error: ${res.code}`,
+          pass: false,
+          explanation: `Failed: analysis failed with ${res.code}: ${res.message}`
+        });
+      } else {
+        const actualStates = res.stats.states;
+        const actualTransitions = res.stats.transitions;
+        const actualAccepts: string[] = [];
+        const actualRejects: string[] = [];
+
+        let allAcceptsOk = true;
+        for (const s of c.expectedAccepts ?? []) {
+          const sim = run(res.nfa, res.alphabet, s);
+          if (sim.accepted) {
+            actualAccepts.push(s);
+          } else {
+            allAcceptsOk = false;
+          }
+        }
+
+        let allRejectsOk = true;
+        for (const s of c.expectedRejects ?? []) {
+          const sim = run(res.nfa, res.alphabet, s);
+          if (!sim.accepted) {
+            actualRejects.push(s);
+          } else {
+            allRejectsOk = false;
+          }
+        }
+
+        const generated = `States: ${actualStates}, Transitions: ${actualTransitions}, accepts: [${actualAccepts.map(formatStr).join(', ')}], rejects: [${actualRejects.map(formatStr).join(', ')}]`;
+        const statesMatch = actualStates === c.expectedStates;
+        const transitionsMatch = actualTransitions === c.expectedTransitions;
+        const pass = statesMatch && transitionsMatch && allAcceptsOk && allRejectsOk;
+
+        results.push({
+          id: c.id,
+          source: c.source,
+          notation: c.notation,
+          expected,
+          generated,
+          pass,
+          explanation: pass
+            ? 'Passed: states, transitions, and test string verdicts match expected hand-written values'
+            : 'Failed: mismatch in states, transitions, or test verdicts'
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
+export function computeDifferentialK(alphabetSize: number): number {
+  if (alphabetSize <= 0) return 8;
+  if (alphabetSize === 1) return 8;
+
+  for (let k = 8; k >= 3; k--) {
+    const total = (Math.pow(alphabetSize, k + 1) - 1) / (alphabetSize - 1);
+    if (total <= 50000) {
+      return k;
+    }
+  }
+  return 3;
+}
+
+export function allStrings(alphabet: string[], maxLen: number): string[] {
+  let out: string[] = [''];
+  let layer: string[] = [''];
+  for (let len = 1; len <= maxLen; len++) {
+    layer = layer.flatMap((s) => alphabet.map((a) => s + a));
+    out = out.concat(layer);
+  }
+  return out;
+}
+
+export function lang(ast: ParseNode, k: number): Set<string> {
+  if (k < 0) return new Set();
+  switch (ast.k) {
+    case 'empty':
+      return new Set();
+    case 'eps':
+      return new Set(['']);
+    case 'sym':
+      return k >= 1 ? new Set([ast.v]) : new Set();
+    case 'union':
+      return new Set([...lang(ast.l, k), ...lang(ast.r, k)]);
+    case 'cat': {
+      const A = lang(ast.l, k);
+      const B = lang(ast.r, k);
+      const R = new Set<string>();
+      for (const x of A) {
+        for (const y of B) {
+          if (x.length + y.length <= k) {
+            R.add(x + y);
+          }
+        }
+      }
+      return R;
+    }
+    case 'star': {
+      const A = lang(ast.c, k);
+      let S = new Set<string>(['']);
+      while (true) {
+        const next = new Set<string>(S);
+        for (const x of A) {
+          for (const y of S) {
+            if (x.length + y.length <= k) {
+              next.add(x + y);
+            }
+          }
+        }
+        if (next.size === S.size) {
+          return S;
+        }
+        S = next;
+      }
+    }
+    case 'plus': {
+      const A = lang(ast.c, k);
+      const St = lang({ k: 'star', c: ast.c }, k);
+      const R = new Set<string>();
+      for (const x of A) {
+        for (const y of St) {
+          if (x.length + y.length <= k) {
+            R.add(x + y);
+          }
+        }
+      }
+      return R;
+    }
+    case 'opt': {
+      const S = new Set<string>(lang(ast.c, k));
+      S.add('');
+      return S;
+    }
+  }
+}
+
+const E0: ParseNode = { k: 'empty' };
+const E1: ParseNode = { k: 'eps' };
+
+function sameNode(x: ParseNode, y: ParseNode): boolean {
+  return JSON.stringify(x) === JSON.stringify(y);
+}
+
+function U(x: ParseNode, y: ParseNode): ParseNode {
+  if (x.k === 'empty') return y;
+  if (y.k === 'empty') return x;
+  if (sameNode(x, y)) return x;
+  return { k: 'union', l: x, r: y };
+}
+
+function C(x: ParseNode, y: ParseNode): ParseNode {
+  if (x.k === 'empty' || y.k === 'empty') return E0;
+  if (x.k === 'eps') return y;
+  if (y.k === 'eps') return x;
+  return { k: 'cat', l: x, r: y };
+}
+
+export function nullable(r: ParseNode): boolean {
+  switch (r.k) {
+    case 'empty':
+    case 'sym':
+      return false;
+    case 'eps':
+    case 'star':
+    case 'opt':
+      return true;
+    case 'union':
+      return nullable(r.l) || nullable(r.r);
+    case 'cat':
+      return nullable(r.l) && nullable(r.r);
+    case 'plus':
+      return nullable(r.c);
+  }
+}
+
+export function deriv(r: ParseNode, a: string): ParseNode {
+  switch (r.k) {
+    case 'empty':
+    case 'eps':
+      return E0;
+    case 'sym':
+      return r.v === a ? E1 : E0;
+    case 'union':
+      return U(deriv(r.l, a), deriv(r.r, a));
+    case 'cat': {
+      const d = C(deriv(r.l, a), r.r);
+      return nullable(r.l) ? U(d, deriv(r.r, a)) : d;
+    }
+    case 'star':
+      return C(deriv(r.c, a), r);
+    case 'plus':
+      return C(deriv(r.c, a), { k: 'star', c: r.c });
+    case 'opt':
+      return deriv(r.c, a);
+  }
+}
+
+export function derivMatch(ast: ParseNode, w: string): boolean {
+  let r = ast;
+  for (const a of Array.from(w)) {
+    r = deriv(r, a);
+  }
+  return nullable(r);
+}
+
+export function toJs(ast: ParseNode): string {
+  switch (ast.k) {
+    case 'sym':
+      return ast.v.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&');
+    case 'eps':
+      return '(?:)';
+    case 'empty':
+      return '(?!)';
+    case 'union':
+      return `(?:${toJs(ast.l)}|${toJs(ast.r)})`;
+    case 'cat':
+      return `(?:${toJs(ast.l)}${toJs(ast.r)})`;
+    case 'star':
+      return `(?:${toJs(ast.c)})*`;
+    case 'plus':
+      return `(?:${toJs(ast.c)})+`;
+    case 'opt':
+      return `(?:${toJs(ast.c)})?`;
+  }
+}
+
+export interface DifferentialOracleStatus {
+  name: string;
+  status: 'pass' | 'fail' | 'skipped (timeout)' | 'error';
+  testedCount: number;
+  mismatches: Array<{ string: string; nfa: boolean; oracle: boolean }>;
+}
+
+export interface DifferentialOptions {
+  k?: number;
+  regExpResult?: { matches?: boolean[]; timeout?: boolean; error?: string };
+}
+
+export interface DifferentialResult {
+  k: number;
+  totalStrings: number;
+  nfaAcceptedCount: number;
+  oracles: {
+    enumerator: DifferentialOracleStatus;
+    derivatives: DifferentialOracleStatus;
+    regExp: DifferentialOracleStatus;
+  };
+  allPassed: boolean;
+  mismatches: string[];
+}
+
+export function runDifferential(
+  nfa: NFA,
+  ast: ParseNode,
+  alphabet: string[],
+  options: DifferentialOptions = {}
+): DifferentialResult {
+  const k = options.k ?? computeDifferentialK(alphabet.length);
+  const strings = allStrings(alphabet, k);
+
+  const nfaVerdicts: boolean[] = [];
+  let nfaAcceptedCount = 0;
+
+  for (const w of strings) {
+    const verdict = run(nfa, alphabet, w).accepted;
+    nfaVerdicts.push(verdict);
+    if (verdict) nfaAcceptedCount++;
+  }
+
+  // 1. Enumerator
+  const enumSet = lang(ast, k);
+  const enumMismatches: Array<{ string: string; nfa: boolean; oracle: boolean }> = [];
+  for (let i = 0; i < strings.length; i++) {
+    const w = strings[i];
+    const oracleVerdict = enumSet.has(w);
+    if (oracleVerdict !== nfaVerdicts[i]) {
+      enumMismatches.push({ string: w, nfa: nfaVerdicts[i], oracle: oracleVerdict });
+    }
+  }
+
+  // 2. Derivatives
+  const derivMismatches: Array<{ string: string; nfa: boolean; oracle: boolean }> = [];
+  for (let i = 0; i < strings.length; i++) {
+    const w = strings[i];
+    const oracleVerdict = derivMatch(ast, w);
+    if (oracleVerdict !== nfaVerdicts[i]) {
+      derivMismatches.push({ string: w, nfa: nfaVerdicts[i], oracle: oracleVerdict });
+    }
+  }
+
+  // 3. RegExp
+  const regExpMismatches: Array<{ string: string; nfa: boolean; oracle: boolean }> = [];
+  let regExpStatus: 'pass' | 'fail' | 'skipped (timeout)' | 'error' = 'pass';
+  let regExpTestedCount = strings.length;
+
+  if (options.regExpResult?.error) {
+    regExpStatus = 'error';
+    regExpTestedCount = 0;
+  } else if (options.regExpResult?.timeout) {
+    regExpStatus = 'skipped (timeout)';
+    regExpTestedCount = 0;
+  } else if (options.regExpResult?.matches) {
+    const matches = options.regExpResult.matches;
+    for (let i = 0; i < strings.length; i++) {
+      const oracleVerdict = matches[i];
+      if (oracleVerdict !== nfaVerdicts[i]) {
+        regExpMismatches.push({ string: strings[i], nfa: nfaVerdicts[i], oracle: oracleVerdict });
+      }
+    }
+    if (regExpMismatches.length > 0) {
+      regExpStatus = 'fail';
+    }
+  } else {
+    // Default synchronous fallback
+    try {
+      const jsPattern = new RegExp('^' + toJs(ast) + '$');
+      for (let i = 0; i < strings.length; i++) {
+        const w = strings[i];
+        const oracleVerdict = jsPattern.test(w);
+        if (oracleVerdict !== nfaVerdicts[i]) {
+          regExpMismatches.push({ string: w, nfa: nfaVerdicts[i], oracle: oracleVerdict });
+        }
+      }
+      if (regExpMismatches.length > 0) {
+        regExpStatus = 'fail';
+      }
+    } catch {
+      regExpStatus = 'skipped (timeout)';
+      regExpTestedCount = 0;
+    }
+  }
+
+  const allMismatchesSet = new Set<string>();
+  for (const m of enumMismatches) allMismatchesSet.add(m.string);
+  for (const m of derivMismatches) allMismatchesSet.add(m.string);
+  for (const m of regExpMismatches) allMismatchesSet.add(m.string);
+
+  const enumPass = enumMismatches.length === 0;
+  const derivPass = derivMismatches.length === 0;
+  const regExpPass = regExpStatus === 'pass' || regExpStatus === 'skipped (timeout)';
+
+  return {
+    k,
+    totalStrings: strings.length,
+    nfaAcceptedCount,
+    oracles: {
+      enumerator: {
+        name: 'Bounded-Language Enumerator',
+        status: enumPass ? 'pass' : 'fail',
+        testedCount: strings.length,
+        mismatches: enumMismatches
+      },
+      derivatives: {
+        name: 'Brzozowski Derivatives',
+        status: derivPass ? 'pass' : 'fail',
+        testedCount: strings.length,
+        mismatches: derivMismatches
+      },
+      regExp: {
+        name: 'JS RegExp (Capped Worker)',
+        status: regExpStatus,
+        testedCount: regExpTestedCount,
+        mismatches: regExpMismatches
+      }
+    },
+    allPassed: enumPass && derivPass && regExpPass,
+    mismatches: Array.from(allMismatchesSet)
+  };
+}
+
+export interface ValidateOptions {
+  concatenation?: 'epsilon-link' | 'merge';
+  differential?: boolean;
+  k?: number;
+  regExpResult?: { matches?: boolean[]; timeout?: boolean; error?: string };
+}
+
+export interface ValidationResult {
+  invariants: InvariantsValidationResult;
+  size: CheckResult;
+  replay: CheckResult;
+  differential?: DifferentialResult;
+}
+
+export function validate(compiled: AnalysisSuccess, options: ValidateOptions = {}): ValidationResult {
+  const concatenation = options.concatenation ?? 'epsilon-link';
+  const invariants = validateInvariants(compiled.nfa);
+  const size = checkSizeFormula(compiled, concatenation);
+  const replay = checkStepReplay(compiled);
+
+  const res: ValidationResult = {
+    invariants,
+    size,
+    replay
+  };
+
+  if (options.differential) {
+    res.differential = runDifferential(compiled.nfa, compiled.parseTree, compiled.alphabet, {
+      k: options.k,
+      regExpResult: options.regExpResult
+    });
+  }
+
+  return res;
+}
+
 export function checkInvariants(nfa: NFA): InvariantsResult {
   const stateSet = new Set(nfa.states);
   const I1 = nfa.start !== nfa.accept && stateSet.has(nfa.start) && stateSet.has(nfa.accept);

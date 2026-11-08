@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { analyze, run, runLines, validateAlphabet, getStepSnapshot, EPS, CAPS, AnalysisResult, AnalysisSuccess } from '../src/engine/index';
+import { analyze, run, runLines, validateAlphabet, getStepSnapshot, validateInvariants, checkSizeFormula, checkStepReplay, runBuiltinSuite, computeDifferentialK, runDifferential, validate, allStrings, lang, derivMatch, toJs, EPS, CAPS, AnalysisResult, AnalysisSuccess, NFA } from '../src/engine/index';
 import { parseRD } from './oracles';
 
 function assertSuccess(result: AnalysisResult): asserts result is AnalysisSuccess {
@@ -1368,6 +1368,238 @@ test('[T12-3] Engine seam language and invariant checks catch fragment builder a
   assertSuccess(resMultiEps);
   expect(run(resMultiEps.nfa, resMultiEps.alphabet, 'a').accepted).toBe(true);
   expect(run(resMultiEps.nfa, resMultiEps.alphabet, '').accepted).toBe(true);
+});
+
+test('[T13-01] Engine seam: validateInvariants reports pass/fail with one-line explanation and broken NFAs fail', () => {
+  const result = analyze('(a|b)*a');
+  assertSuccess(result);
+
+  const inv = validateInvariants(result.nfa);
+  expect(inv.I1.pass).toBe(true);
+  expect(inv.I1.explanation).toMatch(/start.*accept/i);
+  expect(inv.I2.pass).toBe(true);
+  expect(inv.I2.explanation).toMatch(/no transitions enter start/i);
+  expect(inv.I3.pass).toBe(true);
+  expect(inv.I3.explanation).toMatch(/no transitions leave accept/i);
+  expect(inv.I4.pass).toBe(true);
+  expect(inv.I4.explanation).toMatch(/symbol|epsilon|transition/i);
+  expect(inv.noDanglingEdges.pass).toBe(true);
+  expect(inv.noDanglingEdges.explanation).toMatch(/valid states/i);
+
+  // Broken I1: start == accept
+  const brokenI1: NFA = { states: [0], start: 0, accept: 0, transitions: [] };
+  const invBroken1 = validateInvariants(brokenI1);
+  expect(invBroken1.I1.pass).toBe(false);
+  expect(invBroken1.I1.explanation).toMatch(/fail/i);
+
+  // Broken I2: transition entering start
+  const brokenI2: NFA = {
+    states: [0, 1],
+    start: 0,
+    accept: 1,
+    transitions: [{ from: 1, to: 0, label: 'a' }]
+  };
+  const invBroken2 = validateInvariants(brokenI2);
+  expect(invBroken2.I2.pass).toBe(false);
+  expect(invBroken2.I2.explanation).toMatch(/fail/i);
+
+  // Broken I3: transition leaving accept
+  const brokenI3: NFA = {
+    states: [0, 1],
+    start: 0,
+    accept: 1,
+    transitions: [{ from: 1, to: 0, label: 'a' }]
+  };
+  const invBroken3 = validateInvariants(brokenI3);
+  expect(invBroken3.I3.pass).toBe(false);
+  expect(invBroken3.I3.explanation).toMatch(/fail/i);
+
+  // Broken I4: state with 2 symbol transitions
+  const brokenI4: NFA = {
+    states: [0, 1, 2],
+    start: 0,
+    accept: 2,
+    transitions: [
+      { from: 0, to: 1, label: 'a' },
+      { from: 0, to: 2, label: 'b' }
+    ]
+  };
+  const invBroken4 = validateInvariants(brokenI4);
+  expect(invBroken4.I4.pass).toBe(false);
+  expect(invBroken4.I4.explanation).toMatch(/fail/i);
+
+  // Broken dangling edge: to = 99
+  const brokenDanglingTo: NFA = {
+    states: [0, 1],
+    start: 0,
+    accept: 1,
+    transitions: [{ from: 0, to: 99, label: 'a' }]
+  };
+  const invDanglingTo = validateInvariants(brokenDanglingTo);
+  expect(invDanglingTo.noDanglingEdges.pass).toBe(false);
+  expect(invDanglingTo.noDanglingEdges.explanation).toMatch(/fail/i);
+
+  // Broken dangling edge: from = 99
+  const brokenDanglingFrom: NFA = {
+    states: [0, 1],
+    start: 0,
+    accept: 1,
+    transitions: [{ from: 99, to: 1, label: 'a' }]
+  };
+  const invDanglingFrom = validateInvariants(brokenDanglingFrom);
+  expect(invDanglingFrom.noDanglingEdges.pass).toBe(false);
+  expect(invDanglingFrom.noDanglingEdges.explanation).toMatch(/fail/i);
+});
+
+test('[T13-02] Engine seam: checkSizeFormula and checkStepReplay report pass/fail with explanation', () => {
+  const result = analyze('(a|b)*a');
+  assertSuccess(result);
+
+  // 1. Valid epsilon-link build
+  const sizeCheck = checkSizeFormula(result, 'epsilon-link');
+  expect(sizeCheck.pass).toBe(true);
+  expect(sizeCheck.explanation).toMatch(/10 states.*12 transitions/i);
+
+  const replayCheck = checkStepReplay(result);
+  expect(replayCheck.pass).toBe(true);
+  expect(replayCheck.explanation).toMatch(/step-log replay/i);
+
+  // 2. Valid merge build: (a|b)*abb -> 11 states, 13 transitions
+  const resultMerge = analyze('(a|b)*abb', { concatenation: 'merge' });
+  assertSuccess(resultMerge);
+  const sizeMerge = checkSizeFormula(resultMerge, 'merge');
+  expect(sizeMerge.pass).toBe(true);
+  expect(sizeMerge.explanation).toMatch(/11 states.*13 transitions/i);
+
+  const replayMerge = checkStepReplay(resultMerge);
+  expect(replayMerge.pass).toBe(true);
+
+  // 3. Broken size formula fails
+  const brokenSizeNfa: NFA = { ...result.nfa, states: [0] };
+  const brokenSize = checkSizeFormula({ ...result, nfa: brokenSizeNfa }, 'epsilon-link');
+  expect(brokenSize.pass).toBe(false);
+  expect(brokenSize.explanation).toMatch(/fail/i);
+
+  // 4. Broken step-log replay fails
+  const brokenSteps = result.steps.slice(0, 3);
+  const brokenReplay = checkStepReplay({ ...result, steps: brokenSteps });
+  expect(brokenReplay.pass).toBe(false);
+  expect(brokenReplay.explanation).toMatch(/fail/i);
+});
+
+test('[T13-03] Engine seam: runBuiltinSuite executes >= 20 hand-written test cases including (a|b)*abb golden and error cases', () => {
+  const results = runBuiltinSuite();
+  expect(results.length).toBeGreaterThanOrEqual(20);
+  expect(results.every((r) => r.pass)).toBe(true);
+
+  // Check (a|b)*abb: abb, aabb, babb accepted; abab, ab, empty string rejected
+  const abbCase = results.find((r) => r.source === '(a|b)*abb' && r.notation === 'standard');
+  expect(abbCase).toBeDefined();
+  expect(abbCase!.pass).toBe(true);
+  expect(abbCase!.expected).toContain('abb');
+  expect(abbCase!.expected).toContain('aabb');
+  expect(abbCase!.expected).toContain('babb');
+  expect(abbCase!.expected).toContain('abab');
+  expect(abbCase!.expected).toContain('""');
+
+  // Check textbook examples
+  const textbookUnionCase = results.find((r) => r.source === '(a+b)*a' && r.notation === 'textbook');
+  expect(textbookUnionCase).toBeDefined();
+  expect(textbookUnionCase!.pass).toBe(true);
+
+  // Check error cases
+  const emptyGroupCase = results.find((r) => r.source === '()');
+  expect(emptyGroupCase).toBeDefined();
+  expect(emptyGroupCase!.expected).toContain('EMPTY_GROUP');
+  expect(emptyGroupCase!.generated).toContain('EMPTY_GROUP');
+
+  const textbookPipeCase = results.find((r) => r.source === 'a|b' && r.notation === 'textbook');
+  expect(textbookPipeCase).toBeDefined();
+  expect(textbookPipeCase!.expected).toContain('NOT_AN_OPERATOR');
+  expect(textbookPipeCase!.generated).toContain('NOT_AN_OPERATOR');
+
+  // Verify all rows have expected versus generated
+  for (const r of results) {
+    expect(r.expected.length).toBeGreaterThan(0);
+    expect(r.generated.length).toBeGreaterThan(0);
+  }
+});
+
+test('[T13-04] Engine seam: computeDifferentialK calculates largest k <= 8 with at most 50,000 strings (floor 3)', () => {
+  expect(computeDifferentialK(0)).toBe(8);
+  expect(computeDifferentialK(1)).toBe(8);
+  expect(computeDifferentialK(2)).toBe(8); // (2^9 - 1) = 511 <= 50,000
+  expect(computeDifferentialK(3)).toBe(8); // (3^9 - 1)/2 = 9,841 <= 50,000
+  expect(computeDifferentialK(4)).toBe(7); // (4^8 - 1)/3 = 21,845 <= 50,000 (k=8 is 87,381)
+  expect(computeDifferentialK(5)).toBe(6); // (5^7 - 1)/4 = 19,531 <= 50,000
+  expect(computeDifferentialK(6)).toBe(5); // (6^6 - 1)/5 = 9,331 <= 50,000
+  expect(computeDifferentialK(10)).toBe(4); // (10^5 - 1)/9 = 11,111 <= 50,000
+  expect(computeDifferentialK(26)).toBe(3); // 18,279 <= 50,000
+  // Size 36: (36^4 - 1)/35 = 47,989 <= 50,000 (within cap at k=3)
+  expect(computeDifferentialK(36)).toBe(3);
+  // Size 37: (37^4 - 1)/36 = 52,060 > 50,000 (via floor 3, 52,060 strings)
+  expect(computeDifferentialK(37)).toBe(3);
+  expect(computeDifferentialK(50)).toBe(3); // Floor 3
+});
+
+test('[T13-05] Engine seam: runDifferential validates NFA against 3 oracles, reports k, handles timeout and mismatches', () => {
+  const result = analyze('(a|b)*a');
+  assertSuccess(result);
+
+  // 1. All 3 oracles pass on (a|b)*a with k=8 (511 strings)
+  const diff = runDifferential(result.nfa, result.parseTree, result.alphabet);
+  expect(diff.k).toBe(8);
+  expect(diff.totalStrings).toBe(511);
+  expect(diff.allPassed).toBe(true);
+  expect(diff.mismatches).toEqual([]);
+  expect(diff.oracles.enumerator.status).toBe('pass');
+  expect(diff.oracles.derivatives.status).toBe('pass');
+  expect(diff.oracles.regExp.status).toBe('pass');
+
+  // 2. Simulated RegExp timeout yields 'skipped (timeout)' and does not fail overall validation
+  const diffTimeout = runDifferential(result.nfa, result.parseTree, result.alphabet, {
+    regExpResult: { timeout: true }
+  });
+  expect(diffTimeout.oracles.regExp.status).toBe('skipped (timeout)');
+  expect(diffTimeout.allPassed).toBe(true);
+
+  // 3. Broken NFA reports mismatching strings
+  const brokenNfa: NFA = {
+    ...result.nfa,
+    transitions: result.nfa.transitions.filter((t) => t.to !== result.nfa.accept)
+  };
+  const diffBroken = runDifferential(brokenNfa, result.parseTree, result.alphabet, { k: 2 });
+  expect(diffBroken.allPassed).toBe(false);
+  expect(diffBroken.mismatches.length).toBeGreaterThan(0);
+  expect(diffBroken.mismatches[0]).toBe('a');
+  expect(diffBroken.oracles.enumerator.status).toBe('fail');
+  expect(diffBroken.oracles.derivatives.status).toBe('fail');
+
+  // 4. Worker error sets status to 'error', fails allPassed, and does not fall back to sync RegExp
+  const diffWorkerError = runDifferential(result.nfa, result.parseTree, result.alphabet, {
+    regExpResult: { error: 'Worker error: syntax error' }
+  });
+  expect(diffWorkerError.oracles.regExp.status).toBe('error');
+  expect(diffWorkerError.allPassed).toBe(false);
+});
+
+test('[T13-06] Engine seam: validate combines invariants I1-I4, size formula, step replay, and optional differential', () => {
+  const result = analyze('(a|b)*a');
+  assertSuccess(result);
+
+  const val = validate(result);
+  expect(val.invariants.I1.pass).toBe(true);
+  expect(val.invariants.I2.pass).toBe(true);
+  expect(val.invariants.I3.pass).toBe(true);
+  expect(val.invariants.I4.pass).toBe(true);
+  expect(val.size.pass).toBe(true);
+  expect(val.replay.pass).toBe(true);
+  expect(val.differential).toBeUndefined();
+
+  const valDiff = validate(result, { differential: true });
+  expect(valDiff.differential).toBeDefined();
+  expect(valDiff.differential!.allPassed).toBe(true);
+  expect(valDiff.differential!.k).toBe(8);
 });
 
 

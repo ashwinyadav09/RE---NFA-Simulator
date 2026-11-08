@@ -9,7 +9,16 @@ import {
   Step,
   getStepSnapshot,
   validateAlphabet,
-  CAPS
+  CAPS,
+  validateInvariants,
+  checkSizeFormula,
+  checkStepReplay,
+  runBuiltinSuite,
+  computeDifferentialK,
+  runDifferential,
+  allStrings,
+  toJs,
+  CheckResult
 } from '../engine/index';
 import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions } from '../diagram/index';
 import InlineWorker from './worker.ts?worker&inline';
@@ -19,6 +28,7 @@ let currentAnalysis: AnalysisSuccess | null = null;
 let userEditedAlphabet: string[] | null = null;
 let buildGeneration = 0;
 let stepGeneration = 0;
+let diffGeneration = 0;
 let currentStepIndex = 1;
 let currentView: 'flat' | 'textbook' | 'final' = 'flat';
 let currentActiveStates: number[] | null = null;
@@ -30,16 +40,69 @@ let masterPositions: Map<number, [number, number]> | null = null;
 let stepSvgCache = new Map<string, string>();
 let layoutFailed = false;
 
+let workerInstance: Worker | null = null;
+let workerReqSeq = 0;
+
+function getWorker(): Worker {
+  if (!workerInstance) {
+    workerInstance = new InlineWorker();
+    workerInstance.onmessage = (e: MessageEvent) => {
+      if (e.data && 'pong' in e.data) {
+        const statusEl = document.getElementById('worker-status');
+        if (statusEl) {
+          statusEl.textContent = JSON.stringify(e.data);
+        }
+        (window as any).__workerResult = e.data;
+      }
+    };
+  }
+  return workerInstance;
+}
+
+function resetWorker(): void {
+  if (workerInstance) {
+    try {
+      workerInstance.terminate();
+    } catch {}
+    workerInstance = null;
+  }
+}
+
+function runRegExpInWorker(
+  pattern: string,
+  strings: string[],
+  timeoutMs = 2000
+): Promise<{ matches?: boolean[]; timeout?: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const worker = getWorker();
+    const id = ++workerReqSeq;
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resetWorker();
+      resolve({ timeout: true });
+    }, timeoutMs);
+
+    const onMessage = (e: MessageEvent) => {
+      if (e.data && e.data.type === 'regexp-result' && e.data.id === id) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        worker.removeEventListener('message', onMessage);
+        resolve({ matches: e.data.matches, error: e.data.error, timeout: false });
+      }
+    };
+
+    worker.addEventListener('message', onMessage);
+    worker.postMessage({ type: 'test-regexp', id, pattern, strings });
+  });
+}
+
 // Setup inline worker
 try {
-  const worker = new InlineWorker();
-  worker.onmessage = (e: MessageEvent) => {
-    const statusEl = document.getElementById('worker-status');
-    if (statusEl) {
-      statusEl.textContent = JSON.stringify(e.data);
-    }
-    (window as any).__workerResult = e.data;
-  };
+  const worker = getWorker();
   worker.postMessage({ ping: 'hello' });
 } catch (err) {
   console.error('Worker initialization failed', err);
@@ -77,6 +140,17 @@ const stepSpeedSelect = document.getElementById('step-speed') as HTMLSelectEleme
 const viewToggleSelect = document.getElementById('view-toggle') as HTMLSelectElement | null;
 const stepLogEl = document.getElementById('step-log');
 const compactLabelsEl = document.getElementById('compact-labels') as HTMLInputElement | null;
+const invI1El = document.getElementById('inv-I1');
+const invI2El = document.getElementById('inv-I2');
+const invI3El = document.getElementById('inv-I3');
+const invI4El = document.getElementById('inv-I4');
+const invSizeEl = document.getElementById('inv-size');
+const invReplayEl = document.getElementById('inv-replay');
+const runSuiteBtn = document.getElementById('run-suite') as HTMLButtonElement | null;
+const suiteTableEl = document.getElementById('suite-table');
+const diffRunBtn = document.getElementById('diff-run') as HTMLButtonElement | null;
+const diffStatusEl = document.getElementById('diff-status');
+const diffResultsEl = document.getElementById('diff-results');
 
 function isCompactLabels(): boolean {
   return !!compactLabelsEl?.checked;
@@ -266,6 +340,16 @@ function clearResults(): void {
     runStatusEl.textContent = '';
     runStatusEl.className = '';
   }
+
+  for (const el of [invI1El, invI2El, invI3El, invI4El, invSizeEl, invReplayEl]) {
+    if (el) {
+      el.textContent = '';
+      el.removeAttribute('data-pass');
+      el.className = 'check-item';
+    }
+  }
+  if (diffStatusEl) diffStatusEl.textContent = '';
+  if (diffResultsEl) diffResultsEl.innerHTML = '';
 
   currentAnalysis = null;
 }
@@ -632,10 +716,36 @@ function stopPlayback(): void {
   }
 }
 
+function renderValidationChecks(analysis: AnalysisSuccess, concatenation: 'epsilon-link' | 'merge'): void {
+  const inv = validateInvariants(analysis.nfa);
+  const size = checkSizeFormula(analysis, concatenation);
+  const replay = checkStepReplay(analysis);
+
+  const items: Array<{ el: HTMLElement | null; label: string; check: CheckResult }> = [
+    { el: invI1El, label: 'I1 (Distinct Start & Accept)', check: inv.I1 },
+    { el: invI2El, label: 'I2 (No Transition Enters Start)', check: inv.I2 },
+    { el: invI3El, label: 'I3 (No Transition Leaves Accept)', check: inv.I3 },
+    { el: invI4El, label: 'I4 (State Degree Constraints)', check: inv.I4 },
+    { el: invSizeEl, label: 'Size Formula', check: size },
+    { el: invReplayEl, label: 'Step-log Replay', check: replay }
+  ];
+
+  for (const item of items) {
+    if (item.el) {
+      item.el.setAttribute('data-pass', String(item.check.pass));
+      item.el.className = `check-item ${item.check.pass ? 'pass' : 'fail'}`;
+      item.el.textContent = `${item.check.pass ? 'PASS' : 'FAIL'} - ${item.label}: ${item.check.explanation}`;
+    }
+  }
+}
+
 async function handleBuild() {
   if (!inputEl) return;
   stopPlayback();
   const gen = ++buildGeneration;
+  ++diffGeneration;
+  if (diffStatusEl) diffStatusEl.textContent = '';
+  if (diffResultsEl) diffResultsEl.innerHTML = '';
   const source = inputEl.value;
 
   const notation = notationSelectEl?.value === 'textbook' ? 'textbook' : 'standard';
@@ -729,6 +839,8 @@ async function handleBuild() {
   if (stepLogEl) {
     renderStepLog(stepLogEl, analysis.steps);
   }
+
+  renderValidationChecks(analysis, concatenation);
 
   if (stepPlayBtn) {
     stepPlayBtn.disabled = false;
@@ -1162,5 +1274,156 @@ if (stepPrevBtn) stepPrevBtn.disabled = true;
 if (stepPlayBtn) stepPlayBtn.disabled = true;
 if (stepNextBtn) stepNextBtn.disabled = true;
 if (stepLastBtn) stepLastBtn.disabled = true;
+
+if (runSuiteBtn && suiteTableEl) {
+  runSuiteBtn.addEventListener('click', () => {
+    const results = runBuiltinSuite();
+    const tbody = suiteTableEl.querySelector('tbody');
+    if (tbody) {
+      tbody.innerHTML = '';
+      for (const r of results) {
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-id', r.id);
+        tr.setAttribute('data-verdict', r.pass ? 'PASS' : 'FAIL');
+        tr.className = r.pass ? 'row-pass' : 'row-fail';
+
+        const tdId = document.createElement('td');
+        tdId.textContent = r.id;
+
+        const tdSource = document.createElement('td');
+        tdSource.textContent = r.source;
+
+        const tdNotation = document.createElement('td');
+        tdNotation.textContent = r.notation;
+
+        const tdExpected = document.createElement('td');
+        tdExpected.textContent = r.expected;
+
+        const tdGenerated = document.createElement('td');
+        tdGenerated.textContent = r.generated;
+
+        const tdVerdict = document.createElement('td');
+        tdVerdict.textContent = r.pass ? 'PASS' : 'FAIL';
+        tdVerdict.className = r.pass ? 'badge-pass' : 'badge-fail';
+
+        tr.appendChild(tdId);
+        tr.appendChild(tdSource);
+        tr.appendChild(tdNotation);
+        tr.appendChild(tdExpected);
+        tr.appendChild(tdGenerated);
+        tr.appendChild(tdVerdict);
+
+        tbody.appendChild(tr);
+      }
+    }
+    (window as any).__suiteDone = true;
+    (window as any).__suiteResults = results;
+  });
+}
+
+if (diffRunBtn) {
+  diffRunBtn.addEventListener('click', async () => {
+    if (!currentAnalysis) {
+      if (diffStatusEl) {
+        diffStatusEl.textContent = 'Please build an expression first.';
+      }
+      return;
+    }
+
+    const gen = ++diffGeneration;
+    diffRunBtn.disabled = true;
+    (window as any).__diffDone = false;
+
+    try {
+      const activeAlphabet = userEditedAlphabet ?? currentAnalysis.alphabet;
+      const k = computeDifferentialK(activeAlphabet.length);
+      const strings = allStrings(activeAlphabet, k);
+
+      if (diffStatusEl) {
+        diffStatusEl.textContent = `Running differential test: k = ${k} (${strings.length.toLocaleString()} strings) over alphabet {${activeAlphabet.join(', ')}}...`;
+      }
+      if (diffResultsEl) {
+        diffResultsEl.innerHTML = '';
+      }
+
+      // Yield to allow UI update
+      await new Promise((r) => setTimeout(r, 10));
+      if (gen !== diffGeneration) return;
+
+      // Run RegExp oracle in Web Worker with 2,000ms cap
+      const jsPattern = toJs(currentAnalysis.parseTree);
+      const regExpRes = await runRegExpInWorker(jsPattern, strings, 2000);
+      if (gen !== diffGeneration) return;
+
+      // Yield to prevent UI freezing
+      await new Promise((r) => setTimeout(r, 0));
+      if (gen !== diffGeneration) return;
+
+      const diffResult = runDifferential(currentAnalysis.nfa, currentAnalysis.parseTree, activeAlphabet, {
+        k,
+        regExpResult: regExpRes
+      });
+      if (gen !== diffGeneration) return;
+
+      let statusSummary = '';
+      const oraclesList = Object.values(diffResult.oracles);
+      if (oraclesList.some((o) => o.status === 'error')) {
+        statusSummary = 'ORACLE ERROR';
+      } else if (diffResult.allPassed) {
+        if (diffResult.oracles.regExp.status === 'skipped (timeout)') {
+          statusSummary = 'ALL PASSED (RegExp oracle skipped: timeout)';
+        } else {
+          statusSummary = 'ALL PASSED';
+        }
+      } else {
+        statusSummary = 'MISMATCH DETECTED';
+      }
+
+      if (diffStatusEl) {
+        diffStatusEl.textContent = `Differential test completed for k = ${k} (${diffResult.totalStrings.toLocaleString()} strings tested): ${statusSummary}`;
+      }
+
+      if (diffResultsEl) {
+        const regExpStatus = diffResult.oracles.regExp.status;
+        const regExpBadgeClass =
+          regExpStatus === 'pass'
+            ? 'badge-pass'
+            : regExpStatus === 'skipped (timeout)'
+              ? 'badge-skipped'
+              : 'badge-fail';
+
+        diffResultsEl.innerHTML = `
+          <div class="diff-oracle-row" data-oracle="enumerator">
+            <strong>${diffResult.oracles.enumerator.name}:</strong>
+            <span class="badge ${diffResult.oracles.enumerator.status === 'pass' ? 'badge-pass' : 'badge-fail'}">${diffResult.oracles.enumerator.status.toUpperCase()}</span>
+            (${diffResult.oracles.enumerator.testedCount.toLocaleString()} strings)
+          </div>
+          <div class="diff-oracle-row" data-oracle="derivatives">
+            <strong>${diffResult.oracles.derivatives.name}:</strong>
+            <span class="badge ${diffResult.oracles.derivatives.status === 'pass' ? 'badge-pass' : 'badge-fail'}">${diffResult.oracles.derivatives.status.toUpperCase()}</span>
+            (${diffResult.oracles.derivatives.testedCount.toLocaleString()} strings)
+          </div>
+          <div class="diff-oracle-row" data-oracle="regExp">
+            <strong>${diffResult.oracles.regExp.name}:</strong>
+            <span class="badge ${regExpBadgeClass}">${regExpStatus}</span>
+            (${diffResult.oracles.regExp.testedCount.toLocaleString()} strings)
+          </div>
+          <div class="diff-mismatches-summary">
+            ${
+              diffResult.mismatches.length === 0
+                ? '<p class="mismatches-none">No mismatches found.</p>'
+                : `<p class="mismatches-found">Mismatches found (${diffResult.mismatches.length}): <code>${diffResult.mismatches.slice(0, 20).join(', ')}</code></p>`
+            }
+          </div>
+        `;
+      }
+
+      (window as any).__diffDone = true;
+      (window as any).__diffResult = diffResult;
+    } finally {
+      diffRunBtn.disabled = false;
+    }
+  });
+}
 
 (window as any).__ready = true;
