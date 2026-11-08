@@ -510,6 +510,15 @@ export function toDot(input: NFA | StepSnapshot, options?: DiagramOptions): stri
   return lines.join('\n');
 }
 
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 export interface StressChartPoint {
   n: number;
   regExpTime?: number | null;
@@ -530,11 +539,12 @@ export function renderStressChartSvg(
   const width = options.width || 760;
   const height = options.height || 320;
   const title = options.title || 'Backtracking vs Thompson NFA';
+  const escapedTitle = escapeXml(title);
 
   if (points.length === 0) {
-    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${title}">
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapedTitle}">
   <rect width="${width}" height="${height}" fill="#fafafa" rx="6" />
-  <text x="${width / 2}" y="24" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#202124">${title}</text>
+  <text x="${width / 2}" y="24" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#202124">${escapedTitle}</text>
   <text x="${width / 2}" y="${height / 2 + 10}" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#777">Run stress test to see comparison chart</text>
 </svg>`;
   }
@@ -583,9 +593,9 @@ export function renderStressChartSvg(
   };
 
   const lines: string[] = [];
-  lines.push(`<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${title}">`);
+  lines.push(`<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapedTitle}">`);
   lines.push(`  <rect width="${width}" height="${height}" fill="#fafafa" rx="6" />`);
-  lines.push(`  <text x="${width / 2}" y="22" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#202124">${title}</text>`);
+  lines.push(`  <text x="${width / 2}" y="22" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#202124">${escapedTitle}</text>`);
 
   // Global Legend
   lines.push(`  <g transform="translate(${width - 240}, 10)" font-family="sans-serif" font-size="11">`);
@@ -725,9 +735,16 @@ export function renderStressChartSvg(
   pointsB.forEach((pt) => {
     const x = getXB(pt.n);
     const y = getYB(pt.nfaTime);
-    lines.push(`  <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="#1a73e8">`);
-    lines.push(`    <title>n=${pt.n}: NFA (0-1000) ${pt.nfaTime.toFixed(2)}ms</title>`);
-    lines.push(`  </circle>`);
+    if (pt.nfaTime > panelB.maxY) {
+      lines.push(`  <g class="clipped-marker" transform="translate(${x.toFixed(1)}, ${panelB.top.toFixed(1)})">`);
+      lines.push(`    <polygon points="0,-6 -5,3 5,3" fill="#1a73e8" stroke="#ffffff" stroke-width="1" />`);
+      lines.push(`    <title>n=${pt.n}: NFA (0-1000) ${pt.nfaTime.toFixed(2)}ms (clipped)</title>`);
+      lines.push(`  </g>`);
+    } else {
+      lines.push(`  <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="#1a73e8">`);
+      lines.push(`    <title>n=${pt.n}: NFA (0-1000) ${pt.nfaTime.toFixed(2)}ms</title>`);
+      lines.push(`  </circle>`);
+    }
   });
 
   lines.push('</svg>');

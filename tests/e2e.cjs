@@ -1416,9 +1416,11 @@ const assert = require('node:assert');
   // 3. Start run for default family ((a*)*b on a^n)
   await page.click('#stress-run');
 
-  // Confirm #diff-run is disabled while stress run is active
+  // Confirm #diff-run and #stress-family are disabled while stress run is active
   const diffDisabledDuringStress = await page.$eval('#diff-run', (el) => el.disabled);
   assert.strictEqual(diffDisabledDuringStress, true, '#diff-run must be disabled while stress run is active');
+  const familyDisabledDuringStress = await page.$eval('#stress-family', (el) => el.disabled);
+  assert.strictEqual(familyDisabledDuringStress, true, '#stress-family must be disabled while stress run is active');
 
   // 4. Verify a row appears in #stress-table
   await page.waitForFunction('window.__stressRowAdded === true', null, { timeout: 15000 });
@@ -1447,6 +1449,8 @@ const assert = require('node:assert');
 
   const diffReEnabledAfterStress = await page.$eval('#diff-run', (el) => el.disabled);
   assert.strictEqual(diffReEnabledAfterStress, false, '#diff-run must be re-enabled after stress run finishes or cancels');
+  const familyReEnabledAfterStress = await page.$eval('#stress-family', (el) => el.disabled);
+  assert.strictEqual(familyReEnabledAfterStress, false, '#stress-family must be re-enabled after stress run finishes or cancels');
 
   const rowTextsAfterCancel = await page.evaluate(() =>
     Array.from(document.querySelectorAll('#stress-table tbody tr')).map((r) => r.textContent)
@@ -1471,6 +1475,32 @@ const assert = require('node:assert');
 
   await page.click('#stress-cancel');
   await page.waitForFunction('window.__stressDone === true', null, { timeout: 15000 });
+
+  // 9. Item 1: Cancel while pending worker call with window.__e2eWorkerMode = 'timeout'
+  console.log('Testing cancel during pending worker call with __e2eWorkerMode = timeout...');
+  await page.evaluate(() => {
+    window.__e2eWorkerMode = 'timeout';
+    window.__stressDone = false;
+  });
+  await page.click('#stress-run');
+  await page.waitForFunction(() => {
+    const status = document.querySelector('#stress-status')?.textContent;
+    return status && status.includes('Testing n = 12...');
+  }, null, { timeout: 15000 });
+  await page.click('#stress-cancel');
+  await page.waitForFunction('window.__stressDone === true', null, { timeout: 15000 });
+  await page.evaluate(() => { window.__e2eWorkerMode = null; });
+
+  const cancelPendingRows = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#stress-table tbody tr')).map((r) => r.textContent)
+  );
+  console.log('Pending cancel row count:', cancelPendingRows.length);
+  for (const text of cancelPendingRows) {
+    assert(!text.includes('TIMEOUT'), 'No row must contain TIMEOUT when cancelled during pending worker call');
+    assert(!text.includes('8,000'), 'No row must contain 8,000 when cancelled during pending worker call');
+  }
+  const timeoutMarkerExists = await page.evaluate(() => !!document.querySelector('#stress-chart-container #panelA-timeout'));
+  assert.strictEqual(timeoutMarkerExists, false, 'Chart must not contain a timeout marker when cancelled');
 
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
 

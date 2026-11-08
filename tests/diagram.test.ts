@@ -1175,6 +1175,51 @@ test('[T14-08] Diagram seam: 8 s timeout marker stays at the ceiling of Panel A 
   expect(yMulti).toBe(ySingle);
 });
 
+test('[T14-09] Diagram seam: Panel B clips slow NFA (>10ms) to ceiling with distinct clipped marker and true time in title', () => {
+  const p7: StressChartPoint = { n: 100, nfaTime: 7.0 };
+  const p18: StressChartPoint = { n: 500, nfaTime: 18.0 };
+
+  const svg7 = renderStressChartSvg([p7]);
+  // 7 ms is within [0, 10] domain, not marked as clipped
+  expect(svg7).not.toContain('class="clipped-marker"');
+  expect(svg7).toContain('7.00ms');
+
+  const svgBoth = renderStressChartSvg([p7, p18]);
+  // 18 ms is clipped and marked with distinct clipped marker
+  expect(svgBoth).toContain('class="clipped-marker"');
+  expect(svgBoth).toContain('18.00ms');
+  // It is drawn at the ceiling (panelB.top = 50.0)
+  expect(svgBoth).toMatch(/<g[^>]*class="clipped-marker"[^>]*transform="translate\(([0-9.]+),\s*50\.0\)"/);
+
+  // Adding the clipped point moves no other point
+  // Coordinates of p7 must remain identical
+  const getCircleCoords = (svg: string, label: string) => {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`<circle\\s+cx="([0-9.]+)"\\s+cy="([0-9.]+)"[^>]*>\\s*<title>${escaped}<\\/title>`, 'i');
+    const m = svg.match(regex);
+    if (!m) return null;
+    return { cx: parseFloat(m[1]), cy: parseFloat(m[2]) };
+  };
+  const c7Before = getCircleCoords(svg7, 'n=100: NFA (0-1000) 7.00ms');
+  const c7After = getCircleCoords(svgBoth, 'n=100: NFA (0-1000) 7.00ms');
+  expect(c7Before).not.toBeNull();
+  expect(c7After).toEqual(c7Before);
+});
+
+test('[T14-10] Diagram seam: renderStressChartSvg escapes title in <text> and aria-label', () => {
+  const titleWithSpecialChars = 'Test <family> & "bench"';
+  const svgEmpty = renderStressChartSvg([], { title: titleWithSpecialChars });
+  expect(svgEmpty).toContain('aria-label="Test &lt;family&gt; &amp; &quot;bench&quot;"');
+  expect(svgEmpty).toContain('<text x="380" y="24" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#202124">Test &lt;family&gt; &amp; &quot;bench&quot;</text>');
+  expect(svgEmpty).not.toContain('<family>');
+
+  const svgWithPoints = renderStressChartSvg([{ n: 12, nfaTime: 1.0 }], { title: titleWithSpecialChars });
+  expect(svgWithPoints).toContain('aria-label="Test &lt;family&gt; &amp; &quot;bench&quot;"');
+  expect(svgWithPoints).toContain('Test &lt;family&gt; &amp; &quot;bench&quot;</text>');
+  expect(svgWithPoints).not.toContain('<family>');
+});
+
+
 
 
 

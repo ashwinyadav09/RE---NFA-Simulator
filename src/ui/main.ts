@@ -109,7 +109,7 @@ function runRegExpInWorker(
       activeWorkerOwner = null;
       activeWorkerCanceller = null;
       clearTimeout(timer);
-      resolve({ cancelled: true });
+      resolve({ timeout: true, cancelled: true });
     };
 
     const onMessage = (e: MessageEvent) => {
@@ -1509,6 +1509,9 @@ if (stressRunBtn) {
     if (diffRunBtn) {
       diffRunBtn.disabled = true;
     }
+    if (stressFamilySelect) {
+      stressFamilySelect.disabled = true;
+    }
     if (stressCancelBtn) {
       stressCancelBtn.style.display = 'inline-block';
     }
@@ -1581,10 +1584,6 @@ if (stressRunBtn) {
         } else {
           regExpTimeDisplay = '— (skipped)';
           regExpVerdictDisplay = '—';
-        }
-
-        if (stressCancelled || gen !== stressGeneration) {
-          break;
         }
 
         chartPoints.push({
@@ -1669,6 +1668,9 @@ if (stressRunBtn) {
       stressIsActive = false;
       if (gen === stressGeneration) {
         stressRunBtn.disabled = diffIsActive;
+        if (stressFamilySelect) {
+          stressFamilySelect.disabled = false;
+        }
         if (stressCancelBtn) {
           stressCancelBtn.style.display = 'none';
         }
