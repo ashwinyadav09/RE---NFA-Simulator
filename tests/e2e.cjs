@@ -182,6 +182,7 @@ const assert = require('node:assert');
     });
 
     // 4. Wrap action listeners for state hooks
+    let inFlightBuilds = 0;
     const origAEL = EventTarget.prototype.addEventListener;
     EventTarget.prototype.addEventListener = function(type, listener, options) {
       const target = this;
@@ -189,15 +190,48 @@ const assert = require('node:assert');
       if (
         (id === 'build-button' && type === 'click') ||
         (id === 'notation-select' && type === 'change') ||
-        (id === 'concat-select' && type === 'change') ||
-        (id === 'preset-select' && type === 'change')
+        (id === 'concat-select' && type === 'change')
       ) {
         const wrapped = async function(...args) {
+          inFlightBuilds++;
           window.__buildDone = false;
           try {
             return await listener.apply(this, args);
           } finally {
-            window.__buildDone = true;
+            inFlightBuilds--;
+            if (inFlightBuilds <= 0) {
+              inFlightBuilds = 0;
+              window.__buildDone = true;
+            }
+          }
+        };
+        return origAEL.call(this, type, wrapped, options);
+      }
+      if (id === 'preset-select' && type === 'change') {
+        const wrapped = async function(...args) {
+          inFlightBuilds++;
+          window.__buildDone = false;
+          try {
+            await listener.apply(this, args);
+            await new Promise((resolve) => {
+              const checkDone = () => {
+                const counter = document.getElementById('step-counter')?.textContent || '';
+                const err = document.getElementById('error-message')?.textContent || '';
+                const canvasText = document.getElementById('canvas')?.textContent || '';
+                if (counter.includes('step 1 /') || counter.includes('Final NFA') || (err.length > 0 && !err.includes('Enter a regular expression')) || canvasText.includes('Diagram is disabled')) {
+                  resolve();
+                } else {
+                  setTimeout(checkDone, 20);
+                }
+              };
+              setTimeout(checkDone, 50);
+            });
+          } finally {
+            inFlightBuilds--;
+            if (inFlightBuilds <= 0) {
+              inFlightBuilds = 0;
+              window.__buildDone = true;
+            }
           }
         };
         return origAEL.call(this, type, wrapped, options);
@@ -234,9 +268,12 @@ const assert = require('node:assert');
           try {
             const res = await listener.apply(this, args);
             const rows = document.querySelectorAll('#suite-table tbody tr');
-            window.__suiteResults = Array.from(rows).map((r) => ({
-              passed: r.textContent.includes('PASS')
-            }));
+            window.__suiteResults = Array.from(rows).map((r) => {
+              const verdictCell = r.querySelector('td:last-child');
+              return {
+                passed: verdictCell ? verdictCell.textContent.trim() === 'PASS' : false
+              };
+            });
             return res;
           } finally {
             window.__suiteDone = true;
@@ -251,24 +288,31 @@ const assert = require('node:assert');
             return await listener.apply(this, args);
           } finally {
             const statusText = document.getElementById('diff-status')?.textContent || '';
-            let regExpStatus = 'pass';
-            let allPassed = true;
+            const allPassed = statusText.includes('ALL PASSED') && !statusText.includes('ORACLE ERROR') && !statusText.includes('MISMATCH');
+
+            const enumBadge = document.querySelector('.diff-oracle-row[data-oracle="enumerator"] .badge');
+            const enumStatus = enumBadge ? enumBadge.textContent.trim().toLowerCase() : (allPassed ? 'pass' : 'fail');
+
+            const derivBadge = document.querySelector('.diff-oracle-row[data-oracle="derivatives"] .badge');
+            const derivStatus = derivBadge ? derivBadge.textContent.trim().toLowerCase() : (allPassed ? 'pass' : 'fail');
+
+            const regExpBadge = document.querySelector('.diff-oracle-row[data-oracle="regExp"] .badge');
+            let regExpStatus = regExpBadge ? regExpBadge.textContent.trim().toLowerCase() : 'pass';
             if (statusText.includes('ORACLE ERROR')) {
               regExpStatus = 'error';
-              allPassed = false;
-            } else if (statusText.includes('skipped: timeout')) {
+            } else if (statusText.includes('skipped: timeout') || regExpStatus.includes('timeout')) {
               regExpStatus = 'skipped (timeout)';
-            } else if (statusText.includes('MISMATCH')) {
-              allPassed = false;
             }
+
+            const mismatchesEl = document.querySelector('.diff-mismatches-summary code');
+            const mismatches = mismatchesEl ? (mismatchesEl.textContent || '').split(',').map((s) => s.trim()).filter(Boolean) : [];
+
             window.__diffResult = {
               allPassed,
-              mismatches: [],
+              mismatches,
               oracles: {
-                nfa: { status: 'pass' },
-                minDFA: { status: 'pass' },
-                enumerator: { status: 'pass' },
-                derivatives: { status: 'pass' },
+                enumerator: { status: enumStatus },
+                derivatives: { status: derivStatus },
                 regExp: { status: regExpStatus }
               }
             };
@@ -1210,8 +1254,10 @@ const assert = require('node:assert');
   assert(tableRows160 > 0, 'Transition table must be populated for 160+ tokens');
 
   // Simulation still works
+  await page.evaluate(() => { window.__runDone = false; });
   await page.fill('#test-input', 'a'.repeat(41));
   await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
   const verdict160 = await page.textContent('#verdict');
   assert(verdict160 && (verdict160.includes('ACCEPT') || verdict160.includes('REJECT')), 'Simulation must return verdict');
 
@@ -1421,7 +1467,9 @@ const assert = require('node:assert');
   // 4. Compact labels toggle in merge mode
   await page.evaluate(() => { window.__buildDone = false; });
   await page.selectOption('#concat-select', 'merge');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
   await page.fill('#regex-input', '(a|b)*a');
+  await page.evaluate(() => { window.__buildDone = false; });
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
 
@@ -1978,7 +2026,9 @@ const assert = require('node:assert');
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
   await page.fill('#test-input', 'ba');
+  await page.evaluate(() => { window.__runDone = false; });
   await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
   const verdictBeforeRebuild = await page.textContent('#verdict');
   assert.strictEqual(verdictBeforeRebuild.trim(), 'ACCEPT');
   const traceBeforeRebuild = await page.textContent('#trace');
@@ -2004,7 +2054,9 @@ const assert = require('node:assert');
 
   // (2) Run "b" on a*b, then pick binary-pattern preset
   await page.fill('#test-input', 'b');
+  await page.evaluate(() => { window.__runDone = false; });
   await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
   assert.strictEqual((await page.textContent('#verdict')).trim(), 'ACCEPT');
 
   await page.evaluate(() => { window.__buildDone = false; });
@@ -2028,7 +2080,9 @@ const assert = require('node:assert');
   await page.evaluate(() => { window.__buildDone = false; });
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  await page.evaluate(() => { window.__runDone = false; });
   await page.click('#run-button');
+  await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
   assert.strictEqual((await page.textContent('#verdict')).trim(), 'ACCEPT');
 
   await page.selectOption('#concat-select', 'merge');
