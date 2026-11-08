@@ -2362,6 +2362,30 @@ const assert = require('node:assert');
   });
   assert.strictEqual(matrixMatches, true, 'CSS transform matrix must match data-zoom and data-pan attributes');
 
+  // getBoundingClientRect moves as predicted by math after button zoom
+  const rectCheck = await page.evaluate(async () => {
+    const node = document.querySelector('#canvas svg g.node[id="n0"]');
+    const canvas = document.getElementById('canvas');
+    if (!node || !canvas) return null;
+    const r0 = node.getBoundingClientRect();
+    const c = canvas.getBoundingClientRect();
+    const cx = c.width / 2;
+    // Click zoom in button
+    document.getElementById('zoom-in-btn')?.click();
+    const r1 = node.getBoundingClientRect();
+    const expectedCenterX = (c.left + cx) + (r0.left + r0.width / 2 - (c.left + cx)) * 1.2;
+    const actualCenterX = r1.left + r1.width / 2;
+    const expectedW = r0.width * 1.2;
+    const actualW = r1.width;
+    document.getElementById('zoom-reset-btn')?.click();
+    return {
+      diffCenterX: Math.abs(actualCenterX - expectedCenterX),
+      diffW: Math.abs(actualW - expectedW)
+    };
+  });
+  assert(rectCheck !== null && rectCheck.diffCenterX < 1.0, 'State node center must move as predicted by zoom math');
+  assert(rectCheck !== null && rectCheck.diffW < 1.0, 'State node width must scale by 1.2 as predicted by zoom math');
+
   // AC6: Buttons: x1.2 in, /1.2 out, 100%, disabled at limits
   console.log('Testing AC6: Buttons...');
   await page.fill('#regex-input', 'ab');
@@ -2418,6 +2442,18 @@ const assert = require('node:assert');
   const panXAfter = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')));
   assert.strictEqual(panXAfter, panXBefore - 50, 'Shift+wheel must pan X');
 
+  // Horizontal wheel pans X (|deltaX| > |deltaY|)
+  const horizPanBefore = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')));
+  const horizWheelResult = await page.evaluate(() => {
+    const canvas = document.getElementById('canvas');
+    const evt = new WheelEvent('wheel', { deltaX: 40, deltaY: 0, bubbles: true, cancelable: true });
+    canvas.dispatchEvent(evt);
+    return { defaultPrevented: evt.defaultPrevented };
+  });
+  assert.strictEqual(horizWheelResult.defaultPrevented, true, 'Horizontal wheel must be defaultPrevented');
+  const horizPanAfter = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')));
+  assert.strictEqual(horizPanAfter, horizPanBefore - 40, 'Horizontal wheel must pan X by -deltaX');
+
   // AC8: Drag pan
   console.log('Testing AC8: Drag pan...');
   await page.click('#zoom-reset-btn');
@@ -2460,6 +2496,28 @@ const assert = require('node:assert');
   await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step'));
   const modeTextbook = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
   assert.strictEqual(modeTextbook, 'fit', 'Switching to textbook view with different viewBox must apply initial view');
+
+  // Textbook stepping: viewBox changes on each step -> initialView applied
+  await page.click('#zoom-in-btn');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'manual');
+  await page.click('#step-next');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 3 / 6'));
+  const modeTextbookStep3 = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
+  assert.strictEqual(modeTextbookStep3, 'fit', 'Textbook stepping must re-initialize view when viewBox changes');
+
+  // Final view with compact toggle: viewBox is identical (823x349) -> persists zoom and manual mode
+  await page.selectOption('#view-toggle', 'final');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+  await page.click('#zoom-in-btn');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'manual');
+  const zoomBeforeCompact = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
+  await page.click('#compact-labels');
+  await page.waitForTimeout(100);
+  const modeAfterCompact = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
+  const zoomAfterCompact = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
+  assert.strictEqual(modeAfterCompact, 'manual', 'Compact toggle with identical viewBox must persist manual mode');
+  assert.strictEqual(zoomAfterCompact, zoomBeforeCompact, 'Compact toggle with identical viewBox must persist zoom');
+  await page.click('#compact-labels'); // restore uncheck
 
   // AC10: Resets on rebuild
   console.log('Testing AC10: Resets on rebuild...');
@@ -2546,7 +2604,14 @@ const assert = require('node:assert');
 
   // AC13: Zero re-renders
   console.log('Testing AC13: Zero re-renders...');
-  const renderCallsBefore = await page.evaluate(() => window.__harnessRenderCalls.length);
+  const renderCallsInitial = await page.evaluate(() => window.__harnessRenderCalls.length);
+  await page.fill('#regex-input', 'ab');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 3'));
+  const renderCallsAfterBuild = await page.evaluate(() => window.__harnessRenderCalls.length);
+  assert(renderCallsAfterBuild > renderCallsInitial, 'Fresh build must increment harness render-call count');
+
+  const renderCallsBefore = renderCallsAfterBuild;
   await page.click('#zoom-in-btn');
   await page.click('#zoom-out-btn');
   await page.click('#zoom-fit-btn');
@@ -2586,27 +2651,31 @@ const assert = require('node:assert');
   await page.selectOption('#view-toggle', 'final');
   await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
 
+  const canvasLocator = page.locator('#canvas');
+  await canvasLocator.scrollIntoViewIfNeeded();
+
   // 1. Start mode
-  await page.screenshot({ path: `${scratchDir}/ac15_161_start.png` });
+  await canvasLocator.screenshot({ path: `${scratchDir}/ac15_161_start.png` });
 
   // 2. After Fit
   await page.click('#zoom-fit-btn');
-  await page.screenshot({ path: `${scratchDir}/ac15_161_fit.png` });
+  await canvasLocator.screenshot({ path: `${scratchDir}/ac15_161_fit.png` });
 
   // 3. At 10x on a state label
   await page.evaluate(() => {
     const canvas = document.getElementById('canvas');
     const vp = document.getElementById('canvas-viewport');
     if (canvas && vp) {
+      // Center state n0 (start state) at 10x in canvas
+      const panX = 620 - 37 * 10;
+      const panY = 240 - 86 * 10;
       canvas.setAttribute('data-zoom', '10.0000');
-      const panX = -800;
-      const panY = -300;
       canvas.setAttribute('data-pan-x', String(panX));
       canvas.setAttribute('data-pan-y', String(panY));
       vp.style.transform = `translate(${panX}px, ${panY}px) scale(10.0000)`;
     }
   });
-  await page.screenshot({ path: `${scratchDir}/ac15_161_10x.png` });
+  await canvasLocator.screenshot({ path: `${scratchDir}/ac15_161_10x.png` });
 
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
