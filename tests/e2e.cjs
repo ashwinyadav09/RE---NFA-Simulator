@@ -2252,8 +2252,11 @@ const assert = require('node:assert');
   await page.fill('#regex-input', exprCap400);
   await page.click('#build-button');
   await page.waitForFunction(() => document.querySelector('#canvas')?.textContent.includes('Diagram is disabled'));
-  const hasHOverflowCap = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
-  assert.strictEqual(hasHOverflowCap, false, '400-token cap view must not have horizontal overflow');
+  for (const vp of [{ width: 1280, height: 800 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(vp);
+    const hasHOverflowCap = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+    assert.strictEqual(hasHOverflowCap, false, `400-token cap view must not have horizontal overflow at ${vp.width}x${vp.height}`);
+  }
 
   // 3. Textbook last step at the cap
   await page.fill('#regex-input', expr161);
@@ -2266,8 +2269,12 @@ const assert = require('node:assert');
     const m = /step\s+(\d+)\s*\/\s*(\d+)/.exec(text);
     return m && m[1] === m[2] && m[1] === '161';
   });
-  const hasHOverflow150 = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
-  assert.strictEqual(hasHOverflow150, false, 'Textbook last step must not have horizontal overflow');
+  for (const vp of [{ width: 1280, height: 800 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(vp);
+    const hasHOverflow150 = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+    assert.strictEqual(hasHOverflow150, false, `Textbook last step must not have horizontal overflow at ${vp.width}x${vp.height}`);
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
 
   // AC3: Initial view modes per D4
   console.log('Testing AC3: Initial view modes per D4...');
@@ -2306,14 +2313,18 @@ const assert = require('node:assert');
   assert.strictEqual(modeMed, 'fit', '(a|b)*a final view initial mode must be fit');
   assert(zoomMed >= 0.5 && zoomMed <= 1.0, `(a|b)*a fitZoom must be between 0.5 and 1.0, got ${zoomMed}`);
 
-  // 3. Small diagram: a (content smaller than frame -> zoom 1.0000, mode fit)
+  // 3. Small diagram: a (content smaller than frame -> zoom 1.0000, mode fit, centered)
   await page.fill('#regex-input', 'a');
   await page.click('#build-button');
   await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 1'));
   const modeSmall = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
   const zoomSmall = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
+  const panXSmall = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')));
+  const panYSmall = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y')));
   assert.strictEqual(modeSmall, 'fit', 'Small diagram mode must be fit');
   assert.strictEqual(zoomSmall, '1.0000', 'Small diagram zoom must be 1.0000');
+  assert(panXSmall > 0, `Small diagram must be horizontally centered (panX > 0, got ${panXSmall})`);
+  assert(panYSmall > 0, `Small diagram must be vertically centered (panY > 0, got ${panYSmall})`);
 
   // AC4: Fit reaches full fit below 0.1
   console.log('Testing AC4: Fit reaches full fit below 0.1...');
@@ -2409,6 +2420,8 @@ const assert = require('node:assert');
   // AC7: Wheel: Ctrl+wheel zooms about cursor; plain wheel not intercepted; Shift/horizontal wheel pans
   console.log('Testing AC7: Wheel...');
   const zBeforePlain = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
+  const panXBeforePlain = await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x'));
+  const panYBeforePlain = await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y'));
   const plainWheelResult = await page.evaluate(() => {
     const canvas = document.getElementById('canvas');
     const evt = new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true });
@@ -2416,17 +2429,41 @@ const assert = require('node:assert');
     return { defaultPrevented: evt.defaultPrevented };
   });
   assert.strictEqual(plainWheelResult.defaultPrevented, false, 'Plain vertical wheel must NOT be defaultPrevented');
-  const zAfterPlain = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
-  assert.strictEqual(zAfterPlain, zBeforePlain, 'Plain vertical wheel must not change zoom');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')), zBeforePlain, 'Plain vertical wheel must not change zoom');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')), panXBeforePlain, 'Plain vertical wheel must not change pan-x');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y')), panYBeforePlain, 'Plain vertical wheel must not change pan-y');
 
-  // Ctrl+wheel zooms
-  const ctrlWheelResult = await page.evaluate(() => {
+  // Ctrl+wheel with cursor on state center keeps node center within 1 px
+  const focalCheck = await page.evaluate(() => {
     const canvas = document.getElementById('canvas');
-    const evt = new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, clientX: 200, clientY: 200, bubbles: true, cancelable: true });
+    const node = document.querySelector('#canvas svg g.node[id="n0"]') || document.querySelector('#canvas svg g.node');
+    if (!canvas || !node) return null;
+    const r0 = node.getBoundingClientRect();
+    const cx0 = r0.left + r0.width / 2;
+    const cy0 = r0.top + r0.height / 2;
+
+    const evt = new WheelEvent('wheel', {
+      deltaY: -100,
+      ctrlKey: true,
+      clientX: cx0,
+      clientY: cy0,
+      bubbles: true,
+      cancelable: true
+    });
     canvas.dispatchEvent(evt);
-    return { defaultPrevented: evt.defaultPrevented };
+
+    const r1 = node.getBoundingClientRect();
+    const cx1 = r1.left + r1.width / 2;
+    const cy1 = r1.top + r1.height / 2;
+    return {
+      defaultPrevented: evt.defaultPrevented,
+      diffX: Math.abs(cx1 - cx0),
+      diffY: Math.abs(cy1 - cy0)
+    };
   });
-  assert.strictEqual(ctrlWheelResult.defaultPrevented, true, 'Ctrl+wheel must be defaultPrevented');
+  assert(focalCheck !== null && focalCheck.defaultPrevented, 'Ctrl+wheel must be defaultPrevented');
+  assert(focalCheck !== null && focalCheck.diffX <= 1.0, `Ctrl+wheel focal point X must keep node center within 1 px, drift was ${focalCheck?.diffX}`);
+  assert(focalCheck !== null && focalCheck.diffY <= 1.0, `Ctrl+wheel focal point Y must keep node center within 1 px, drift was ${focalCheck?.diffY}`);
   const zAfterCtrl = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
   assert(zAfterCtrl > parseFloat(zBeforePlain), 'Ctrl+wheel with negative deltaY must zoom in');
 
@@ -2505,19 +2542,25 @@ const assert = require('node:assert');
   const modeTextbookStep3 = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
   assert.strictEqual(modeTextbookStep3, 'fit', 'Textbook stepping must re-initialize view when viewBox changes');
 
-  // Final view with compact toggle: viewBox is identical (823x349) -> persists zoom and manual mode
+  // Final view with compact toggle: viewBox is identical (823x349 in merge mode) -> persists zoom and manual mode
+  await page.selectOption('#concat-select', 'merge');
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
   await page.selectOption('#view-toggle', 'final');
   await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
   await page.click('#zoom-in-btn');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'manual');
   const zoomBeforeCompact = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
   await page.click('#compact-labels');
-  await page.waitForTimeout(100);
+  await page.waitForFunction(() => document.querySelector('#canvas svg g.node#n9 text')?.textContent?.trim() === '8');
   const modeAfterCompact = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
   const zoomAfterCompact = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
   assert.strictEqual(modeAfterCompact, 'manual', 'Compact toggle with identical viewBox must persist manual mode');
   assert.strictEqual(zoomAfterCompact, zoomBeforeCompact, 'Compact toggle with identical viewBox must persist zoom');
   await page.click('#compact-labels'); // restore uncheck
+  await page.waitForFunction(() => document.querySelector('#canvas svg g.node#n9 text')?.textContent?.trim() === '9');
+  await page.selectOption('#concat-select', 'epsilon-link'); // restore default
 
   // AC10: Resets on rebuild
   console.log('Testing AC10: Resets on rebuild...');
@@ -2535,6 +2578,39 @@ const assert = require('node:assert');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')), null, 'Empty rebuild must remove data-pan-x');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y')), null, 'Empty rebuild must remove data-pan-y');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), null, 'Empty rebuild must remove data-viewport-mode');
+  assert.strictEqual(await page.$eval('#zoom-in-btn', (el) => el.disabled), true, 'Empty rebuild must disable zoom-in button');
+  assert.strictEqual(await page.$eval('#zoom-out-btn', (el) => el.disabled), true, 'Empty rebuild must disable zoom-out button');
+  assert.strictEqual(await page.$eval('#zoom-fit-btn', (el) => el.disabled), true, 'Empty rebuild must disable zoom-fit button');
+  assert.strictEqual(await page.$eval('#zoom-reset-btn', (el) => el.disabled), true, 'Empty rebuild must disable zoom-reset button');
+
+  // Reset on notation change
+  await page.selectOption('#notation-select', 'standard');
+  await page.fill('#regex-input', 'ab');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 3'));
+  await page.click('#zoom-in-btn');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'manual');
+  await page.selectOption('#notation-select', 'textbook');
+  await page.waitForFunction(() => document.querySelector('#notation-select')?.value === 'textbook');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'fit', 'Notation change must reset viewport to fit mode');
+  await page.selectOption('#notation-select', 'standard'); // restore
+  await page.waitForFunction(() => document.querySelector('#notation-select')?.value === 'standard');
+
+  // Reset on concatenation change
+  await page.click('#zoom-in-btn');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'manual');
+  await page.selectOption('#concat-select', 'merge');
+  await page.waitForFunction(() => document.querySelector('#stats')?.textContent.includes('3'));
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'fit', 'Concatenation change must reset viewport to fit mode');
+  await page.selectOption('#concat-select', 'epsilon-link'); // restore
+  await page.waitForFunction(() => document.querySelector('#stats')?.textContent.includes('4'));
+
+  // Reset on preset
+  await page.click('#zoom-in-btn');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'manual');
+  await page.selectOption('#preset-select', 'star-b');
+  await page.waitForFunction(() => document.querySelector('#regex-input')?.value === 'a*b');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'fit', 'Preset selection must reset viewport to fit mode');
 
   // AC11: Keyboard
   console.log('Testing AC11: Keyboard...');
@@ -2543,24 +2619,61 @@ const assert = require('node:assert');
   await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
   await page.focus('#canvas');
 
-  const zBeforeKbd = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  // + zooms in
+  const zBeforePlus = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
   await page.keyboard.press('+');
-  const zAfterKbdPlus = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
-  assert(zAfterKbdPlus > zBeforeKbd, 'Keyboard + must zoom in');
+  const zAfterPlus = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  assert(zAfterPlus > zBeforePlus, 'Keyboard + must zoom in');
 
+  // = zooms in
+  await page.keyboard.press('=');
+  const zAfterEqual = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  assert(zAfterEqual > zAfterPlus, 'Keyboard = must zoom in');
+
+  // - zooms out
   await page.keyboard.press('-');
-  const zAfterKbdMinus = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
-  assert(zAfterKbdMinus < zAfterKbdPlus, 'Keyboard - must zoom out');
+  const zAfterMinus = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  assert(zAfterMinus < zAfterEqual, 'Keyboard - must zoom out');
 
+  // _ zooms out
+  await page.keyboard.press('_');
+  const zAfterUnderscore = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  assert(zAfterUnderscore < zAfterMinus, 'Keyboard _ must zoom out');
+
+  // 0 resets to 100%
   await page.keyboard.press('0');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')), '1.0000', 'Keyboard 0 must reset to 100%');
 
-  // Shift+ArrowRight pans and does NOT step
+  // f fits to container
+  await page.keyboard.press('+');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'manual');
+  await page.keyboard.press('f');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'fit', 'Keyboard f must fit to container');
+
+  // Shift+ArrowLeft pans X positively (to the right)
+  const panXBeforeShiftLeft = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')));
+  await page.keyboard.press('Shift+ArrowLeft');
+  const panXAfterShiftLeft = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')));
+  assert(panXAfterShiftLeft > panXBeforeShiftLeft, 'Shift+ArrowLeft must pan X positively');
+
+  // Shift+ArrowRight pans X negatively (to the left) and does NOT step
   const panXKbdBefore = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')));
   await page.keyboard.press('Shift+ArrowRight');
   const panXKbdAfter = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')));
   assert(panXKbdAfter < panXKbdBefore, 'Shift+ArrowRight must pan X');
   assert((await page.textContent('#step-counter')).includes('step 1 / 6'), 'Shift+ArrowRight must NOT step construction');
+
+  // Shift+ArrowUp pans Y positively
+  const panYBeforeShiftUp = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y')));
+  await page.keyboard.press('Shift+ArrowUp');
+  const panYAfterShiftUp = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y')));
+  assert(panYAfterShiftUp > panYBeforeShiftUp, 'Shift+ArrowUp must pan Y positively');
+
+  // Shift+ArrowDown pans Y negatively
+  const panYBeforeShiftDown = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y')));
+  await page.keyboard.press('Shift+ArrowDown');
+  const panYAfterShiftDown = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y')));
+  assert(panYAfterShiftDown < panYBeforeShiftDown, 'Shift+ArrowDown must pan Y negatively');
 
   // Plain ArrowRight steps construction
   await page.keyboard.press('ArrowRight');
@@ -2616,8 +2729,26 @@ const assert = require('node:assert');
   await page.click('#zoom-out-btn');
   await page.click('#zoom-fit-btn');
   await page.keyboard.press('Shift+ArrowLeft');
+  // Ctrl+wheel
+  await page.evaluate(() => {
+    const canvas = document.getElementById('canvas');
+    canvas?.dispatchEvent(new WheelEvent('wheel', { deltaY: -50, ctrlKey: true, clientX: 200, clientY: 200, bubbles: true, cancelable: true }));
+  });
+  // Horizontal wheel
+  await page.evaluate(() => {
+    const canvas = document.getElementById('canvas');
+    canvas?.dispatchEvent(new WheelEvent('wheel', { deltaX: 50, deltaY: 0, bubbles: true, cancelable: true }));
+  });
+  // Pointer drag
+  const box = await page.locator('#canvas').boundingBox();
+  if (box) {
+    await page.mouse.move(box.x + 100, box.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 120, box.y + 120);
+    await page.mouse.up();
+  }
   const renderCallsAfter = await page.evaluate(() => window.__harnessRenderCalls.length);
-  assert.strictEqual(renderCallsAfter, renderCallsBefore, 'Zoom and pan actions must never trigger Graphviz render calls');
+  assert.strictEqual(renderCallsAfter, renderCallsBefore, 'Zoom, pan, wheel, drag and keyboard actions must never trigger Graphviz render calls');
 
   // AC14: The layer survives every replacement
   console.log('Testing AC14: The layer survives every replacement...');
