@@ -2128,17 +2128,30 @@ const assert = require('node:assert');
     await page.selectOption('#view-toggle', 'final');
     await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
 
-    // Ensure all three attributes (data-current-step, data-view, data-run-status) are present
+    // Ensure all attributes (data-current-step, data-view, data-run-status, viewport attrs) are present
     await page.evaluate(() => {
-      document.querySelector('#canvas')?.setAttribute('data-current-step', '2');
+      const c = document.querySelector('#canvas');
+      c?.setAttribute('data-current-step', '2');
+      c?.setAttribute('data-zoom', '1.5000');
+      c?.setAttribute('data-pan-x', '100.00');
+      c?.setAttribute('data-pan-y', '50.00');
+      c?.setAttribute('data-viewport-mode', 'manual');
     });
 
     const priorStep = await page.$eval('#canvas', (el) => el.getAttribute('data-current-step'));
     const priorView = await page.$eval('#canvas', (el) => el.getAttribute('data-view'));
     const priorRunStatus = await page.$eval('#canvas', (el) => el.getAttribute('data-run-status'));
+    const priorZoom = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
+    const priorPanX = await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x'));
+    const priorPanY = await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y'));
+    const priorMode = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
     assert.strictEqual(priorStep, '2', 'Prior state must have data-current-step="2"');
     assert.strictEqual(priorView, 'final', 'Prior state must have data-view="final"');
     assert.strictEqual(priorRunStatus, 'dead', 'Prior state must have data-run-status="dead"');
+    assert.strictEqual(priorZoom, '1.5000', 'Prior state must have data-zoom="1.5000"');
+    assert.strictEqual(priorPanX, '100.00', 'Prior state must have data-pan-x="100.00"');
+    assert.strictEqual(priorPanY, '50.00', 'Prior state must have data-pan-y="50.00"');
+    assert.strictEqual(priorMode, 'manual', 'Prior state must have data-viewport-mode="manual"');
   }
 
   // 1. Capped build (>400 postfix tokens)
@@ -2155,6 +2168,14 @@ const assert = require('node:assert');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-current-step')), null, 'Capped build: canvas must not have data-current-step');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-view')), null, 'Capped build: canvas must not have data-view');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-run-status')), null, 'Capped build: canvas must not have data-run-status');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')), null, 'Capped build: canvas must not have data-zoom');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')), null, 'Capped build: canvas must not have data-pan-x');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y')), null, 'Capped build: canvas must not have data-pan-y');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), null, 'Capped build: canvas must not have data-viewport-mode');
+  assert.strictEqual(await page.$eval('#zoom-in-btn', (el) => el.disabled), true, 'Capped build: zoom-in button must be disabled');
+  assert.strictEqual(await page.$eval('#zoom-out-btn', (el) => el.disabled), true, 'Capped build: zoom-out button must be disabled');
+  assert.strictEqual(await page.$eval('#zoom-fit-btn', (el) => el.disabled), true, 'Capped build: zoom-fit button must be disabled');
+  assert.strictEqual(await page.$eval('#zoom-reset-btn', (el) => el.disabled), true, 'Capped build: zoom-reset button must be disabled');
 
   // 2. Refused build: Engine token limit (>2,000 tokens)
   await setupScopeCPriorState();
@@ -2170,6 +2191,14 @@ const assert = require('node:assert');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-current-step')), null, 'Refused 2000+ build: canvas must not have data-current-step');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-view')), null, 'Refused 2000+ build: canvas must not have data-view');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-run-status')), null, 'Refused 2000+ build: canvas must not have data-run-status');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')), null, 'Refused 2000+ build: canvas must not have data-zoom');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')), null, 'Refused 2000+ build: canvas must not have data-pan-x');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y')), null, 'Refused 2000+ build: canvas must not have data-pan-y');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), null, 'Refused 2000+ build: canvas must not have data-viewport-mode');
+  assert.strictEqual(await page.$eval('#zoom-in-btn', (el) => el.disabled), true, 'Refused 2000+ build: zoom-in button must be disabled');
+  assert.strictEqual(await page.$eval('#zoom-out-btn', (el) => el.disabled), true, 'Refused 2000+ build: zoom-out button must be disabled');
+  assert.strictEqual(await page.$eval('#zoom-fit-btn', (el) => el.disabled), true, 'Refused 2000+ build: zoom-fit button must be disabled');
+  assert.strictEqual(await page.$eval('#zoom-reset-btn', (el) => el.disabled), true, 'Refused 2000+ build: zoom-reset button must be disabled');
 
   // 3. Refused build: Syntax error
   await setupScopeCPriorState();
@@ -2185,6 +2214,399 @@ const assert = require('node:assert');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-current-step')), null, 'Syntax error build: canvas must not have data-current-step');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-view')), null, 'Syntax error build: canvas must not have data-view');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-run-status')), null, 'Syntax error build: canvas must not have data-run-status');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')), null, 'Syntax error build: canvas must not have data-zoom');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')), null, 'Syntax error build: canvas must not have data-pan-x');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y')), null, 'Syntax error build: canvas must not have data-pan-y');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), null, 'Syntax error build: canvas must not have data-viewport-mode');
+  assert.strictEqual(await page.$eval('#zoom-in-btn', (el) => el.disabled), true, 'Syntax error build: zoom-in button must be disabled');
+  assert.strictEqual(await page.$eval('#zoom-out-btn', (el) => el.disabled), true, 'Syntax error build: zoom-out button must be disabled');
+  assert.strictEqual(await page.$eval('#zoom-fit-btn', (el) => el.disabled), true, 'Syntax error build: zoom-fit button must be disabled');
+  assert.strictEqual(await page.$eval('#zoom-reset-btn', (el) => el.disabled), true, 'Syntax error build: zoom-reset button must be disabled');
+
+  // ==========================================
+  // Ticket 17: Zoom and Pan for diagram canvases
+  // ==========================================
+  console.log('Testing Ticket 17: Zoom and Pan for diagram canvases...');
+
+  // Reset viewport size to default 1280x800
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  // AC2: No page overflow: documentElement.scrollWidth <= clientWidth at 1280x800 and 1920x1080
+  console.log('Testing AC2: No page overflow...');
+  // 1. 161-token final view
+  const expr161 = '(a|b)'.repeat(40) + 'a';
+  await page.fill('#regex-input', expr161);
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 161'));
+  await page.selectOption('#view-toggle', 'final');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+
+  for (const vp of [{ width: 1280, height: 800 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(vp);
+    const hasHOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+    assert.strictEqual(hasHOverflow, false, `161-token final view must not have horizontal overflow at ${vp.width}x${vp.height}`);
+  }
+
+  // 2. 400-token (cap) final view
+  const exprCap400 = 'a'.repeat(400); // 400 postfix tokens
+  await page.fill('#regex-input', exprCap400);
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.textContent.includes('Diagram is disabled'));
+  const hasHOverflowCap = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+  assert.strictEqual(hasHOverflowCap, false, '400-token cap view must not have horizontal overflow');
+
+  // 3. Textbook last step at the cap
+  await page.fill('#regex-input', expr161);
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 161'));
+  await page.selectOption('#view-toggle', 'textbook');
+  await page.click('#step-last');
+  await page.waitForFunction(() => {
+    const text = document.querySelector('#step-counter')?.textContent || '';
+    const m = /step\s+(\d+)\s*\/\s*(\d+)/.exec(text);
+    return m && m[1] === m[2] && m[1] === '161';
+  });
+  const hasHOverflow150 = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+  assert.strictEqual(hasHOverflow150, false, 'Textbook last step must not have horizontal overflow');
+
+  // AC3: Initial view modes per D4
+  console.log('Testing AC3: Initial view modes per D4...');
+  // 1. 161-token final view: fitZoom < 0.5 -> mode start, zoom 1.0000, start state fully inside frame
+  await page.fill('#regex-input', expr161);
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 161'));
+  await page.selectOption('#view-toggle', 'final');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+
+  const mode161 = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
+  const zoom161 = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
+  assert.strictEqual(mode161, 'start', '161-token final view initial mode must be start');
+  assert.strictEqual(zoom161, '1.0000', '161-token final view initial zoom must be 1.0000');
+
+  // Verify start state is inside frame bounds
+  const startStateInside = await page.evaluate(() => {
+    const canvas = document.getElementById('canvas');
+    const n0 = document.querySelector('#canvas svg g.node[id="n0"]') || document.querySelector('#canvas svg g.node[data-created-by-step]');
+    if (!canvas || !n0) return false;
+    const cBox = canvas.getBoundingClientRect();
+    const nBox = n0.getBoundingClientRect();
+    return nBox.left >= cBox.left && nBox.right <= cBox.right && nBox.top >= cBox.top && nBox.bottom <= cBox.bottom;
+  });
+  assert.strictEqual(startStateInside, true, 'Start state must be inside canvas frame in start mode');
+
+  // 2. Moderately oversized diagram (fitZoom >= 0.5): (a|b)*a
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
+  await page.selectOption('#view-toggle', 'final');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+
+  const modeMed = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
+  const zoomMed = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  assert.strictEqual(modeMed, 'fit', '(a|b)*a final view initial mode must be fit');
+  assert(zoomMed >= 0.5 && zoomMed <= 1.0, `(a|b)*a fitZoom must be between 0.5 and 1.0, got ${zoomMed}`);
+
+  // 3. Small diagram: a (content smaller than frame -> zoom 1.0000, mode fit)
+  await page.fill('#regex-input', 'a');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 1'));
+  const modeSmall = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
+  const zoomSmall = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
+  assert.strictEqual(modeSmall, 'fit', 'Small diagram mode must be fit');
+  assert.strictEqual(zoomSmall, '1.0000', 'Small diagram zoom must be 1.0000');
+
+  // AC4: Fit reaches full fit below 0.1
+  console.log('Testing AC4: Fit reaches full fit below 0.1...');
+  await page.fill('#regex-input', expr161);
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 161'));
+  await page.selectOption('#view-toggle', 'final');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+
+  await page.click('#zoom-fit-btn');
+  const fitModeAfter = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
+  const fitZoomAfter = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  assert.strictEqual(fitModeAfter, 'fit', 'After Fit button, mode must be fit');
+  assert(fitZoomAfter < 0.1, `Fit zoom on 161 tokens must reach below 0.1, got ${fitZoomAfter}`);
+
+  // SVG bounding rect must be entirely inside frame rect
+  const svgInsideFrame = await page.evaluate(() => {
+    const canvas = document.getElementById('canvas');
+    const svg = document.querySelector('#canvas-viewport svg');
+    if (!canvas || !svg) return false;
+    const c = canvas.getBoundingClientRect();
+    const s = svg.getBoundingClientRect();
+    return s.left >= c.left - 1 && s.right <= c.right + 1 && s.top >= c.top - 1 && s.bottom <= c.bottom + 1;
+  });
+  assert.strictEqual(svgInsideFrame, true, 'SVG rect must be completely inside canvas frame after Fit');
+
+  // AC5: Real transform matches state
+  console.log('Testing AC5: Real transform matches state...');
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
+
+  const matrixMatches = await page.evaluate(() => {
+    const canvas = document.getElementById('canvas');
+    const vp = document.getElementById('canvas-viewport');
+    if (!canvas || !vp) return false;
+    const z = parseFloat(canvas.getAttribute('data-zoom') || '1');
+    const px = parseFloat(canvas.getAttribute('data-pan-x') || '0');
+    const py = parseFloat(canvas.getAttribute('data-pan-y') || '0');
+    const transform = window.getComputedStyle(vp).transform;
+    const m = /matrix\(([^)]+)\)/.exec(transform);
+    if (!m) return false;
+    const vals = m[1].split(',').map((v) => parseFloat(v.trim()));
+    return Math.abs(vals[0] - z) < 1e-3 && Math.abs(vals[3] - z) < 1e-3 &&
+           Math.abs(vals[4] - px) < 1e-2 && Math.abs(vals[5] - py) < 1e-2;
+  });
+  assert.strictEqual(matrixMatches, true, 'CSS transform matrix must match data-zoom and data-pan attributes');
+
+  // AC6: Buttons: x1.2 in, /1.2 out, 100%, disabled at limits
+  console.log('Testing AC6: Buttons...');
+  await page.fill('#regex-input', 'ab');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 3'));
+
+  const initialZoom = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  await page.click('#zoom-in-btn');
+  const zoomedIn = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  assert.strictEqual(Math.round(zoomedIn * 1000) / 1000, Math.round(initialZoom * 1.2 * 1000) / 1000, 'Zoom in button must multiply zoom by 1.2');
+  assert.strictEqual((await page.textContent('#zoom-level')).trim(), `${Math.round(zoomedIn * 100)}%`);
+
+  await page.click('#zoom-out-btn');
+  const zoomedOut = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  assert.strictEqual(Math.round(zoomedOut * 1000) / 1000, Math.round(initialZoom * 1000) / 1000, 'Zoom out button must divide zoom by 1.2');
+
+  await page.click('#zoom-reset-btn');
+  const resetZoom = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
+  assert.strictEqual(resetZoom, '1.0000', '100% button must reset zoom to 1.0000');
+
+  // AC7: Wheel: Ctrl+wheel zooms about cursor; plain wheel not intercepted; Shift/horizontal wheel pans
+  console.log('Testing AC7: Wheel...');
+  const zBeforePlain = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
+  const plainWheelResult = await page.evaluate(() => {
+    const canvas = document.getElementById('canvas');
+    const evt = new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true });
+    canvas.dispatchEvent(evt);
+    return { defaultPrevented: evt.defaultPrevented };
+  });
+  assert.strictEqual(plainWheelResult.defaultPrevented, false, 'Plain vertical wheel must NOT be defaultPrevented');
+  const zAfterPlain = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
+  assert.strictEqual(zAfterPlain, zBeforePlain, 'Plain vertical wheel must not change zoom');
+
+  // Ctrl+wheel zooms
+  const ctrlWheelResult = await page.evaluate(() => {
+    const canvas = document.getElementById('canvas');
+    const evt = new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, clientX: 200, clientY: 200, bubbles: true, cancelable: true });
+    canvas.dispatchEvent(evt);
+    return { defaultPrevented: evt.defaultPrevented };
+  });
+  assert.strictEqual(ctrlWheelResult.defaultPrevented, true, 'Ctrl+wheel must be defaultPrevented');
+  const zAfterCtrl = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  assert(zAfterCtrl > parseFloat(zBeforePlain), 'Ctrl+wheel with negative deltaY must zoom in');
+
+  // Shift+wheel pans
+  const panXBefore = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')));
+  const shiftWheelResult = await page.evaluate(() => {
+    const canvas = document.getElementById('canvas');
+    const evt = new WheelEvent('wheel', { deltaY: 50, shiftKey: true, bubbles: true, cancelable: true });
+    canvas.dispatchEvent(evt);
+    return { defaultPrevented: evt.defaultPrevented };
+  });
+  assert.strictEqual(shiftWheelResult.defaultPrevented, true, 'Shift+wheel must be defaultPrevented');
+  const panXAfter = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')));
+  assert.strictEqual(panXAfter, panXBefore - 50, 'Shift+wheel must pan X');
+
+  // AC8: Drag pan
+  console.log('Testing AC8: Drag pan...');
+  await page.click('#zoom-reset-btn');
+  const pX0 = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')));
+  const pY0 = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y')));
+
+  const canvasBox = await page.locator('#canvas').boundingBox();
+  await page.mouse.move(canvasBox.x + 200, canvasBox.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + 250, canvasBox.y + 230);
+  await page.mouse.up();
+
+  const pX1 = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')));
+  const pY1 = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y')));
+  assert.strictEqual(Math.round(pX1 - pX0), 50, 'Drag pan must shift pan-x by exact mouse delta dx');
+  assert.strictEqual(Math.round(pY1 - pY0), 30, 'Drag pan must shift pan-y by exact mouse delta dy');
+  const selText = await page.evaluate(() => window.getSelection()?.toString() || '');
+  assert.strictEqual(selText, '', 'No text must be selected after drag pan');
+
+  // AC9: Persistence per D5
+  console.log('Testing AC9: Persistence per D5...');
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
+
+  await page.click('#zoom-in-btn');
+  const zoomStep1 = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
+  const panXStep1 = await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x'));
+
+  // Step 2 in flat pinned layout (identical viewBox) -> persist
+  await page.click('#step-next');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 2 / 6'));
+  const zoomStep2 = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
+  const panXStep2 = await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x'));
+  assert.strictEqual(zoomStep2, zoomStep1, 'Flat pinned stepping must persist zoom across steps with same viewBox');
+  assert.strictEqual(panXStep2, panXStep1, 'Flat pinned stepping must persist pan-x across steps with same viewBox');
+
+  // Switch to textbook view (viewBox changes from 823x349 to 316x102) -> initialView applied
+  await page.selectOption('#view-toggle', 'textbook');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step'));
+  const modeTextbook = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
+  assert.strictEqual(modeTextbook, 'fit', 'Switching to textbook view with different viewBox must apply initial view');
+
+  // AC10: Resets on rebuild
+  console.log('Testing AC10: Resets on rebuild...');
+  await page.click('#zoom-in-btn');
+  await page.fill('#regex-input', 'a');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 1'));
+  const zoomAfterRebuild = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
+  assert.strictEqual(zoomAfterRebuild, '1.0000', 'New build must reset zoom to default');
+
+  await page.fill('#regex-input', '');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#error-message')?.textContent.includes('Enter a regular expression'));
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')), null, 'Empty rebuild must remove data-zoom');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')), null, 'Empty rebuild must remove data-pan-x');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-y')), null, 'Empty rebuild must remove data-pan-y');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), null, 'Empty rebuild must remove data-viewport-mode');
+
+  // AC11: Keyboard
+  console.log('Testing AC11: Keyboard...');
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
+  await page.focus('#canvas');
+
+  const zBeforeKbd = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  await page.keyboard.press('+');
+  const zAfterKbdPlus = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  assert(zAfterKbdPlus > zBeforeKbd, 'Keyboard + must zoom in');
+
+  await page.keyboard.press('-');
+  const zAfterKbdMinus = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  assert(zAfterKbdMinus < zAfterKbdPlus, 'Keyboard - must zoom out');
+
+  await page.keyboard.press('0');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')), '1.0000', 'Keyboard 0 must reset to 100%');
+
+  // Shift+ArrowRight pans and does NOT step
+  const panXKbdBefore = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')));
+  await page.keyboard.press('Shift+ArrowRight');
+  const panXKbdAfter = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x')));
+  assert(panXKbdAfter < panXKbdBefore, 'Shift+ArrowRight must pan X');
+  assert((await page.textContent('#step-counter')).includes('step 1 / 6'), 'Shift+ArrowRight must NOT step construction');
+
+  // Plain ArrowRight steps construction
+  await page.keyboard.press('ArrowRight');
+  assert((await page.textContent('#step-counter')).includes('step 2 / 6'), 'Plain ArrowRight must step construction');
+
+  // Alt+ArrowLeft is not defaultPrevented
+  const altArrowResult = await page.evaluate(() => {
+    const evt = new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true, cancelable: true });
+    window.dispatchEvent(evt);
+    return { defaultPrevented: evt.defaultPrevented };
+  });
+  assert.strictEqual(altArrowResult.defaultPrevented, false, 'Alt+ArrowLeft must not be defaultPrevented');
+
+  // AC12: Hit-testing and tooltips survive transforms
+  console.log('Testing AC12: Hit-testing and tooltips survive transforms...');
+  await page.click('#zoom-reset-btn');
+  const hitTestInfo = await page.evaluate(() => {
+    const n0 = document.querySelector('#canvas svg g.node[id="n0"]') || document.querySelector('#canvas svg g.node[data-created-by-step]');
+    if (!n0) return { error: 'no n0 found' };
+    const box = n0.getBoundingClientRect();
+    const cx = box.left + box.width / 2;
+    const cy = box.top + box.height / 2;
+    const elAtPoint = document.elementFromPoint(cx, cy);
+    const inNode = n0.contains(elAtPoint) || elAtPoint === n0;
+    const hasTitle = !!n0.getAttribute('title') || !!n0.querySelector('title');
+    const hasCreatedBy = n0.hasAttribute('data-created-by-step');
+    return {
+      n0Id: n0.id,
+      cx, cy,
+      elAtPointTag: elAtPoint?.tagName,
+      elAtPointId: elAtPoint?.id,
+      inNode,
+      hasTitle,
+      hasCreatedBy
+    };
+  });
+  console.log('Hit-test info:', hitTestInfo);
+  assert.strictEqual(hitTestInfo.inNode, true, 'Element at point must be inside node');
+  assert.strictEqual(hitTestInfo.hasTitle, true, 'Node must have title');
+  assert.strictEqual(hitTestInfo.hasCreatedBy, true, 'Node must have data-created-by-step');
+
+  // AC13: Zero re-renders
+  console.log('Testing AC13: Zero re-renders...');
+  const renderCallsBefore = await page.evaluate(() => window.__harnessRenderCalls.length);
+  await page.click('#zoom-in-btn');
+  await page.click('#zoom-out-btn');
+  await page.click('#zoom-fit-btn');
+  await page.keyboard.press('Shift+ArrowLeft');
+  const renderCallsAfter = await page.evaluate(() => window.__harnessRenderCalls.length);
+  assert.strictEqual(renderCallsAfter, renderCallsBefore, 'Zoom and pan actions must never trigger Graphviz render calls');
+
+  // AC14: The layer survives every replacement
+  console.log('Testing AC14: The layer survives every replacement...');
+  // Step
+  await page.click('#step-next');
+  // Toggle view
+  await page.selectOption('#view-toggle', 'final');
+  // Cap message
+  await page.fill('#regex-input', 'a'.repeat(210));
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.textContent.includes('Diagram is disabled'));
+  // Refused build
+  await page.fill('#regex-input', '(a|');
+  await page.click('#build-button');
+  await page.waitForFunction(() => (document.querySelector('#error-message')?.textContent || '').includes('Missing operand'));
+  // Valid build
+  await page.fill('#regex-input', 'ab');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 3'));
+
+  const viewportCount = await page.evaluate(() => document.querySelectorAll('#canvas-viewport').length);
+  assert.strictEqual(viewportCount, 1, 'Exactly one #canvas-viewport must exist after replacements');
+  const zoomBtnEnabled = await page.$eval('#zoom-in-btn', (el) => !el.disabled);
+  assert.strictEqual(zoomBtnEnabled, true, 'Toolbar buttons must still work after replacements');
+
+  // AC15: Visual proof screenshots
+  const scratchDir = 'C:/Users/ydash/.gemini/antigravity/brain/2b158c28-fe75-4f43-87fa-2e91bb0a163a/scratch';
+  await page.fill('#regex-input', expr161);
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 161'));
+  await page.selectOption('#view-toggle', 'final');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+
+  // 1. Start mode
+  await page.screenshot({ path: `${scratchDir}/ac15_161_start.png` });
+
+  // 2. After Fit
+  await page.click('#zoom-fit-btn');
+  await page.screenshot({ path: `${scratchDir}/ac15_161_fit.png` });
+
+  // 3. At 10x on a state label
+  await page.evaluate(() => {
+    const canvas = document.getElementById('canvas');
+    const vp = document.getElementById('canvas-viewport');
+    if (canvas && vp) {
+      canvas.setAttribute('data-zoom', '10.0000');
+      const panX = -800;
+      const panY = -300;
+      canvas.setAttribute('data-pan-x', String(panX));
+      canvas.setAttribute('data-pan-y', String(panY));
+      vp.style.transform = `translate(${panX}px, ${panY}px) scale(10.0000)`;
+    }
+  });
+  await page.screenshot({ path: `${scratchDir}/ac15_161_10x.png` });
 
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
