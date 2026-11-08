@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { analyze, run, runLines, validateAlphabet, getStepSnapshot, validateInvariants, checkSizeFormula, checkStepReplay, runBuiltinSuite, computeDifferentialK, runDifferential, validate, allStrings, lang, derivMatch, toJs, EPS, CAPS, AnalysisResult, AnalysisSuccess, NFA, STRESS_FAMILIES, STRESS_N_SERIES, STRESS_SCALE_N_SERIES, runStressNfa, detectBrowserEngine } from '../src/engine/index';
+import { analyze, run, runLines, validateAlphabet, getStepSnapshot, validateInvariants, checkSizeFormula, checkStepReplay, runBuiltinSuite, computeDifferentialK, runDifferential, validate, allStrings, lang, derivMatch, toJs, EPS, CAPS, AnalysisResult, AnalysisSuccess, NFA, STRESS_FAMILIES, STRESS_N_SERIES, STRESS_SCALE_N_SERIES, runStressNfa, detectBrowserEngine, PRESETS, type Preset } from '../src/engine/index';
 import { parseRD } from './oracles';
 
 function assertSuccess(result: AnalysisResult): asserts result is AnalysisSuccess {
@@ -1747,6 +1747,75 @@ test('[T14-04] Engine seam: detectBrowserEngine requires userAgent string, pure 
   const unknownInfo = detectBrowserEngine('CustomBot/1.0');
   expect(unknownInfo.engine).toBe('Unknown');
   expect(unknownInfo.label).toContain('CustomBot/1.0');
+});
+
+test('Ticket 15: PRESETS list is exported from Engine seam and has at least 8 presets with required fields', () => {
+  expect(Array.isArray(PRESETS)).toBe(true);
+  expect(PRESETS.length).toBeGreaterThanOrEqual(8);
+  for (const preset of PRESETS) {
+    expect(preset).toHaveProperty('id');
+    expect(preset).toHaveProperty('name');
+    expect(preset).toHaveProperty('regex');
+    expect(preset).toHaveProperty('notation');
+    expect(['standard', 'textbook']).toContain(preset.notation);
+  }
+});
+
+test('Ticket 15: PRESETS includes (a|b)*a, (a|b)*abb, a*b and textbook presets using + for union', () => {
+  const byRegex = new Map(PRESETS.map((p) => [p.regex, p]));
+  expect(byRegex.has('(a|b)*a')).toBe(true);
+  expect(byRegex.get('(a|b)*a')?.notation).toBe('standard');
+
+  expect(byRegex.has('(a|b)*abb')).toBe(true);
+  expect(byRegex.get('(a|b)*abb')?.notation).toBe('standard');
+
+  expect(byRegex.has('a*b')).toBe(true);
+  expect(byRegex.get('a*b')?.notation).toBe('standard');
+
+  const textbookPresets = PRESETS.filter((p) => p.notation === 'textbook');
+  expect(textbookPresets.length).toBeGreaterThanOrEqual(2);
+  const textbookUnions = textbookPresets.filter((p) => p.regex.includes('+'));
+  expect(textbookUnions.length).toBeGreaterThanOrEqual(2);
+});
+
+test('Ticket 15: every preset in PRESETS compiles without error in its declared notation and mode', () => {
+  for (const preset of PRESETS) {
+    const res = analyze(preset.regex, {
+      notation: preset.notation,
+      concatenation: preset.concatenation ?? 'epsilon-link'
+    });
+    expect(res.ok, `Preset ${preset.id} (${preset.regex}) failed to compile`).toBe(true);
+  }
+});
+
+test('Ticket 15: classic presets match state and transition counts from fixtures and rules', () => {
+  const classicAbbFixture = JSON.parse(
+    readFileSync(resolve(__dirname, '../.agents/skills/thompson-rules/fixtures/classic-abb.json'), 'utf-8')
+  );
+
+  // 1. (a|b)*a in epsilon-link mode: 10 states, 12 transitions (worked-example fixture)
+  const resWorkedExample = analyze('(a|b)*a', { notation: 'standard', concatenation: 'epsilon-link' });
+  assertSuccess(resWorkedExample);
+  expect(resWorkedExample.nfa.states.length).toBe(workedExample.nfa.states.length); // 10
+  expect(resWorkedExample.nfa.transitions.length).toBe(workedExample.nfa.transitions.length); // 12
+
+  // 2. (a|b)*abb in epsilon-link mode: 14 states, 16 transitions (classic-abb fixture)
+  const resAbbEps = analyze('(a|b)*abb', { notation: 'standard', concatenation: 'epsilon-link' });
+  assertSuccess(resAbbEps);
+  expect(resAbbEps.nfa.states.length).toBe(classicAbbFixture.epsilonLink.states); // 14
+  expect(resAbbEps.nfa.transitions.length).toBe(classicAbbFixture.epsilonLink.transitions); // 16
+
+  // 3. (a|b)*abb in merge mode: 11 states, 13 transitions (classic-abb fixture)
+  const resAbbMerge = analyze('(a|b)*abb', { notation: 'standard', concatenation: 'merge' });
+  assertSuccess(resAbbMerge);
+  expect(resAbbMerge.nfa.states.length).toBe(classicAbbFixture.merge.states); // 11
+  expect(resAbbMerge.nfa.transitions.length).toBe(classicAbbFixture.merge.transitions); // 13
+
+  // 4. a*b in epsilon-link mode: 6 states, 7 transitions (Thompson rules size formula)
+  const resStarB = analyze('a*b', { notation: 'standard', concatenation: 'epsilon-link' });
+  assertSuccess(resStarB);
+  expect(resStarB.nfa.states.length).toBe(6);
+  expect(resStarB.nfa.transitions.length).toBe(7);
 });
 
 

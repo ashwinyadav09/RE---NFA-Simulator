@@ -32,13 +32,28 @@
     .diff-oracle-row { padding: 4px 0; }
     .error { color: #c5221f; font-weight: bold; }
     .hint { color: #5f6368; }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
   </style>
 </head>
 
 <body>
   <div id="app">
     <h1>RE → NFA (Thompson) Simulator</h1>
+    <div id="live-region" aria-live="polite" aria-atomic="true" class="sr-only" data-testid="live-region"></div>
     <div class="controls">
+      <select id="preset-select" data-testid="preset-select" aria-label="Presets">
+        <option value="">Presets...</option>
+      </select>
       <input id="regex-input" type="text" placeholder="Enter regular expression" value="" />
       <button id="insert-eps" data-testid="insert-eps" type="button" title="Insert ε">ε</button>
       <button id="insert-empty" data-testid="insert-empty" type="button" title="Insert ∅">∅</button>

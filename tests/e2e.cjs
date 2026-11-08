@@ -7,8 +7,19 @@ const assert = require('node:assert');
   const page = await browser.newPage();
 
   const logs = [];
+  const consoleErrors = [];
+  const consoleWarnings = [];
   const errors = [];
-  page.on('console', (msg) => logs.push(`${msg.type()}: ${msg.text()}`));
+  page.on('console', (msg) => {
+    const text = msg.text();
+    const type = msg.type();
+    logs.push(`${type}: ${text}`);
+    if (type === 'error') {
+      consoleErrors.push(text);
+    } else if (type === 'warning') {
+      consoleWarnings.push(text);
+    }
+  });
   page.on('pageerror', (err) => errors.push(err.message));
 
   const distHtmlPath = path.resolve(__dirname, '../dist/index.html');
@@ -1502,6 +1513,136 @@ const assert = require('node:assert');
   const timeoutMarkerExists = await page.evaluate(() => !!document.querySelector('#stress-chart-container #panelA-timeout'));
   assert.strictEqual(timeoutMarkerExists, false, 'Chart must not contain a timeout marker when cancelled');
 
+  // Ticket 15: Packaging and Polish
+  console.log('Testing Ticket 15: Presets...');
+  const presetOptions = await page.$$eval('#preset-select option', (opts) =>
+    opts.map((o) => ({ value: o.value, text: o.text })).filter((o) => o.value !== '')
+  );
+  console.log(`Found ${presetOptions.length} presets in #preset-select`);
+  assert(presetOptions.length >= 8, `Must have at least 8 presets, found ${presetOptions.length}`);
+
+  for (const preset of presetOptions) {
+    await page.evaluate(() => { window.__buildDone = false; });
+    await page.selectOption('#preset-select', preset.value);
+    await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+    const errText = await page.textContent('#error-message');
+    assert.strictEqual(errText.trim(), '', `Preset ${preset.value} produced error: ${errText}`);
+
+    const stats = await page.textContent('#stats');
+    if (preset.value === 'worked-example') {
+      // (a|b)*a: 10 states and 12 transitions
+      assert(stats.includes('States: 10') && stats.includes('Transitions: 12'), `worked-example stats: ${stats}`);
+    } else if (preset.value === 'classic-abb') {
+      // (a|b)*abb in ε-link mode: 14 states and 16 transitions
+      assert(stats.includes('States: 14') && stats.includes('Transitions: 16'), `classic-abb stats: ${stats}`);
+
+      // Now switch to merge mode: 11 states and 13 transitions
+      await page.selectOption('#concat-select', 'merge');
+      await page.evaluate(() => { window.__buildDone = false; });
+      await page.click('#build-button');
+      await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+      const mergeStats = await page.textContent('#stats');
+      assert(mergeStats.includes('States: 11') && mergeStats.includes('Transitions: 13'), `classic-abb merge stats: ${mergeStats}`);
+    } else if (preset.value === 'star-b') {
+      // a*b in ε-link mode: 6 states and 7 transitions
+      assert(stats.includes('States: 6') && stats.includes('Transitions: 7'), `star-b stats: ${stats}`);
+    }
+  }
+
+  console.log('Testing Ticket 15: Keyboard and Live Region...');
+  // 1. Enter key in #regex-input builds
+  await page.selectOption('#notation-select', 'standard');
+  await page.selectOption('#concat-select', 'epsilon-link');
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.focus('#regex-input');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  const enterStats = await page.textContent('#stats');
+  assert(enterStats.includes('States: 10'), 'Enter key in #regex-input must build expression');
+
+  // 2. Tab order follows visual order
+  const focusableIds = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll('button, input, select, textarea'))
+      .filter((el) => {
+        const style = window.getComputedStyle(el);
+        return style.display !== 'none' && style.visibility !== 'hidden' && !el.disabled;
+      })
+      .map((el) => el.id || el.getAttribute('data-testid') || el.tagName.toLowerCase());
+  });
+  console.log('Focusable controls initial order:', focusableIds.slice(0, 8));
+  assert.strictEqual(focusableIds[0], 'preset-select', 'First focusable should be preset-select');
+  assert.strictEqual(focusableIds[1], 'regex-input', 'Second focusable should be regex-input');
+  assert.strictEqual(focusableIds[2], 'insert-eps', 'Third focusable should be insert-eps');
+  assert.strictEqual(focusableIds[3], 'insert-empty', 'Fourth focusable should be insert-empty');
+  assert.strictEqual(focusableIds[4], 'notation-select', 'Fifth focusable should be notation-select');
+  assert.strictEqual(focusableIds[5], 'concat-select', 'Sixth focusable should be concat-select');
+  assert.strictEqual(focusableIds[6], 'build-button', 'Seventh focusable should be build-button');
+
+  // 3. Live region announces verdict after Run, step and rule after Next
+  const liveRegionBeforeRun = await page.textContent('#live-region');
+  await page.fill('#test-input', 'ba');
+  await page.click('#run-button');
+  const liveRegionAfterRun = await page.textContent('#live-region');
+  console.log('Live region after Run:', liveRegionAfterRun);
+  assert.notStrictEqual(liveRegionAfterRun, liveRegionBeforeRun, 'Live region text must change after Run');
+  assert(liveRegionAfterRun.includes('ACCEPT'), 'Live region after Run must announce verdict');
+
+  await page.click('#step-first');
+  const liveRegionAtStep1 = await page.textContent('#live-region');
+  console.log('Live region at step 1:', liveRegionAtStep1);
+  assert(liveRegionAtStep1.includes('Step 1 of 6') && liveRegionAtStep1.includes('symbol'), 'Live region must announce step 1 and rule');
+
+  await page.click('#step-next');
+  const liveRegionAfterNext = await page.textContent('#live-region');
+  console.log('Live region after Next:', liveRegionAfterNext);
+  assert.notStrictEqual(liveRegionAfterNext, liveRegionAtStep1, 'Live region text must change after Next');
+  assert(liveRegionAfterNext.includes('Step 2 of 6') && liveRegionAfterNext.includes('symbol'), 'Live region after Next must announce step 2 and rule');
+
+  // 4. Arrow keys still step
+  await page.evaluate(() => document.body.focus());
+  await page.keyboard.press('ArrowRight');
+  const liveRegionAfterArrow = await page.textContent('#live-region');
+  console.log('Live region after ArrowRight:', liveRegionAfterArrow);
+  assert(liveRegionAfterArrow.includes('Step 3 of 6') && liveRegionAfterArrow.includes('union'), 'ArrowRight must step and announce step 3 union');
+
+  // 5. Check no result is colour-only
+  console.log('Testing Ticket 15: Color-only audit (verdicts, invariants, suite rows, timeout marker)...');
+  const auditVerdictText = await page.textContent('#verdict');
+  assert(auditVerdictText.includes('ACCEPT') || auditVerdictText.includes('REJECT'), 'Verdict must carry text');
+
+  const invI1Text = await page.textContent('#inv-I1');
+  assert(invI1Text.startsWith('PASS') || invI1Text.startsWith('FAIL'), 'Invariant marks must carry PASS/FAIL text');
+
+  await page.click('#run-suite');
+  const suiteVerdictTexts = await page.$$eval('#suite-table tbody tr td:last-child', (tds) =>
+    tds.map((td) => td.textContent.trim())
+  );
+  assert(suiteVerdictTexts.length >= 20, 'Suite must have at least 20 rows');
+  for (const txt of suiteVerdictTexts) {
+    assert(txt === 'PASS' || txt === 'FAIL', `Suite row must have PASS or FAIL text, got "${txt}"`);
+  }
+
+  // Trigger timeout marker to assert it has text
+  await page.evaluate(() => {
+    window.__e2eWorkerMode = 'timeout';
+    window.__stressDone = false;
+  });
+  await page.click('#stress-run');
+  await page.waitForFunction('window.__stressDone === true', null, { timeout: 25000 });
+  await page.evaluate(() => { window.__e2eWorkerMode = null; });
+
+  const timeoutSvgText = await page.$eval('#stress-chart-container #panelA-timeout text', (el) => el.textContent);
+  console.log('Timeout SVG text:', timeoutSvgText);
+  assert.strictEqual(timeoutSvgText, 'timeout', 'SVG timeout marker must contain text "timeout"');
+
+  const timeoutTableText = await page.$$eval('#stress-table tbody tr', (rows) =>
+    rows.map((r) => r.textContent).join(' ')
+  );
+  assert(timeoutTableText.includes('TIMEOUT'), 'Stress table row must carry text TIMEOUT');
+
+  console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
+  assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
 
 

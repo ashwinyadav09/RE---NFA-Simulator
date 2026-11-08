@@ -23,7 +23,9 @@ import {
   STRESS_N_SERIES,
   STRESS_SCALE_N_SERIES,
   runStressNfa,
-  detectBrowserEngine
+  detectBrowserEngine,
+  PRESETS,
+  type Preset
 } from '../engine/index';
 import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions, renderStressChartSvg, type StressChartPoint } from '../diagram/index';
 import InlineWorker from './worker.ts?worker&inline';
@@ -139,6 +141,8 @@ try {
 }
 
 const inputEl = document.getElementById('regex-input') as HTMLInputElement | null;
+const presetSelectEl = document.getElementById('preset-select') as HTMLSelectElement | null;
+const liveRegionEl = document.getElementById('live-region');
 const buttonEl = document.getElementById('build-button') as HTMLButtonElement | null;
 const notationSelectEl = document.getElementById('notation-select') as HTMLSelectElement | null;
 const concatSelectEl = document.getElementById('concat-select') as HTMLSelectElement | null;
@@ -183,6 +187,21 @@ const diffResultsEl = document.getElementById('diff-results');
 const stressRunBtn = document.getElementById('stress-run') as HTMLButtonElement | null;
 let diffIsActive = false;
 let stressIsActive = false;
+
+function announceLive(message: string): void {
+  if (liveRegionEl) {
+    liveRegionEl.textContent = message;
+  }
+}
+
+if (presetSelectEl) {
+  for (const preset of PRESETS) {
+    const opt = document.createElement('option');
+    opt.value = preset.id;
+    opt.textContent = `${preset.name} [${preset.notation}]`;
+    presetSelectEl.appendChild(opt);
+  }
+}
 
 function isCompactLabels(): boolean {
   return !!compactLabelsEl?.checked;
@@ -481,6 +500,11 @@ async function navigateToStep(stepIndex: number): Promise<void> {
 
   if (stepCounterEl) {
     stepCounterEl.textContent = `step ${currentStepIndex} / ${totalSteps}`;
+  }
+
+  const stepRecord = currentAnalysis.steps[targetStep - 1];
+  if (stepRecord) {
+    announceLive(`Step ${currentStepIndex} of ${totalSteps}: ${stepRecord.rule}`);
   }
 
   if (stepFirstBtn) stepFirstBtn.disabled = currentStepIndex === 1;
@@ -1123,7 +1147,9 @@ function handleRun() {
   lastRunLines = lines;
 
   if (verdictEl) {
-    verdictEl.textContent = results.map((r) => r.verdict).join('\n');
+    const verdictLines = results.map((r) => r.verdict);
+    verdictEl.textContent = verdictLines.join('\n');
+    announceLive(`Verdict: ${verdictLines.join(', ')}`);
   }
 
   if (runStatusEl) {
@@ -1201,7 +1227,34 @@ if (alphabetInputEl) {
   });
 }
 
+if (presetSelectEl) {
+  presetSelectEl.addEventListener('change', () => {
+    const selectedId = presetSelectEl.value;
+    if (!selectedId) return;
+    const preset = PRESETS.find((p) => p.id === selectedId);
+    if (!preset) return;
+
+    if (inputEl) inputEl.value = preset.regex;
+    if (notationSelectEl) notationSelectEl.value = preset.notation;
+    if (preset.concatenation && concatSelectEl) {
+      concatSelectEl.value = preset.concatenation;
+    }
+    if (preset.testInput && testInputEl) {
+      testInputEl.value = preset.testInput;
+    }
+    handleBuild();
+  });
+}
+
 if (inputEl) {
+  inputEl.addEventListener('input', () => {
+    if (presetSelectEl && presetSelectEl.value) {
+      const activePreset = PRESETS.find((p) => p.id === presetSelectEl.value);
+      if (activePreset && activePreset.regex !== inputEl.value) {
+        presetSelectEl.value = '';
+      }
+    }
+  });
   inputEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       handleBuild();
