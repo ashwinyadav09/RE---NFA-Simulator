@@ -151,6 +151,27 @@ const alphabetInputEl = document.getElementById('alphabet-input') as HTMLInputEl
 const alphabetMessageEl = document.getElementById('alphabet-message');
 const statsEl = document.getElementById('stats');
 const canvasEl = document.getElementById('canvas');
+
+function getCanvasViewport(): HTMLElement | null {
+  let viewport = document.getElementById('canvas-viewport');
+  if (!viewport && canvasEl) {
+    viewport = document.createElement('div');
+    viewport.id = 'canvas-viewport';
+    viewport.setAttribute('data-testid', 'canvas-viewport');
+    canvasEl.appendChild(viewport);
+  }
+  return viewport as HTMLElement | null;
+}
+
+function setCanvasContent(content: string, isText = false): void {
+  const viewport = getCanvasViewport();
+  if (!viewport) return;
+  if (isText) {
+    viewport.textContent = content;
+  } else {
+    viewport.innerHTML = content;
+  }
+}
 const tokenListEl = document.getElementById('token-list');
 const postfixEl = document.getElementById('postfix-view');
 const treeViewEl = document.getElementById('tree-view');
@@ -347,7 +368,7 @@ function clearResults(): void {
     statsEl.removeAttribute('data-transitions');
   }
   if (canvasEl) {
-    canvasEl.innerHTML = '';
+    setCanvasContent('');
     canvasEl.removeAttribute('data-current-step');
     canvasEl.removeAttribute('data-view');
     canvasEl.removeAttribute('data-run-status');
@@ -557,7 +578,7 @@ async function navigateToStep(stepIndex: number): Promise<void> {
   if (stepSvgCache.has(cacheKey)) {
     if (canvasEl) {
       canvasEl.setAttribute('data-current-step', String(targetStep));
-      canvasEl.innerHTML = stepSvgCache.get(cacheKey)!;
+      setCanvasContent(stepSvgCache.get(cacheKey)!);
       attachStateHoverListeners(canvasEl);
     }
     return;
@@ -599,16 +620,13 @@ async function navigateToStep(stepIndex: number): Promise<void> {
   if (canvasEl) {
     canvasEl.setAttribute('data-current-step', String(targetStep));
     if (result.ok) {
-      canvasEl.innerHTML = result.svg;
+      setCanvasContent(result.svg);
       attachStateHoverListeners(canvasEl);
       if (bGen === buildGeneration) {
         stepSvgCache.set(cacheKey, result.svg);
       }
     } else {
-      canvasEl.innerHTML = '';
-      if (result.error) {
-        canvasEl.textContent = `Error rendering diagram: ${result.error}`;
-      }
+      setCanvasContent(result.error ? `Error rendering diagram: ${result.error}` : '', true);
     }
   }
 }
@@ -625,8 +643,7 @@ async function renderFinalView(): Promise<void> {
   if (mode === 'off') {
     const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping} postfix tokens (limit: ${CAPS.textbookStepping}). Table, simulation, and tests remain available.`;
     if (canvasEl) {
-      canvasEl.innerHTML = '';
-      canvasEl.textContent = message;
+      setCanvasContent(message, true);
       canvasEl.setAttribute('data-view', 'final');
       canvasEl.removeAttribute('data-current-step');
     }
@@ -676,7 +693,7 @@ async function renderFinalView(): Promise<void> {
       } else {
         canvasEl.removeAttribute('data-run-status');
       }
-      canvasEl.innerHTML = stepSvgCache.get(cacheKey)!;
+      setCanvasContent(stepSvgCache.get(cacheKey)!);
       attachStateHoverListeners(canvasEl);
     }
     return;
@@ -722,16 +739,13 @@ async function renderFinalView(): Promise<void> {
     }
 
     if (result.ok) {
-      canvasEl.innerHTML = result.svg;
+      setCanvasContent(result.svg);
       attachStateHoverListeners(canvasEl);
       if (bGen === buildGeneration) {
         stepSvgCache.set(cacheKey, result.svg);
       }
     } else {
-      canvasEl.innerHTML = '';
-      if (result.error) {
-        canvasEl.textContent = `Error rendering diagram: ${result.error}`;
-      }
+      setCanvasContent(result.error ? `Error rendering diagram: ${result.error}` : '', true);
     }
   }
 }
@@ -942,8 +956,7 @@ async function handleBuild() {
 
     const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping} postfix tokens (limit: ${CAPS.textbookStepping}). Table, simulation, and tests remain available.`;
     if (canvasEl) {
-      canvasEl.innerHTML = '';
-      canvasEl.textContent = message;
+      setCanvasContent(message, true);
       canvasEl.removeAttribute('data-current-step');
       canvasEl.removeAttribute('data-view');
       canvasEl.removeAttribute('data-run-status');
