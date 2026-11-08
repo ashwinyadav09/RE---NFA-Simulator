@@ -4,7 +4,7 @@
 
 **Blocked by:** 04: Syntax errors; 09: Textbook view; 10: Final NFA view; 12: Mutation gate; 13: Validation panel; 14: Stress panel
 
-**Status:** done
+**Status:** ready-for-agent
 
 - [x] At least eight presets, in both notations, including the classic examples.
   - *Proof:* `PRESETS` constant in `src/engine/presets.ts` exports 9 curated presets (`(a|b)*a`, `(a|b)*abb`, `a*b`, `(a+b)*a`, `(a+b)*abb`, `a+?`, `a**`, `(0|1)*(00|11)`, `(a+ε)b`). Verified via engine tests in `tests/engine.test.ts` (state/transition counts match `worked-example.json` and `classic-abb.json`) and browser smoke in `tests/e2e.cjs` iterating every preset with zero errors.

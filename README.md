@@ -79,4 +79,4 @@ No build scripts, server-side containers, or deployment dependencies are require
 See [`docs/BROWSER-CHECK.md`](docs/BROWSER-CHECK.md) for full browser verification status:
 - **Chromium / Chrome**: Fully verified via automated smoke test (`npm run e2e`) and headed walkthrough over `file://`.
 - **Firefox**: Verification checklist documented in `docs/BROWSER-CHECK.md`.
-- **Safari**: Best effort, not verified (per specification).
+- **Safari**: Safari: best effort, not verified.

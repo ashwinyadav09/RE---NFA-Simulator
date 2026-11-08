@@ -187,11 +187,21 @@ const diffResultsEl = document.getElementById('diff-results');
 const stressRunBtn = document.getElementById('stress-run') as HTMLButtonElement | null;
 let diffIsActive = false;
 let stressIsActive = false;
+let liveRegionTimer: ReturnType<typeof setTimeout> | null = null;
 
 function announceLive(message: string): void {
-  if (liveRegionEl) {
-    liveRegionEl.textContent = message;
+  if (!liveRegionEl) return;
+  if (liveRegionTimer !== null) {
+    clearTimeout(liveRegionTimer);
+    liveRegionTimer = null;
   }
+  liveRegionEl.textContent = '';
+  liveRegionTimer = setTimeout(() => {
+    if (liveRegionEl) {
+      liveRegionEl.textContent = message;
+    }
+    liveRegionTimer = null;
+  }, 20);
 }
 
 if (presetSelectEl) {
@@ -802,6 +812,16 @@ async function handleBuild() {
   ++diffGeneration;
   if (diffStatusEl) diffStatusEl.textContent = '';
   if (diffResultsEl) diffResultsEl.innerHTML = '';
+  if (verdictEl) verdictEl.textContent = '';
+  if (traceEl) traceEl.innerHTML = '';
+  if (runStatusEl) {
+    runStatusEl.textContent = '';
+    runStatusEl.className = '';
+  }
+  currentActiveStates = null;
+  isDeadRun = false;
+  lastRunResults = null;
+  lastRunLines = null;
   const source = inputEl.value;
 
   const notation = notationSelectEl?.value === 'textbook' ? 'textbook' : 'standard';

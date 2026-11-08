@@ -1583,17 +1583,20 @@ const assert = require('node:assert');
   const liveRegionBeforeRun = await page.textContent('#live-region');
   await page.fill('#test-input', 'ba');
   await page.click('#run-button');
+  await page.waitForFunction(() => document.getElementById('live-region')?.textContent?.includes('ACCEPT'), null, { timeout: 5000 });
   const liveRegionAfterRun = await page.textContent('#live-region');
   console.log('Live region after Run:', liveRegionAfterRun);
   assert.notStrictEqual(liveRegionAfterRun, liveRegionBeforeRun, 'Live region text must change after Run');
   assert(liveRegionAfterRun.includes('ACCEPT'), 'Live region after Run must announce verdict');
 
   await page.click('#step-first');
+  await page.waitForFunction(() => document.getElementById('live-region')?.textContent?.includes('Step 1 of 6'), null, { timeout: 5000 });
   const liveRegionAtStep1 = await page.textContent('#live-region');
   console.log('Live region at step 1:', liveRegionAtStep1);
   assert(liveRegionAtStep1.includes('Step 1 of 6') && liveRegionAtStep1.includes('symbol'), 'Live region must announce step 1 and rule');
 
   await page.click('#step-next');
+  await page.waitForFunction(() => document.getElementById('live-region')?.textContent?.includes('Step 2 of 6'), null, { timeout: 5000 });
   const liveRegionAfterNext = await page.textContent('#live-region');
   console.log('Live region after Next:', liveRegionAfterNext);
   assert.notStrictEqual(liveRegionAfterNext, liveRegionAtStep1, 'Live region text must change after Next');
@@ -1602,9 +1605,52 @@ const assert = require('node:assert');
   // 4. Arrow keys still step
   await page.evaluate(() => document.body.focus());
   await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => document.getElementById('live-region')?.textContent?.includes('Step 3 of 6'), null, { timeout: 5000 });
   const liveRegionAfterArrow = await page.textContent('#live-region');
   console.log('Live region after ArrowRight:', liveRegionAfterArrow);
   assert(liveRegionAfterArrow.includes('Step 3 of 6') && liveRegionAfterArrow.includes('union'), 'ArrowRight must step and announce step 3 union');
+
+  // Scope B: Live region re-announces identical text
+  console.log('Testing Scope B: Live region re-announces identical text...');
+  await page.selectOption('#notation-select', 'standard');
+  await page.selectOption('#concat-select', 'epsilon-link');
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  await page.evaluate(() => {
+    window.__liveMutations = [];
+    const target = document.getElementById('live-region');
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        window.__liveMutations.push({
+          type: m.type,
+          targetText: target ? target.textContent : ''
+        });
+      }
+    });
+    observer.observe(target, { childList: true, characterData: true, subtree: true });
+  });
+
+  // First run: "ba" (ACCEPT)
+  await page.fill('#test-input', 'ba');
+  await page.click('#run-button');
+  await page.waitForFunction(() => document.getElementById('live-region')?.textContent?.includes('Verdict: ACCEPT'), null, { timeout: 5000 });
+  const mutationsAfterFirstRun = await page.evaluate(() => window.__liveMutations.length);
+  assert(mutationsAfterFirstRun >= 1, 'First run must produce at least one mutation in #live-region');
+
+  // Second run: "a" (also ACCEPT)
+  await page.fill('#test-input', 'a');
+  await page.click('#run-button');
+  await page.waitForTimeout(100);
+  await page.waitForFunction(() => document.getElementById('live-region')?.textContent?.includes('Verdict: ACCEPT'), null, { timeout: 5000 });
+  const mutationsAfterSecondRun = await page.evaluate(() => window.__liveMutations.length);
+  const liveTextAfterSecondRun = await page.textContent('#live-region');
+
+  console.log(`Live region mutations: first run=${mutationsAfterFirstRun}, second run=${mutationsAfterSecondRun}`);
+  assert(mutationsAfterSecondRun > mutationsAfterFirstRun, 'Second identical verdict must produce at least one new mutation in #live-region');
+  assert.strictEqual(liveTextAfterSecondRun.trim(), 'Verdict: ACCEPT', 'Final text after second run must be "Verdict: ACCEPT"');
 
   // 5. Check no result is colour-only
   console.log('Testing Ticket 15: Color-only audit (verdicts, invariants, suite rows, timeout marker)...');
@@ -1640,6 +1686,86 @@ const assert = require('node:assert');
     rows.map((r) => r.textContent).join(' ')
   );
   assert(timeoutTableText.includes('TIMEOUT'), 'Stress table row must carry text TIMEOUT');
+
+  // Scope A: Clear stale results on every successful build
+  console.log('Testing Scope A: Clear stale results on rebuild...');
+  // 1. Build (a|b)*a, run "ba" (ACCEPT)
+  await page.selectOption('#notation-select', 'standard');
+  await page.selectOption('#concat-select', 'epsilon-link');
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  await page.fill('#test-input', 'ba');
+  await page.click('#run-button');
+  const verdictBeforeRebuild = await page.textContent('#verdict');
+  assert.strictEqual(verdictBeforeRebuild.trim(), 'ACCEPT');
+  const traceBeforeRebuild = await page.textContent('#trace');
+  assert(traceBeforeRebuild.length > 0);
+
+  // (1) Change regex to a*b and Build
+  await page.fill('#regex-input', 'a*b');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const v1 = await page.textContent('#verdict');
+  const t1 = await page.textContent('#trace');
+  const s1 = await page.textContent('#run-status');
+  const activeNodes1 = await page.$$eval('.node.active', (nodes) => nodes.length);
+  const testInput1 = await page.$eval('#test-input', (el) => el.value);
+
+  assert.strictEqual(v1.trim(), '', 'Action 1: #verdict must be empty after rebuilding with a*b');
+  assert.strictEqual(t1.trim(), '', 'Action 1: #trace must be empty after rebuilding with a*b');
+  assert.strictEqual(s1.trim(), '', 'Action 1: #run-status must be empty after rebuilding with a*b');
+  assert.strictEqual(activeNodes1, 0, 'Action 1: zero .node.active elements must remain in canvas after rebuilding');
+  assert.strictEqual(testInput1, 'ba', 'Action 1: #test-input must keep the user text');
+
+  // (2) Run "b" on a*b, then pick binary-pattern preset
+  await page.fill('#test-input', 'b');
+  await page.click('#run-button');
+  assert.strictEqual((await page.textContent('#verdict')).trim(), 'ACCEPT');
+
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.selectOption('#preset-select', 'binary-pattern');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const v2 = await page.textContent('#verdict');
+  const t2 = await page.textContent('#trace');
+  const s2 = await page.textContent('#run-status');
+  const activeNodes2 = await page.$$eval('.node.active', (nodes) => nodes.length);
+  assert.strictEqual(v2.trim(), '', 'Action 2: #verdict must be empty after picking binary-pattern preset');
+  assert.strictEqual(t2.trim(), '', 'Action 2: #trace must be empty after picking binary-pattern preset');
+  assert.strictEqual(s2.trim(), '', 'Action 2: #run-status must be empty after picking binary-pattern preset');
+  assert.strictEqual(activeNodes2, 0, 'Action 2: zero .node.active elements must remain in canvas after preset');
+
+  // (3) Switch to merge on (a|b)*a and Build
+  await page.selectOption('#notation-select', 'standard');
+  await page.selectOption('#concat-select', 'epsilon-link');
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.fill('#test-input', 'ba');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  await page.click('#run-button');
+  assert.strictEqual((await page.textContent('#verdict')).trim(), 'ACCEPT');
+
+  await page.selectOption('#concat-select', 'merge');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const v3 = await page.textContent('#verdict');
+  const t3 = await page.textContent('#trace');
+  const s3 = await page.textContent('#run-status');
+  const activeNodes3 = await page.$$eval('.node.active', (nodes) => nodes.length);
+  const testInput3 = await page.$eval('#test-input', (el) => el.value);
+
+  assert.strictEqual(v3.trim(), '', 'Action 3: #verdict must be empty after switching to merge and Build');
+  assert.strictEqual(t3.trim(), '', 'Action 3: #trace must be empty after switching to merge and Build');
+  assert.strictEqual(s3.trim(), '', 'Action 3: #run-status must be empty after switching to merge and Build');
+  assert.strictEqual(activeNodes3, 0, 'Action 3: zero .node.active elements must remain in canvas after switching to merge');
+  assert.strictEqual(testInput3, 'ba', 'Action 3: #test-input must keep the user text');
 
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
