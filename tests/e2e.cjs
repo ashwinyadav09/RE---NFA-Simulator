@@ -113,7 +113,7 @@ const assert = require('node:assert');
 
     // 2. Set __ready when DOM scripts are done
     window.__ready = false;
-    window.__masterPositions = null;
+    window.__harnessRenderCalls = [];
     window.__testForceLayoutFailure = false;
     window.__testForcePinnedRenderFailure = false;
     window.__testRenderDelay = null;
@@ -143,6 +143,10 @@ const assert = require('node:assert');
           val.prototype.__patched = true;
           const origRender = val.prototype.render;
           val.prototype.render = async function(dot, options) {
+            window.__harnessRenderCalls.push({
+              format: options && options.format,
+              engine: options && options.engine
+            });
             if (window.__testForceLayoutFailure && options && options.format === 'json') {
               return { ok: false, error: 'Forced test failure' };
             }
@@ -1146,6 +1150,11 @@ const assert = require('node:assert');
   });
   assert(hasFlatStateNodes, 'Flat view must render individual state circle nodes');
 
+  // Verify a <=150-token build made at least one master layout format==='json' call
+  const jsonCallsPre = await page.evaluate(() => window.__harnessRenderCalls.filter(c => c.format === 'json').length);
+  assert(jsonCallsPre > 0, `A <=150-token build must make at least one format===json call, got ${jsonCallsPre}`);
+  await page.evaluate(() => { window.__harnessRenderCalls = []; });
+
   // 2. Build a 160-token expression:
   // '(a|b)' repeated 40 times followed by 'a' gives 161 postfix tokens
   const expr160 = '(a|b)'.repeat(40) + 'a';
@@ -1177,8 +1186,8 @@ const assert = require('node:assert');
   assert(has160Svg, 'Canvas must render textbook SVG for 160+ tokens');
 
   // Confirm master layout stays skipped above 150
-  const masterPositions160 = await page.evaluate(() => window.__masterPositions);
-  assert.strictEqual(masterPositions160, null, 'Master layout must stay skipped above 150 tokens');
+  const jsonCalls160 = await page.evaluate(() => window.__harnessRenderCalls.filter(c => c.format === 'json').length);
+  assert.strictEqual(jsonCalls160, 0, `A 160-token build must make zero format===json calls, got ${jsonCalls160}`);
 
   // Transition table works
   const tableRows160 = await page.evaluate(() => document.querySelectorAll('#transition-table tbody tr').length);
