@@ -28,6 +28,19 @@ import {
   type Preset
 } from '../engine/index';
 import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions, renderStressChartSvg, type StressChartPoint } from '../diagram/index';
+import {
+  clampZoom,
+  zoomAt,
+  panBy,
+  fitToContainer,
+  initialView,
+  sameFrame,
+  toTransformString,
+  getEffectiveLimits,
+  type ViewportState,
+  type ViewportMode,
+  type Rect
+} from './viewport';
 import InlineWorker from './worker.ts?worker&inline';
 
 const renderer = new VizRenderer();
@@ -151,6 +164,19 @@ const alphabetInputEl = document.getElementById('alphabet-input') as HTMLInputEl
 const alphabetMessageEl = document.getElementById('alphabet-message');
 const statsEl = document.getElementById('stats');
 const canvasEl = document.getElementById('canvas');
+const canvasToolbarEl = document.getElementById('canvas-toolbar');
+const zoomInBtn = document.getElementById('zoom-in-btn') as HTMLButtonElement | null;
+const zoomOutBtn = document.getElementById('zoom-out-btn') as HTMLButtonElement | null;
+const zoomFitBtn = document.getElementById('zoom-fit-btn') as HTMLButtonElement | null;
+const zoomResetBtn = document.getElementById('zoom-reset-btn') as HTMLButtonElement | null;
+const zoomLevelEl = document.getElementById('zoom-level');
+
+let currentViewport: ViewportState = { zoom: 1.0, panX: 0, panY: 0 };
+let currentViewportMode: ViewportMode = 'fit';
+let currentContentRect: Rect | null = null;
+let currentViewBox: string | null = null;
+let currentFitZoom: number | null = null;
+const WHEEL_ZOOM_K = 0.0015;
 
 function getCanvasViewport(): HTMLElement | null {
   let viewport = document.getElementById('canvas-viewport');
@@ -163,13 +189,117 @@ function getCanvasViewport(): HTMLElement | null {
   return viewport as HTMLElement | null;
 }
 
+function updateToolbarButtonStates(): void {
+  const hasContent = currentContentRect !== null;
+  if (!hasContent) {
+    if (zoomInBtn) zoomInBtn.disabled = true;
+    if (zoomOutBtn) zoomOutBtn.disabled = true;
+    if (zoomFitBtn) zoomFitBtn.disabled = true;
+    if (zoomResetBtn) zoomResetBtn.disabled = true;
+    return;
+  }
+  const limits = getEffectiveLimits(currentFitZoom ?? undefined);
+  if (zoomInBtn) zoomInBtn.disabled = currentViewport.zoom >= limits.maxZoom - 1e-4;
+  if (zoomOutBtn) zoomOutBtn.disabled = currentViewport.zoom <= limits.minZoom + 1e-4;
+  if (zoomFitBtn) zoomFitBtn.disabled = false;
+  if (zoomResetBtn) zoomResetBtn.disabled = false;
+}
+
+function applyViewport(): void {
+  const viewport = getCanvasViewport();
+  if (viewport) {
+    viewport.style.transform = toTransformString(currentViewport);
+  }
+  if (canvasEl) {
+    canvasEl.setAttribute('data-zoom', currentViewport.zoom.toFixed(4));
+    canvasEl.setAttribute('data-pan-x', currentViewport.panX.toFixed(2));
+    canvasEl.setAttribute('data-pan-y', currentViewport.panY.toFixed(2));
+    canvasEl.setAttribute('data-viewport-mode', currentViewportMode);
+  }
+  if (zoomLevelEl) {
+    zoomLevelEl.textContent = `${Math.round(currentViewport.zoom * 100)}%`;
+  }
+  updateToolbarButtonStates();
+}
+
+function clearViewport(): void {
+  currentContentRect = null;
+  currentViewBox = null;
+  currentFitZoom = null;
+  currentViewport = { zoom: 1.0, panX: 0, panY: 0 };
+  currentViewportMode = 'fit';
+  const viewport = getCanvasViewport();
+  if (viewport) {
+    viewport.style.transform = '';
+  }
+  if (canvasEl) {
+    canvasEl.removeAttribute('data-zoom');
+    canvasEl.removeAttribute('data-pan-x');
+    canvasEl.removeAttribute('data-pan-y');
+    canvasEl.removeAttribute('data-viewport-mode');
+  }
+  if (zoomLevelEl) {
+    zoomLevelEl.textContent = '100%';
+  }
+  updateToolbarButtonStates();
+}
+
+function extractSvgViewBox(svgString: string): string | null {
+  const m = /viewBox=["']([^"']+)["']/.exec(svgString);
+  return m ? m[1] : null;
+}
+
+function parseRenderedSvgRect(svgString: string): Rect | null {
+  const vb = extractSvgViewBox(svgString);
+  if (!vb) return null;
+  const parts = vb.trim().split(/\s+/).map(Number);
+  if (parts.length >= 4 && !isNaN(parts[2]) && !isNaN(parts[3]) && parts[2] > 0 && parts[3] > 0) {
+    // Graphviz pt x 4/3 = rendered px per D4
+    return {
+      width: parts[2] * (4 / 3),
+      height: parts[3] * (4 / 3)
+    };
+  }
+  return null;
+}
+
 function setCanvasContent(content: string, isText = false): void {
   const viewport = getCanvasViewport();
   if (!viewport) return;
-  if (isText) {
-    viewport.textContent = content;
+
+  if (isText || !content.trim()) {
+    viewport.textContent = isText ? content : '';
+    clearViewport();
+    return;
+  }
+
+  viewport.innerHTML = content;
+
+  const newViewBox = extractSvgViewBox(content);
+  const newRect = parseRenderedSvgRect(content);
+
+  if (!newViewBox || !newRect) {
+    clearViewport();
+    return;
+  }
+
+  const containerRect: Rect = {
+    width: canvasEl ? (canvasEl.clientWidth || 800) : 800,
+    height: canvasEl ? (canvasEl.clientHeight || 500) : 500
+  };
+
+  const fit = fitToContainer(newRect, containerRect);
+  currentFitZoom = fit.zoom;
+  currentContentRect = newRect;
+
+  if (sameFrame(currentViewBox, newViewBox)) {
+    applyViewport();
   } else {
-    viewport.innerHTML = content;
+    currentViewBox = newViewBox;
+    const init = initialView(newRect, containerRect);
+    currentViewport = { zoom: init.zoom, panX: init.panX, panY: init.panY };
+    currentViewportMode = init.mode;
+    applyViewport();
   }
 }
 const tokenListEl = document.getElementById('token-list');
@@ -372,6 +502,10 @@ function clearResults(): void {
     canvasEl.removeAttribute('data-current-step');
     canvasEl.removeAttribute('data-view');
     canvasEl.removeAttribute('data-run-status');
+    canvasEl.removeAttribute('data-zoom');
+    canvasEl.removeAttribute('data-pan-x');
+    canvasEl.removeAttribute('data-pan-y');
+    canvasEl.removeAttribute('data-viewport-mode');
   }
   if (traceEl) {
     traceEl.innerHTML = '';
@@ -646,6 +780,10 @@ async function renderFinalView(): Promise<void> {
       setCanvasContent(message, true);
       canvasEl.setAttribute('data-view', 'final');
       canvasEl.removeAttribute('data-current-step');
+      canvasEl.removeAttribute('data-zoom');
+      canvasEl.removeAttribute('data-pan-x');
+      canvasEl.removeAttribute('data-pan-y');
+      canvasEl.removeAttribute('data-viewport-mode');
     }
     return;
   }
@@ -816,6 +954,7 @@ function renderValidationChecks(analysis: AnalysisSuccess, concatenation: 'epsil
 async function handleBuild() {
   if (!inputEl) return;
   stopPlayback();
+  currentViewBox = null;
   const gen = ++buildGeneration;
   ++diffGeneration;
   if (diffStatusEl) diffStatusEl.textContent = '';
@@ -960,6 +1099,10 @@ async function handleBuild() {
       canvasEl.removeAttribute('data-current-step');
       canvasEl.removeAttribute('data-view');
       canvasEl.removeAttribute('data-run-status');
+      canvasEl.removeAttribute('data-zoom');
+      canvasEl.removeAttribute('data-pan-x');
+      canvasEl.removeAttribute('data-pan-y');
+      canvasEl.removeAttribute('data-viewport-mode');
     }
     if (layoutNoteEl) {
       layoutNoteEl.textContent = message;
@@ -1346,9 +1489,155 @@ if (compactLabelsEl) {
   });
 }
 
+if (zoomInBtn) {
+  zoomInBtn.addEventListener('click', () => {
+    if (!currentContentRect || !canvasEl) return;
+    currentViewportMode = 'manual';
+    const center = { x: (canvasEl.clientWidth || 800) / 2, y: (canvasEl.clientHeight || 500) / 2 };
+    const limits = getEffectiveLimits(currentFitZoom ?? undefined);
+    currentViewport = zoomAt(currentViewport, 1.2, center, limits);
+    applyViewport();
+  });
+}
+
+if (zoomOutBtn) {
+  zoomOutBtn.addEventListener('click', () => {
+    if (!currentContentRect || !canvasEl) return;
+    currentViewportMode = 'manual';
+    const center = { x: (canvasEl.clientWidth || 800) / 2, y: (canvasEl.clientHeight || 500) / 2 };
+    const limits = getEffectiveLimits(currentFitZoom ?? undefined);
+    currentViewport = zoomAt(currentViewport, 1 / 1.2, center, limits);
+    applyViewport();
+  });
+}
+
+if (zoomFitBtn) {
+  zoomFitBtn.addEventListener('click', () => {
+    if (!currentContentRect || !canvasEl) return;
+    currentViewportMode = 'fit';
+    const containerRect: Rect = { width: canvasEl.clientWidth || 800, height: canvasEl.clientHeight || 500 };
+    const fit = fitToContainer(currentContentRect, containerRect);
+    const limits = getEffectiveLimits(fit.zoom);
+    currentViewport = { zoom: clampZoom(fit.zoom, limits), panX: fit.panX, panY: fit.panY };
+    applyViewport();
+  });
+}
+
+if (zoomResetBtn) {
+  zoomResetBtn.addEventListener('click', () => {
+    if (!currentContentRect || !canvasEl) return;
+    currentViewportMode = 'manual';
+    const panX = ((canvasEl.clientWidth || 800) - currentContentRect.width) / 2;
+    const panY = ((canvasEl.clientHeight || 500) - currentContentRect.height) / 2;
+    currentViewport = { zoom: 1.0, panX, panY };
+    applyViewport();
+  });
+}
+
+let isDragging = false;
+let lastPointerX = 0;
+let lastPointerY = 0;
+
+if (canvasEl) {
+  canvasEl.addEventListener('wheel', (e: WheelEvent) => {
+    if (!currentContentRect) return;
+
+    const isZoom = e.ctrlKey || e.metaKey;
+    const isHorizontalPan = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+    const isShiftPan = e.shiftKey;
+
+    if (isZoom) {
+      e.preventDefault();
+      currentViewportMode = 'manual';
+      const rect = canvasEl.getBoundingClientRect();
+      const focal = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const factor = Math.exp(-e.deltaY * WHEEL_ZOOM_K);
+      const limits = getEffectiveLimits(currentFitZoom ?? undefined);
+      currentViewport = zoomAt(currentViewport, factor, focal, limits);
+      applyViewport();
+    } else if (isHorizontalPan || isShiftPan) {
+      e.preventDefault();
+      currentViewportMode = 'manual';
+      const deltaX = isShiftPan ? (e.deltaY !== 0 ? -e.deltaY : -e.deltaX) : -e.deltaX;
+      currentViewport = panBy(currentViewport, { dx: deltaX, dy: 0 });
+      applyViewport();
+    }
+  }, { passive: false });
+
+  canvasEl.addEventListener('pointerdown', (e: PointerEvent) => {
+    if (!currentContentRect) return;
+    if (!e.isPrimary || e.button !== 0 || e.pointerType === 'touch') return;
+    isDragging = true;
+    lastPointerX = e.clientX;
+    lastPointerY = e.clientY;
+    canvasEl.setPointerCapture(e.pointerId);
+    canvasEl.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+
+  canvasEl.addEventListener('pointermove', (e: PointerEvent) => {
+    if (!isDragging) return;
+    const dx = e.clientX - lastPointerX;
+    const dy = e.clientY - lastPointerY;
+    lastPointerX = e.clientX;
+    lastPointerY = e.clientY;
+    currentViewportMode = 'manual';
+    currentViewport = panBy(currentViewport, { dx, dy });
+    applyViewport();
+  });
+
+  const endDrag = (e: PointerEvent) => {
+    if (!isDragging) return;
+    isDragging = false;
+    canvasEl.style.cursor = 'grab';
+    try {
+      canvasEl.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+  };
+
+  canvasEl.addEventListener('pointerup', endDrag);
+  canvasEl.addEventListener('pointercancel', endDrag);
+
+  canvasEl.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (!currentContentRect) return;
+
+    if (e.key === '+' || e.key === '=') {
+      e.preventDefault();
+      if (zoomInBtn && !zoomInBtn.disabled) zoomInBtn.click();
+    } else if (e.key === '-' || e.key === '_') {
+      e.preventDefault();
+      if (zoomOutBtn && !zoomOutBtn.disabled) zoomOutBtn.click();
+    } else if (e.key === '0') {
+      e.preventDefault();
+      if (zoomResetBtn && !zoomResetBtn.disabled) zoomResetBtn.click();
+    } else if (e.key === 'f' || e.key === 'F') {
+      e.preventDefault();
+      if (zoomFitBtn && !zoomFitBtn.disabled) zoomFitBtn.click();
+    } else if (e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      currentViewportMode = 'manual';
+      const frameW = canvasEl.clientWidth || 800;
+      const frameH = canvasEl.clientHeight || 500;
+      let dx = 0;
+      let dy = 0;
+      if (e.key === 'ArrowLeft') dx = frameW * 0.1;
+      else if (e.key === 'ArrowRight') dx = -frameW * 0.1;
+      else if (e.key === 'ArrowUp') dy = frameH * 0.1;
+      else if (e.key === 'ArrowDown') dy = -frameH * 0.1;
+      currentViewport = panBy(currentViewport, { dx, dy });
+      applyViewport();
+    }
+  });
+}
+
 window.addEventListener('keydown', (e: KeyboardEvent) => {
   const target = e.target as HTMLElement | null;
   if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) {
+    return;
+  }
+  if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) {
     return;
   }
   if (e.key === 'ArrowLeft') {
@@ -1372,6 +1661,7 @@ if (stepPrevBtn) stepPrevBtn.disabled = true;
 if (stepPlayBtn) stepPlayBtn.disabled = true;
 if (stepNextBtn) stepNextBtn.disabled = true;
 if (stepLastBtn) stepLastBtn.disabled = true;
+updateToolbarButtonStates();
 
 if (runSuiteBtn && suiteTableEl) {
   runSuiteBtn.addEventListener('click', () => {
