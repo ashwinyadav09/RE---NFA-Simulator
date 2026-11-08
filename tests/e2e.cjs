@@ -86,9 +86,25 @@ const assert = require('node:assert');
     };
     window.Worker.prototype = origWorker.prototype;
 
+    window.__heldWorkerMessages = [];
+    window.__releaseHeldWorkerMessages = function() {
+      const list = window.__heldWorkerMessages || [];
+      window.__heldWorkerMessages = [];
+      for (const item of list) {
+        origPostMessage.call(item.worker, item.msg);
+      }
+    };
+
     const origPostMessage = Worker.prototype.postMessage;
     Worker.prototype.postMessage = function(msg) {
       if (msg && msg.type === 'test-regexp') {
+        if (window.__e2eWorkerMode === 'hold') {
+          window.__heldWorkerMessages.push({
+            worker: this,
+            msg: msg
+          });
+          return;
+        }
         if (window.__e2eWorkerMode === 'timeout') {
           // Drop message to trigger 2s timeout
           return;
@@ -1658,14 +1674,18 @@ const assert = require('node:assert');
 
   await page.evaluate(() => {
     window.__diffDone = false;
-    window.__e2eWorkerDelay = 300;
+    window.__e2eWorkerMode = 'hold';
   });
   await page.click('#diff-run');
+  await page.waitForFunction(() => window.__heldWorkerMessages && window.__heldWorkerMessages.length > 0);
   const stressDisabledDuringDiff = await page.$eval('#stress-run', (el) => el.disabled);
   assert.strictEqual(stressDisabledDuringDiff, true, '#stress-run must be disabled while differential run is active');
 
+  await page.evaluate(() => {
+    window.__e2eWorkerMode = 'normal';
+    window.__releaseHeldWorkerMessages();
+  });
   await page.waitForFunction('window.__diffDone === true', null, { timeout: 15000 });
-  await page.evaluate(() => { window.__e2eWorkerDelay = 0; });
   const stressReEnabledAfterDiff = await page.$eval('#stress-run', (el) => el.disabled);
   assert.strictEqual(stressReEnabledAfterDiff, false, '#stress-run must be re-enabled after differential run finishes');
 
