@@ -11,6 +11,6 @@ Evaluators should be able to open the simulator from a link or from one HTML fil
 - Never fetch anything at runtime. No CDN, no remote fonts.
 
 ## Consequences
-- The page works offline and from `file://` in Chromium. Firefox and Safari are not yet verified; a ticket must check them.
+- The page works offline and from `file://` in Chromium. Other browsers are not verified (owner decision: Chromium only; Firefox is not checked).
 - The bundle is large for a static page. Accepted: the WebAssembly is the layout engine.
 - A hosted copy (GitHub Pages or similar) is the same file, so there is one build to test.

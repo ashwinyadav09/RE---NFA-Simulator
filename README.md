@@ -8,7 +8,7 @@ PROMPTS.md                        prompts to paste into Antigravity, step by ste
 CONTEXT.md                        vocabulary and concepts
 docs/SPEC.md                      functional specification and user stories
 docs/adr/                         architectural decision records
-docs/BROWSER-CHECK.md             browser verification checklist (Chromium, Firefox, Safari)
+docs/BROWSER-CHECK.md             browser scope and verification record (Chromium only)
 docs/research/REPORT.md           research findings and prototype evidence
 .agents/skills/thompson-rules/    canonical rules, fixtures (JSON), mutation checklist
 .scratch/re-nfa-simulator/issues/ the 15 project tickets
@@ -77,6 +77,6 @@ No build scripts, server-side containers, or deployment dependencies are require
 ## Browser Support
 
 See [`docs/BROWSER-CHECK.md`](docs/BROWSER-CHECK.md) for full browser verification status:
-- **Chromium / Chrome**: Fully verified via automated smoke test (`npm run e2e`) and headed walkthrough over `file://`.
-- **Firefox**: Verification checklist documented in `docs/BROWSER-CHECK.md`.
-- **Safari**: Safari: best effort, not verified.
+- **Chromium / Chrome**: Tested in Chromium over `file://` (automated smoke and headed walkthrough pass).
+- **Firefox**: Not checked; other browsers are not verified (owner decision: Chromium only).
+- **Safari**: best effort, not verified.

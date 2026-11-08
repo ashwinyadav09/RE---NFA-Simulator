@@ -52,7 +52,7 @@ I wrote a throwaway prototype that follows M1's pseudocode A1–A4 literally (`r
 
 **Q6. Can it ship as one offline page, and with what toolchain?**
 - [computed] A smoke project with TypeScript 7.0.2 (`tsc` exit 0), Vitest 5.1.0 (3 tests, including `@fast-check/vitest` and Viz.js under Node), Vite 8.3.5 and `vite-plugin-singlefile` 2.3.4 builds a single 1.36 MB file. Opened from `file://` in headless Chromium it rendered an SVG through the WebAssembly and ran an inline worker, with no console errors, ready in 258 ms. A plain worker file threw `SecurityError` (07, 00).
-- [unverified] Firefox, Safari, and Playwright versions newer than 1.56.
+- [unverified] Playwright versions newer than 1.56 (tested in Chromium over file://; other browsers are not verified per owner decision).
 
 **Q7. What exists already, and is the gap real?**
 - [cited] JFLAP uses `+` for union and `!` for the empty string, and its guided conversion also offers automatic Do Step and Do All, so M1's "the user adds ε-transitions by hand" is incomplete. There are two Virtual Labs implementations (IIIT Hyderabad's, which M1 cites, and an Amrita one that builds the expression from a click panel). A student project, RegExtoNFA, shows a parse tree, automaton statistics and a step-by-step simulation with highlighting.
@@ -97,7 +97,7 @@ I wrote a throwaway prototype that follows M1's pseudocode A1–A4 literally (`r
 ## 6. Risks and what is not verified
 
 - Pinned per-step rendering has not been timed on large graphs; the stable-layout ticket must measure it and cache.
-- Only Chromium was exercised. Firefox and Safari are open.
+- Only Chromium was exercised over file://; other browsers are not verified (owner decision: Chromium only).
 - RegExp timings are V8's; other engines differ, so the stress panel measures the user's own browser.
 - TypeScript 7 is new; I tested `tsc`, Vite and Vitest only, not linters or other plugins.
 - JFLAP, Virtual Labs and RegExtoNFA were read about, not used.
