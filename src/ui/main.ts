@@ -31,6 +31,7 @@ import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramO
 import InlineWorker from './worker.ts?worker&inline';
 
 const renderer = new VizRenderer();
+(window as any).VizRenderer = VizRenderer;
 let currentAnalysis: AnalysisSuccess | null = null;
 let userEditedAlphabet: string[] | null = null;
 let buildGeneration = 0;
@@ -59,7 +60,6 @@ function getWorker(): Worker {
         if (statusEl) {
           statusEl.textContent = JSON.stringify(e.data);
         }
-        (window as any).__workerResult = e.data;
       }
     };
   }
@@ -137,7 +137,6 @@ try {
   worker.postMessage({ ping: 'hello' });
 } catch (err) {
   console.error('Worker initialization failed', err);
-  (window as any).__workerError = err;
 }
 
 const inputEl = document.getElementById('regex-input') as HTMLInputElement | null;
@@ -390,7 +389,6 @@ function clearResults(): void {
   }
 
   masterPositions = null;
-  (window as any).__masterPositions = null;
   stepSvgCache.clear();
   layoutFailed = false;
   if (layoutNoteEl) {
@@ -580,16 +578,12 @@ async function navigateToStep(stepIndex: number): Promise<void> {
     renderEngine = undefined;
   }
 
-  if ((window as any).__testRenderDelay && (window as any).__testRenderDelay[targetStep]) {
-    await new Promise((r) => setTimeout(r, (window as any).__testRenderDelay[targetStep]));
-  }
-
   let result = await renderer.render(dot, renderEngine ? { engine: renderEngine } : undefined);
 
-  if ((!result.ok || (window as any).__testForcePinnedRenderFailure) && renderEngine === 'neato') {
+  if (!result.ok && renderEngine === 'neato') {
     layoutFailed = true;
     stepSvgCache.clear();
-    const errText = !result.ok ? result.error : 'Forced pinned failure';
+    const errText = result.error;
     if (layoutNoteEl) {
       layoutNoteEl.textContent = `Note: Pinned layout render failed (${errText}); falling back to unpinned layout.`;
       layoutNoteEl.className = 'warning';
@@ -867,8 +861,6 @@ async function handleBuild() {
       const { start, end } = codePointToUtf16Range(source, analysis.position);
       inputEl.setSelectionRange(start, end);
     }
-    (window as any).__masterPositions = null;
-    (window as any).__buildDone = true;
     return;
   }
 
@@ -953,8 +945,6 @@ async function handleBuild() {
       layoutNoteEl.textContent = message;
       layoutNoteEl.className = 'warning';
     }
-    (window as any).__masterPositions = null;
-    (window as any).__buildDone = true;
     return;
   }
 
@@ -992,30 +982,21 @@ async function handleBuild() {
       }
     }
 
-    if ((window as any).__testForceLayoutFailure) {
+    const layoutRes = await computeMasterLayout(epsNfa, renderer);
+    if (gen !== buildGeneration) return;
+    if (layoutRes.ok) {
+      masterPositions = layoutRes.positions;
+      layoutFailed = false;
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = '';
+        layoutNoteEl.className = '';
+      }
+    } else {
       masterPositions = null;
       layoutFailed = true;
       if (layoutNoteEl) {
-        layoutNoteEl.textContent = 'Note: Master layout failed (Forced test failure); falling back to unpinned layout.';
+        layoutNoteEl.textContent = `Note: Master layout failed (${layoutRes.error}); falling back to unpinned layout.`;
         layoutNoteEl.className = 'warning';
-      }
-    } else {
-      const layoutRes = await computeMasterLayout(epsNfa, renderer);
-      if (gen !== buildGeneration) return;
-      if (layoutRes.ok) {
-        masterPositions = layoutRes.positions;
-        layoutFailed = false;
-        if (layoutNoteEl) {
-          layoutNoteEl.textContent = '';
-          layoutNoteEl.className = '';
-        }
-      } else {
-        masterPositions = null;
-        layoutFailed = true;
-        if (layoutNoteEl) {
-          layoutNoteEl.textContent = `Note: Master layout failed (${layoutRes.error}); falling back to unpinned layout.`;
-          layoutNoteEl.className = 'warning';
-        }
       }
     }
   } else {
@@ -1026,11 +1007,6 @@ async function handleBuild() {
   if (gen !== buildGeneration) return;
 
   await navigateToStep(1);
-
-  if (gen !== buildGeneration) return;
-
-  (window as any).__masterPositions = masterPositions;
-  (window as any).__buildDone = true;
 }
 
 function renderTrace(
@@ -1149,7 +1125,6 @@ function handleRun() {
       runStatusEl.textContent = '';
       runStatusEl.className = '';
     }
-    (window as any).__runDone = true;
     return;
   }
 
@@ -1192,8 +1167,6 @@ function handleRun() {
       }
     }
   }
-
-  (window as any).__runDone = true;
 }
 
 if (buttonEl) {
@@ -1421,8 +1394,6 @@ if (runSuiteBtn && suiteTableEl) {
         tbody.appendChild(tr);
       }
     }
-    (window as any).__suiteDone = true;
-    (window as any).__suiteResults = results;
   });
 }
 
@@ -1441,7 +1412,6 @@ if (diffRunBtn) {
     if (stressRunBtn) {
       stressRunBtn.disabled = true;
     }
-    (window as any).__diffDone = false;
 
     try {
       const activeAlphabet = userEditedAlphabet ?? currentAnalysis.alphabet;
@@ -1526,9 +1496,6 @@ if (diffRunBtn) {
           </div>
         `;
       }
-
-      (window as any).__diffDone = true;
-      (window as any).__diffResult = diffResult;
     } finally {
       diffIsActive = false;
       diffRunBtn.disabled = stressIsActive;
@@ -1591,8 +1558,6 @@ if (stressRunBtn) {
     if (stressTableBody) {
       stressTableBody.innerHTML = '';
     }
-    (window as any).__stressDone = false;
-    (window as any).__stressRowAdded = false;
 
     const familyId = stressFamilySelect ? stressFamilySelect.value : 'star-star-b';
     const family = STRESS_FAMILIES[familyId] || STRESS_FAMILIES['star-star-b'];
@@ -1677,7 +1642,6 @@ if (stressRunBtn) {
             <td>${nfaRes.verdict}</td>
           `;
           stressTableBody.appendChild(tr);
-          (window as any).__stressRowAdded = true;
         }
 
         if (stressChartContainer && gen === stressGeneration) {
@@ -1750,11 +1714,7 @@ if (stressRunBtn) {
         if (diffRunBtn && !diffIsActive) {
           diffRunBtn.disabled = false;
         }
-        (window as any).__stressDone = true;
-        (window as any).__stressPoints = chartPoints;
       }
     }
   });
 }
-
-(window as any).__ready = true;

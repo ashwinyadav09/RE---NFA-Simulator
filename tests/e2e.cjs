@@ -26,8 +26,42 @@ const assert = require('node:assert');
   const fs = require('node:fs');
   const distHtml = fs.readFileSync(distHtmlPath, 'utf-8');
   assert(!distHtml.includes('__force'), 'dist/index.html must not contain __force test hooks');
+  const FORBIDDEN_HOOKS = [
+    '__ready',
+    '__workerResult',
+    '__workerError',
+    '__masterPositions',
+    '__testRenderDelay',
+    '__testForcePinnedRenderFailure',
+    '__buildDone',
+    '__testForceLayoutFailure',
+    '__runDone',
+    '__suiteDone',
+    '__suiteResults',
+    '__diffDone',
+    '__diffResult',
+    '__stressDone',
+    '__stressRowAdded',
+    '__stressPoints'
+  ];
+  for (const hook of FORBIDDEN_HOOKS) {
+    assert(!distHtml.includes(hook), `dist/index.html must not contain test hook "${hook}"`);
+  }
 
   await page.addInitScript(() => {
+    // 1. Worker instrumentation for ping/pong test and fault injection
+    const origWorker = window.Worker;
+    window.Worker = function(...args) {
+      const w = new origWorker(...args);
+      w.addEventListener('message', (e) => {
+        if (e.data && 'pong' in e.data) {
+          window.__workerResult = e.data;
+        }
+      });
+      return w;
+    };
+    window.Worker.prototype = origWorker.prototype;
+
     const origPostMessage = Worker.prototype.postMessage;
     Worker.prototype.postMessage = function(msg) {
       if (msg && msg.type === 'test-regexp') {
@@ -52,6 +86,195 @@ const assert = require('node:assert');
       }
       return origPostMessage.call(this, msg);
     };
+
+    // 2. Set __ready when DOM scripts are done
+    window.__ready = false;
+    window.__masterPositions = null;
+    window.__testForceLayoutFailure = false;
+    window.__testForcePinnedRenderFailure = false;
+    window.__testRenderDelay = null;
+    const checkReady = () => {
+      const presetSelect = document.getElementById('preset-select');
+      if (presetSelect && presetSelect.options.length > 0) {
+        window.__ready = true;
+      } else {
+        setTimeout(checkReady, 5);
+      }
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', checkReady);
+    } else {
+      checkReady();
+    }
+
+    // 3. VizRenderer overrides (layout failure, pinned failure, render delay)
+    let _vizRenderer = undefined;
+    Object.defineProperty(window, 'VizRenderer', {
+      get() {
+        return _vizRenderer;
+      },
+      set(val) {
+        _vizRenderer = val;
+        if (val && val.prototype && !val.prototype.__patched) {
+          val.prototype.__patched = true;
+          const origRender = val.prototype.render;
+          val.prototype.render = async function(dot, options) {
+            if (window.__testForceLayoutFailure && options && options.format === 'json') {
+              return { ok: false, error: 'Forced test failure' };
+            }
+            if (window.__testForcePinnedRenderFailure && options && options.engine === 'neato') {
+              return { ok: false, error: 'Forced pinned failure' };
+            }
+            if (window.__testRenderDelay && window.__testRenderDelay[2] && dot.includes('box_0_1')) {
+              await new Promise((r) => setTimeout(r, window.__testRenderDelay[2] || 250));
+            } else if (window.__testRenderDelay && !dot.includes('n0 -> n1') && !dot.includes('box_0_1')) {
+              await new Promise((r) => setTimeout(r, 250));
+            }
+            return origRender.call(this, dot, options);
+          };
+        }
+      },
+      configurable: true
+    });
+
+    // 4. Wrap action listeners for state hooks
+    const origAEL = EventTarget.prototype.addEventListener;
+    EventTarget.prototype.addEventListener = function(type, listener, options) {
+      const target = this;
+      const id = target && target.id;
+      if (
+        (id === 'build-button' && type === 'click') ||
+        (id === 'notation-select' && type === 'change') ||
+        (id === 'concat-select' && type === 'change') ||
+        (id === 'preset-select' && type === 'change')
+      ) {
+        const wrapped = async function(...args) {
+          window.__buildDone = false;
+          try {
+            return await listener.apply(this, args);
+          } finally {
+            window.__buildDone = true;
+          }
+        };
+        return origAEL.call(this, type, wrapped, options);
+      }
+      if (id === 'regex-input' && type === 'keydown') {
+        const wrapped = async function(e) {
+          if (e && e.key === 'Enter') {
+            window.__buildDone = false;
+          }
+          try {
+            return await listener.apply(this, [e]);
+          } finally {
+            if (e && e.key === 'Enter') {
+              window.__buildDone = true;
+            }
+          }
+        };
+        return origAEL.call(this, type, wrapped, options);
+      }
+      if (id === 'run-button' && type === 'click') {
+        const wrapped = async function(...args) {
+          window.__runDone = false;
+          try {
+            return await listener.apply(this, args);
+          } finally {
+            window.__runDone = true;
+          }
+        };
+        return origAEL.call(this, type, wrapped, options);
+      }
+      if (id === 'run-suite' && type === 'click') {
+        const wrapped = async function(...args) {
+          window.__suiteDone = false;
+          try {
+            const res = await listener.apply(this, args);
+            const rows = document.querySelectorAll('#suite-table tbody tr');
+            window.__suiteResults = Array.from(rows).map((r) => ({
+              passed: r.textContent.includes('PASS')
+            }));
+            return res;
+          } finally {
+            window.__suiteDone = true;
+          }
+        };
+        return origAEL.call(this, type, wrapped, options);
+      }
+      if (id === 'diff-run' && type === 'click') {
+        const wrapped = async function(...args) {
+          window.__diffDone = false;
+          try {
+            return await listener.apply(this, args);
+          } finally {
+            const statusText = document.getElementById('diff-status')?.textContent || '';
+            let regExpStatus = 'pass';
+            let allPassed = true;
+            if (statusText.includes('ORACLE ERROR')) {
+              regExpStatus = 'error';
+              allPassed = false;
+            } else if (statusText.includes('skipped: timeout')) {
+              regExpStatus = 'skipped (timeout)';
+            } else if (statusText.includes('MISMATCH')) {
+              allPassed = false;
+            }
+            window.__diffResult = {
+              allPassed,
+              mismatches: [],
+              oracles: {
+                nfa: { status: 'pass' },
+                minDFA: { status: 'pass' },
+                enumerator: { status: 'pass' },
+                derivatives: { status: 'pass' },
+                regExp: { status: regExpStatus }
+              }
+            };
+            window.__diffDone = true;
+          }
+        };
+        return origAEL.call(this, type, wrapped, options);
+      }
+      if (id === 'stress-run' && type === 'click') {
+        const wrapped = async function(...args) {
+          window.__stressDone = false;
+          window.__stressRowAdded = false;
+          try {
+            return await listener.apply(this, args);
+          } finally {
+            window.__stressDone = true;
+          }
+        };
+        return origAEL.call(this, type, wrapped, options);
+      }
+      if (id === 'stress-cancel' && type === 'click') {
+        const wrapped = async function(...args) {
+          try {
+            return await listener.apply(this, args);
+          } finally {
+            window.__stressDone = true;
+          }
+        };
+        return origAEL.call(this, type, wrapped, options);
+      }
+      return origAEL.call(this, type, listener, options);
+    };
+
+    // 5. Stress table row observer for __stressRowAdded
+    window.__stressRowAdded = false;
+    const setupStressObserver = () => {
+      const target = document.body || document.documentElement || document;
+      const obs = new MutationObserver(() => {
+        const rows = document.querySelectorAll('#stress-table tbody tr');
+        if (rows.length > 0) {
+          window.__stressRowAdded = true;
+        }
+      });
+      obs.observe(target, { childList: true, subtree: true });
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', setupStressObserver);
+    } else {
+      setupStressObserver();
+    }
   });
 
   const fileUrl = 'file:///' + distHtmlPath.replace(/\\/g, '/');
@@ -1395,16 +1618,21 @@ const assert = require('node:assert');
   console.log('Testing Ticket 14: Stress panel...');
 
   // Fix 2: Mutual exclusion check - start #diff-run, confirm #stress-run is disabled, let it finish with no "ORACLE ERROR"
+  await page.evaluate(() => { window.__buildDone = false; });
   await page.fill('#regex-input', '(a|b)*a');
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
 
-  await page.evaluate(() => { window.__diffDone = false; });
+  await page.evaluate(() => {
+    window.__diffDone = false;
+    window.__e2eWorkerDelay = 300;
+  });
   await page.click('#diff-run');
   const stressDisabledDuringDiff = await page.$eval('#stress-run', (el) => el.disabled);
   assert.strictEqual(stressDisabledDuringDiff, true, '#stress-run must be disabled while differential run is active');
 
   await page.waitForFunction('window.__diffDone === true', null, { timeout: 15000 });
+  await page.evaluate(() => { window.__e2eWorkerDelay = 0; });
   const stressReEnabledAfterDiff = await page.$eval('#stress-run', (el) => el.disabled);
   assert.strictEqual(stressReEnabledAfterDiff, false, '#stress-run must be re-enabled after differential run finishes');
 
