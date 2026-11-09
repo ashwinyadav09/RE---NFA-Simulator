@@ -1864,6 +1864,33 @@ const assert = require('node:assert');
   await page.waitForFunction(() => !document.getElementById('stress-copy-status')?.hasAttribute('data-copied'), null, { timeout: 5000 });
   assert.strictEqual(await page.textContent('#stress-copy-status'), '', 'Copy status text must be cleared after 2 s');
 
+  // Test fallback to execCommand when writeText rejects
+  await page.evaluate(() => {
+    window.__origWriteText = navigator.clipboard.writeText;
+    navigator.clipboard.writeText = () => Promise.reject(new Error('Permission denied'));
+  });
+  await page.click('#stress-copy-csv');
+  assert.strictEqual(await page.textContent('#stress-copy-status'), 'Copied!', 'Copy fallback must succeed via execCommand when writeText rejects');
+  assert.strictEqual(await page.$eval('#stress-copy-status', (el) => el.getAttribute('data-copied')), 'true', 'data-copied must be true on fallback copy');
+
+  // Test "Copy failed" when both writeText and execCommand fail
+  await page.evaluate(() => {
+    window.__origExecCommand = document.execCommand;
+    document.execCommand = () => false;
+  });
+  await page.click('#stress-copy-csv');
+  assert.strictEqual(await page.textContent('#stress-copy-status'), 'Copy failed', 'Status must show Copy failed when both writeText and execCommand fail');
+  assert.strictEqual(await page.$eval('#stress-copy-status', (el) => el.getAttribute('data-copied')), 'false', 'data-copied must be false when copy fails');
+
+  // Restore clipboard functions
+  await page.evaluate(() => {
+    navigator.clipboard.writeText = window.__origWriteText;
+    document.execCommand = window.__origExecCommand;
+    delete window.__origWriteText;
+    delete window.__origExecCommand;
+  });
+  await page.waitForFunction(() => !document.getElementById('stress-copy-status')?.hasAttribute('data-copied'), null, { timeout: 5000 });
+
   // Ticket 18 AC8: SVG export
   console.log('Testing Ticket 18 AC8: SVG export...');
   assert.strictEqual(await page.$eval('#stress-export-svg', (el) => el.disabled), false, '#stress-export-svg must be enabled when rows exist');
@@ -1915,10 +1942,22 @@ const assert = require('node:assert');
     page.click('#stress-export-svg')
   ]);
   assert.strictEqual(downloadLog.suggestedFilename(), 'stress-chart-star-star-b-log.svg', 'Exported SVG filename in log mode must be stress-chart-<family>-log.svg');
-  await page.click('#stress-scale-toggle'); // restore linear
+  const streamLog = await downloadLog.createReadStream();
+  const chunksLog = [];
+  for await (const chunk of streamLog) {
+    chunksLog.push(chunk);
+  }
+  const downloadedLogSvg = Buffer.concat(chunksLog).toString('utf-8');
+  assert(downloadedLogSvg.includes('(log scale)'), 'Exported log SVG must include (log scale)');
+  assert(downloadedLogSvg.includes('≤0.01 ms'), 'Exported log SVG must include ≤0.01 ms tick');
+
+  // Leave in log mode to verify scale persists across family change and new run (D2)
+  assert.strictEqual(await page.$eval('#stress-chart-container', (el) => el.getAttribute('data-scale')), 'log');
 
   // 8. Test second family ((a+)+ on a^n b)
   await page.selectOption('#stress-family', 'plus-plus');
+  assert.strictEqual(await page.$eval('#stress-chart-container', (el) => el.getAttribute('data-scale')), 'log', 'Chart scale must stay log after family change');
+
   await page.evaluate(() => { window.__stressRowAdded = false; window.__stressDone = false; });
   const disabledOnRun = await page.evaluate(() => {
     document.getElementById('stress-run').click();
@@ -1929,9 +1968,16 @@ const assert = require('node:assert');
   });
   assert.strictEqual(disabledOnRun.copyCsv, true, '#stress-copy-csv must be disabled when run starts with 0 rows');
   assert.strictEqual(disabledOnRun.exportSvg, true, '#stress-export-svg must be disabled when run starts with 0 rows');
+  assert.strictEqual(await page.$eval('#stress-chart-container', (el) => el.getAttribute('data-scale')), 'log', 'Chart scale must stay log on new run');
+
   await page.waitForFunction('window.__stressRowAdded === true', null, { timeout: 15000 });
   assert.strictEqual(await page.$eval('#stress-copy-csv', (el) => el.disabled), false, '#stress-copy-csv must be re-enabled once rows are added mid-run');
   assert.strictEqual(await page.$eval('#stress-export-svg', (el) => el.disabled), false, '#stress-export-svg must be re-enabled once rows are added mid-run');
+
+  // Mid-run copy contains rows so far (D4)
+  await page.click('#stress-copy-csv');
+  const midRunCsv = await page.evaluate(() => navigator.clipboard.readText());
+  assert(midRunCsv.includes('plus-plus,12,13,'), 'Mid-run copy must contain rows so far');
 
   const plusRowText = await page.$eval('#stress-table tbody tr:first-child', (el) => el.textContent);
   console.log('Second family first row text:', plusRowText);
@@ -1941,6 +1987,16 @@ const assert = require('node:assert');
 
   await page.click('#stress-cancel');
   await page.waitForFunction('window.__stressDone === true', null, { timeout: 15000 });
+
+  // Buttons and rows still enabled/retained after cancel (D4)
+  assert.strictEqual(await page.$eval('#stress-copy-csv', (el) => el.disabled), false, '#stress-copy-csv must remain enabled after cancel');
+  assert.strictEqual(await page.$eval('#stress-export-svg', (el) => el.disabled), false, '#stress-export-svg must remain enabled after cancel');
+  await page.click('#stress-copy-csv');
+  const cancelCsv = await page.evaluate(() => navigator.clipboard.readText());
+  assert(cancelCsv.includes('plus-plus,12,13,'), 'CSV copied after cancel must contain rows so far');
+
+  // Restore linear mode for following tests
+  await page.click('#stress-scale-toggle');
 
   // 9. Item 1: Cancel while pending worker call with window.__e2eWorkerMode = 'timeout'
   console.log('Testing cancel during pending worker call with __e2eWorkerMode = timeout...');

@@ -181,72 +181,243 @@ async function main() {
       replace: "    } else if (e.key === 'f' || e.key === 'F') {\n      e.preventDefault();\n      if (zoomFitBtn && !zoomFitBtn.disabled) zoomFitBtn.click();\n    } else if (!e.shiftKey && e.key === 'ArrowRight') {\n      e.stopPropagation();\n    }",
       expect: 'Plain ArrowRight must step construction'
     },
-    // Ticket 18 Mutants
+    // Ticket 18 Mutants (T18-ACn-x)
+    // AC1: CSV
     {
-      id: 'T18-M-AC1',
-      desc: 'AC1: CSV header uses LF instead of CRLF',
+      id: 'T18-AC1-1',
+      desc: 'AC1: CSV header typo',
       file: 'src/ui/csv.ts',
-      find: "  const lines: string[] = [header.join(',') + '\\r\\n'];",
-      replace: "  const lines: string[] = [header.join(',') + '\\n'];",
-      testType: 'unit',
-      expect: 'Object.is equality'
+      find: "    'string_length',",
+      replace: "    'string_len',",
+      expect: 'string_length'
     },
     {
-      id: 'T18-M-AC2',
-      desc: 'AC2: Log-scale bottom tick drops <= prefix',
+      id: 'T18-AC1-2',
+      desc: 'AC1: TIMEOUT and SKIPPED verdicts swapped',
+      file: 'src/ui/csv.ts',
+      find: '    const regExpVerdict = row.regExpVerdict;',
+      replace: "    const regExpVerdict = row.regExpVerdict === 'TIMEOUT' ? 'SKIPPED' : row.regExpVerdict === 'SKIPPED' ? 'TIMEOUT' : row.regExpVerdict;",
+      expect: 'TIMEOUT'
+    },
+    {
+      id: 'T18-AC1-3',
+      desc: 'AC1: regexp_time_ms printed (not empty) for timeout',
+      file: 'src/ui/csv.ts',
+      find: "      row.regExpVerdict === 'TIMEOUT' ||",
+      replace: "      // row.regExpVerdict === 'TIMEOUT' ||",
+      expect: 'star-star-b,28,28,,0.25 ms,TIMEOUT,REJECT'
+    },
+    {
+      id: 'T18-AC1-4',
+      desc: 'AC1: trailing CRLF omitted in CSV',
+      file: 'src/ui/csv.ts',
+      find: "    lines.push(fields.join(',') + '\\r\\n');",
+      replace: "    lines.push(fields.join(','));",
+      expect: 'expected 2 to be 5'
+    },
+
+    // AC2: Log math
+    {
+      id: 'T18-AC2-1',
+      desc: 'AC2: floor clamp uses Math.min instead of Math.max',
       file: 'src/diagram/index.ts',
-      find: "      { val: 0.01, label: '≤0.01 ms' },",
-      replace: "      { val: 0.01, label: '0.01 ms' },",
-      testType: 'unit',
+      find: '      const clamped = Math.max(0.01, Math.min(ms, 8000));',
+      replace: '      const clamped = Math.min(0.01, Math.min(ms, 8000));',
+      expect: 'expected 265 to be less than 265'
+    },
+    {
+      id: 'T18-AC2-2',
+      desc: 'AC2: scale ignored (linear ticks drawn in log mode)',
+      file: 'src/diagram/index.ts',
+      find: "  // Grid lines & Y ticks for Panel A\n  if (scale === 'log') {",
+      replace: "  // Grid lines & Y ticks for Panel A\n  if (false && scale === 'log') {",
       expect: '≤0.01 ms'
     },
     {
-      id: 'T18-M-AC3',
-      desc: 'AC3: Log toggle aria-pressed update omitted',
+      id: 'T18-AC2-3',
+      desc: 'AC2: timeout marker not at panel top in log mode',
+      file: 'src/diagram/index.ts',
+      find: 'lines.push(`  <g id="panelA-timeout" transform="translate(${x.toFixed(1)}, ${panelA.top.toFixed(1)})">`);',
+      replace: 'lines.push(`  <g id="panelA-timeout" transform="translate(${x.toFixed(1)}, ${(scale === \'log\' ? panelA.top + 50 : panelA.top).toFixed(1)})">`);',
+      expect: 'id="panelA-timeout" transform="translate(322.8, 50.0)"'
+    },
+
+    // AC3: Retention
+    {
+      id: 'T18-AC3-1',
+      desc: 'AC3: rows cleared on cancel',
       file: 'src/ui/main.ts',
-      find: "    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log'));",
-      replace: "    // aria-pressed update omitted",
-      expect: 'aria-pressed must be true after toggling log scale'
+      find: '    stressCancelled = true;',
+      replace: '    stressCancelled = true;\n    currentStressRows = [];',
+      expect: 'CSV copied after cancel must contain rows so far'
     },
     {
-      id: 'T18-M-AC4',
-      desc: 'AC4: Log toggle clears retained rows',
+      id: 'T18-AC3-2',
+      desc: 'AC3: toggle re-renders from an empty array',
       file: 'src/ui/main.ts',
-      find: "    currentStressScale = currentStressScale === 'linear' ? 'log' : 'linear';",
-      replace: "    currentStressScale = currentStressScale === 'linear' ? 'log' : 'linear'; currentStressRows = [];",
+      find: '  stressChartContainer.innerHTML = renderStressChartSvg(\n    stressRowsToChartPoints(currentStressRows),',
+      replace: '  stressChartContainer.innerHTML = renderStressChartSvg(\n    stressRowsToChartPoints([]),',
       expect: 'Stress chart must retain points across scale toggle'
     },
+
+    // AC4: Toggle
     {
-      id: 'T18-M-AC5',
-      desc: 'AC5: Timeout marker suppressed in log mode',
-      file: 'src/diagram/index.ts',
-      find: "      if (pt.regExpTimeout) {",
-      replace: "      if (pt.regExpTimeout && scale !== 'log') {",
-      expect: 'id="panelA-timeout"'
+      id: 'T18-AC4-1',
+      desc: 'AC4: scale reset to linear on family change',
+      file: 'src/ui/main.ts',
+      find: "const stressFamilySelect = document.getElementById('stress-family') as HTMLSelectElement | null;",
+      replace: "const stressFamilySelect = document.getElementById('stress-family') as HTMLSelectElement | null;\nif (stressFamilySelect) stressFamilySelect.addEventListener('change', () => { currentStressScale = 'linear'; updateStressChart(); });",
+      expect: 'Chart scale must stay log after family change'
     },
     {
-      id: 'T18-M-AC6',
-      desc: 'AC6: Copy status data-copied attribute omitted',
+      id: 'T18-AC4-2',
+      desc: 'AC4: scale reset to linear on a new run',
       file: 'src/ui/main.ts',
-      find: "        stressCopyStatusEl.setAttribute('data-copied', 'true');",
-      replace: "        // data-copied omitted",
-      expect: 'data-copied must be set to true on successful copy'
+      find: '    currentStressRows = [];',
+      replace: "    currentStressRows = []; currentStressScale = 'linear';",
+      expect: 'Chart scale must stay log on new run'
     },
     {
-      id: 'T18-M-AC7',
-      desc: 'AC7: stress-copy-csv initially enabled',
+      id: 'T18-AC4-3',
+      desc: 'AC4: label text swaps to "Linear scale"',
       file: 'src/ui/main.ts',
-      find: "    stressCopyCsvBtn.disabled = !hasRows;",
-      replace: "    stressCopyCsvBtn.disabled = false;",
+      find: "    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log'));",
+      replace: "    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log')); stressScaleToggleBtn.textContent = currentStressScale === 'log' ? 'Linear scale' : 'Log scale';",
+      expect: 'Toggle button label must remain stable as "Log scale"'
+    },
+
+    // AC6: Copy equals table
+    {
+      id: 'T18-AC6-1',
+      desc: 'AC6: CSV drops the last row',
+      file: 'src/ui/csv.ts',
+      find: '  for (const row of rows) {',
+      replace: '  for (const row of rows.slice(0, -1)) {',
+      expect: 'expected 4 to be 5'
+    },
+    {
+      id: 'T18-AC6-2',
+      desc: 'AC6: two CSV columns swapped',
+      file: 'src/ui/csv.ts',
+      find: '      escapeCsvField(regExpTime),\n      escapeCsvField(nfaTime),',
+      replace: '      escapeCsvField(nfaTime),\n      escapeCsvField(regExpTime),',
+      expect: 'star-star-b,12,12,0.8 ms,0.12 ms,REJECT,REJECT'
+    },
+    {
+      id: 'T18-AC6-3',
+      desc: 'AC6: CSV family column missing',
+      file: 'src/ui/csv.ts',
+      find: "  const header = [\n    'family',",
+      replace: '  const header = [',
+      expect: 'family,n,string_length'
+    },
+    {
+      id: 'T18-AC6-4',
+      desc: 'AC6: Copy not disabled at 0 rows',
+      file: 'src/ui/main.ts',
+      find: '    stressCopyCsvBtn.disabled = !hasRows;',
+      replace: '    stressCopyCsvBtn.disabled = false;',
       expect: '#stress-copy-csv must initially be disabled'
     },
     {
-      id: 'T18-M-AC8',
-      desc: 'AC8: Export SVG filename wrong',
+      id: 'T18-AC6-5',
+      desc: 'AC6: Copy disabled mid-run after the first row',
       file: 'src/ui/main.ts',
-      find: "    a.download = `stress-chart-${familyId}-${currentStressScale}.svg`;",
-      replace: "    a.download = 'chart.svg';",
-      expect: 'Exported SVG filename must match stress-chart-<family>-<scale>.svg'
+      find: '    stressCopyCsvBtn.disabled = !hasRows;',
+      replace: '    stressCopyCsvBtn.disabled = hasRows;',
+      expect: '#stress-copy-csv must be re-enabled once rows are added mid-run'
+    },
+    {
+      id: 'T18-AC6-6',
+      desc: 'AC6: new run does not clear rows or re-disable buttons',
+      file: 'src/ui/main.ts',
+      find: '    stressIsActive = true;\n    currentStressRows = [];\n    updateStressActionButtons();',
+      replace: '    stressIsActive = true;\n    // currentStressRows = [];\n    // updateStressActionButtons();',
+      expect: '#stress-copy-csv must be disabled when run starts with 0 rows'
+    },
+
+    // AC7: Feedback
+    {
+      id: 'T18-AC7-1',
+      desc: 'AC7: 2 s clear timer omitted',
+      file: 'src/ui/main.ts',
+      find: '      copyStatusTimer = setTimeout(() => {',
+      replace: '      // copyStatusTimer = setTimeout(() => {',
+      expect: 'Timeout 5000ms exceeded while waiting for event "function"'
+    },
+    {
+      id: 'T18-AC7-2',
+      desc: 'AC7: execCommand fallback omitted',
+      file: 'src/ui/main.ts',
+      find: "  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {\n    try {\n      await navigator.clipboard.writeText(text);\n      return true;\n    } catch {\n      // Fallback to execCommand\n    }\n  }",
+      replace: "  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {\n    try {\n      await navigator.clipboard.writeText(text);\n      return true;\n    } catch {\n      return false;\n    }\n  }",
+      expect: 'Copy fallback must succeed via execCommand when writeText rejects'
+    },
+    {
+      id: 'T18-AC7-3',
+      desc: 'AC7: "Copy failed" path omitted',
+      file: 'src/ui/main.ts',
+      find: "      } else {\n        stressCopyStatusEl.textContent = 'Copy failed';",
+      replace: '      } else {\n        // "Copy failed" path omitted',
+      expect: 'Status must show Copy failed when both writeText and execCommand fail'
+    },
+    {
+      id: 'T18-AC7-4',
+      desc: 'AC7: a write to #live-region added',
+      file: 'src/ui/main.ts',
+      find: "        stressCopyStatusEl.textContent = 'Copied!';",
+      replace: "        stressCopyStatusEl.textContent = 'Copied!';\n        const lr = document.getElementById('live-region'); if (lr) lr.textContent = 'Copied!';",
+      expect: 'Copy action must not write to #live-region'
+    },
+
+    // AC8: SVG export
+    {
+      id: 'T18-AC8-1',
+      desc: 'AC8: xmlns omitted in SVG export',
+      file: 'src/diagram/index.ts',
+      find: '  lines.push(`<svg viewBox="0 0 ${width} ${height}" ${widthAttr} height="${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapedTitle}">`);',
+      replace: '  lines.push(`<svg viewBox="0 0 ${width} ${height}" ${widthAttr} height="${height}" role="img" aria-label="${escapedTitle}">`);',
+      expect: 'xmlns="http://www.w3.org/2000/svg"'
+    },
+    {
+      id: 'T18-AC8-2',
+      desc: 'AC8: a.click omitted on export',
+      file: 'src/ui/main.ts',
+      find: '    a.click();',
+      replace: '    // a.click();',
+      expect: 'Timeout 30000ms exceeded while waiting for event "download"'
+    },
+    {
+      id: 'T18-AC8-3',
+      desc: 'AC8: wrong width/height in SVG export',
+      file: 'src/diagram/index.ts',
+      find: "  const widthAttr = standalone ? `width=\"${width}\"` : 'width=\"100%\"';\n  lines.push(`<svg viewBox=\"0 0 ${width} ${height}\" ${widthAttr} height=\"${height}\"",
+      replace: "  const widthAttr = standalone ? 'width=\"999\"' : 'width=\"100%\"';\n  lines.push(`<svg viewBox=\"0 0 ${width} ${height}\" ${widthAttr} height=\"${height}\"",
+      expect: 'width="760"'
+    },
+    {
+      id: 'T18-AC8-4',
+      desc: 'AC8: export ignores current scale (content stays linear)',
+      file: 'src/ui/main.ts',
+      find: '        scale: currentStressScale,',
+      replace: "        scale: 'linear',",
+      expect: 'Exported log SVG must include (log scale)'
+    },
+    {
+      id: 'T18-AC8-5',
+      desc: 'AC8: export enabled at 0 rows',
+      file: 'src/ui/main.ts',
+      find: '    stressExportSvgBtn.disabled = !hasRows;',
+      replace: '    stressExportSvgBtn.disabled = false;',
+      expect: '#stress-export-svg must initially be disabled'
+    },
+    {
+      id: 'T18-AC8-6',
+      desc: 'AC8: background rect omitted in SVG export',
+      file: 'src/diagram/index.ts',
+      find: '  lines.push(`  <rect width="${width}" height="${height}" fill="#fafafa" rx="6" />`);',
+      replace: '  // background rect omitted',
+      expect: '<rect width="760" height="320" fill="#fafafa" rx="6" />'
     }
   ];
 

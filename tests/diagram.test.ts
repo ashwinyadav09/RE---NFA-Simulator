@@ -1279,6 +1279,7 @@ test('[T18-AC2-2] Diagram seam: renderStressChartSvg standalone SVG export', () 
   });
 
   expect(svgStandalone.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
+  expect(svgStandalone).toContain('xmlns="http://www.w3.org/2000/svg"');
   expect(svgStandalone).toContain('width="760"');
   expect(svgStandalone).toContain('height="320"');
   expect(svgStandalone).toContain('viewBox="0 0 760 320"');
