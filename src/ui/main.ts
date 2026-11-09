@@ -1816,14 +1816,13 @@ if (stressBrowserInfoEl) {
 }
 
 const stressChartContainer = document.getElementById('stress-chart-container');
-if (stressChartContainer) {
-  stressChartContainer.innerHTML = renderStressChartSvg([]);
-}
-
+const stressScaleToggleBtn = document.getElementById('stress-scale-toggle') as HTMLButtonElement | null;
 const stressCancelBtn = document.getElementById('stress-cancel') as HTMLButtonElement | null;
 const stressFamilySelect = document.getElementById('stress-family') as HTMLSelectElement | null;
 const stressTableBody = document.querySelector('#stress-table tbody') as HTMLElement | null;
 const stressStatusEl = document.getElementById('stress-status');
+
+let currentStressScale: 'linear' | 'log' = 'linear';
 
 let stressCancelled = false;
 let stressGeneration = 0;
@@ -1841,6 +1840,38 @@ function stressRowsToChartPoints(rows: StressRow[]): StressChartPoint[] {
     regExpTimeout: r.regExpVerdict === 'TIMEOUT',
     nfaTime: r.nfaTimeMs
   }));
+}
+
+function updateStressChart() {
+  if (!stressChartContainer) return;
+  stressChartContainer.setAttribute('data-scale', currentStressScale);
+  const familyId = stressFamilySelect ? stressFamilySelect.value : 'star-star-b';
+  const family = STRESS_FAMILIES[familyId] || STRESS_FAMILIES['star-star-b'];
+  const title = currentStressRows.length > 0
+    ? `${family.name} - Backtracking vs Thompson NFA`
+    : undefined;
+  stressChartContainer.innerHTML = renderStressChartSvg(
+    stressRowsToChartPoints(currentStressRows),
+    {
+      title,
+      scale: currentStressScale
+    }
+  );
+}
+
+if (stressChartContainer) {
+  stressChartContainer.setAttribute('data-scale', currentStressScale);
+  stressChartContainer.innerHTML = renderStressChartSvg([], {
+    scale: currentStressScale
+  });
+}
+
+if (stressScaleToggleBtn) {
+  stressScaleToggleBtn.addEventListener('click', () => {
+    currentStressScale = currentStressScale === 'linear' ? 'log' : 'linear';
+    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log'));
+    updateStressChart();
+  });
 }
 
 function renderStressTableRow(row: StressRow): HTMLTableRowElement {
@@ -1911,9 +1942,7 @@ if (stressRunBtn) {
     let regExpStopped = false;
 
     if (stressChartContainer) {
-      stressChartContainer.innerHTML = renderStressChartSvg([], {
-        title: `${family.name} - Backtracking vs Thompson NFA`
-      });
+      updateStressChart();
     }
 
     try {
@@ -1975,9 +2004,7 @@ if (stressRunBtn) {
         }
 
         if (stressChartContainer && gen === stressGeneration) {
-          stressChartContainer.innerHTML = renderStressChartSvg(stressRowsToChartPoints(currentStressRows), {
-            title: `${family.name} - Backtracking vs Thompson NFA`
-          });
+          updateStressChart();
         }
 
         await new Promise((r) => setTimeout(r, 0));
@@ -2014,9 +2041,7 @@ if (stressRunBtn) {
         }
 
         if (stressChartContainer && gen === stressGeneration) {
-          stressChartContainer.innerHTML = renderStressChartSvg(stressRowsToChartPoints(currentStressRows), {
-            title: `${family.name} - Backtracking vs Thompson NFA`
-          });
+          updateStressChart();
         }
 
         await new Promise((r) => setTimeout(r, 0));

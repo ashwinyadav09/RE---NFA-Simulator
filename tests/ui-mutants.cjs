@@ -158,6 +158,30 @@ async function main() {
       replace: "      { val: 0.01, label: '0.01 ms' },",
       testType: 'unit',
       expect: '≤0.01 ms'
+    },
+    {
+      id: 'T18-M-AC3',
+      desc: 'AC3: Log toggle aria-pressed update omitted',
+      file: 'src/ui/main.ts',
+      find: "    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log'));",
+      replace: "    // aria-pressed update omitted",
+      expect: 'aria-pressed must be true after toggling log scale'
+    },
+    {
+      id: 'T18-M-AC4',
+      desc: 'AC4: Log toggle clears retained rows',
+      file: 'src/ui/main.ts',
+      find: "    currentStressScale = currentStressScale === 'linear' ? 'log' : 'linear';",
+      replace: "    currentStressScale = currentStressScale === 'linear' ? 'log' : 'linear'; currentStressRows = [];",
+      expect: 'Stress chart must retain points across scale toggle'
+    },
+    {
+      id: 'T18-M-AC5',
+      desc: 'AC5: Timeout marker suppressed in log mode',
+      file: 'src/diagram/index.ts',
+      find: "      if (pt.regExpTimeout) {",
+      replace: "      if (pt.regExpTimeout && scale !== 'log') {",
+      expect: 'SVG timeout marker must remain present and visible in log mode'
     }
   ];
 

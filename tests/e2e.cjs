@@ -1801,6 +1801,41 @@ const assert = require('node:assert');
     assert(!text.includes('8,000'), 'No row must contain 8,000 on cancel');
   }
 
+  // Ticket 18 AC3 & AC4: Log scale toggle and point retention
+  console.log('Testing Ticket 18 AC3 & AC4: Log scale toggle and point retention...');
+  const initialScale = await page.$eval('#stress-chart-container', (el) => el.getAttribute('data-scale'));
+  assert.strictEqual(initialScale, 'linear', 'Initial chart scale must be linear');
+  const toggleBtnText = await page.textContent('#stress-scale-toggle');
+  assert.strictEqual(toggleBtnText.trim(), 'Log scale', 'Toggle button text must be "Log scale"');
+  const ariaPressedInitial = await page.$eval('#stress-scale-toggle', (el) => el.getAttribute('aria-pressed'));
+  assert.strictEqual(ariaPressedInitial, 'false', 'aria-pressed must initially be false');
+
+  const circlesBeforeToggle = await page.evaluate(() => document.querySelectorAll('#stress-chart-container svg circle').length);
+  assert(circlesBeforeToggle >= 2, 'Chart must have circles before toggle');
+
+  // Toggle to log
+  await page.click('#stress-scale-toggle');
+  const scaleAfterToggle = await page.$eval('#stress-chart-container', (el) => el.getAttribute('data-scale'));
+  assert.strictEqual(scaleAfterToggle, 'log', 'Chart scale must switch to log');
+  const ariaPressedLog = await page.$eval('#stress-scale-toggle', (el) => el.getAttribute('aria-pressed'));
+  assert.strictEqual(ariaPressedLog, 'true', 'aria-pressed must be true after toggling log scale');
+  const toggleBtnTextAfter = await page.textContent('#stress-scale-toggle');
+  assert.strictEqual(toggleBtnTextAfter.trim(), 'Log scale', 'Toggle button label must remain stable as "Log scale"');
+
+  const chartSvgText = await page.textContent('#stress-chart-container svg');
+  assert(chartSvgText.includes('(log scale)'), 'Panel A title must include "(log scale)" in log mode');
+  assert(chartSvgText.includes('≤0.01 ms'), 'Panel A Y-axis must include "≤0.01 ms" tick in log mode');
+
+  const circlesAfterToggle = await page.evaluate(() => document.querySelectorAll('#stress-chart-container svg circle').length);
+  assert.strictEqual(circlesAfterToggle, circlesBeforeToggle, 'Stress chart must retain points across scale toggle');
+
+  // Toggle back to linear
+  await page.click('#stress-scale-toggle');
+  const scaleAfterToggleBack = await page.$eval('#stress-chart-container', (el) => el.getAttribute('data-scale'));
+  assert.strictEqual(scaleAfterToggleBack, 'linear', 'Chart scale must switch back to linear');
+  const ariaPressedLinear = await page.$eval('#stress-scale-toggle', (el) => el.getAttribute('aria-pressed'));
+  assert.strictEqual(ariaPressedLinear, 'false', 'aria-pressed must be false after toggling back to linear');
+
   // 8. Test second family ((a+)+ on a^n b)
   await page.selectOption('#stress-family', 'plus-plus');
   await page.evaluate(() => { window.__stressRowAdded = false; window.__stressDone = false; });
@@ -2015,6 +2050,14 @@ const assert = require('node:assert');
     rows.map((r) => r.textContent).join(' ')
   );
   assert(timeoutTableText.includes('TIMEOUT'), 'Stress table row must carry text TIMEOUT');
+
+  // Ticket 18 AC5: Timeout marker stays at ceiling in log mode
+  await page.click('#stress-scale-toggle');
+  assert.strictEqual(await page.$eval('#stress-chart-container', (el) => el.getAttribute('data-scale')), 'log');
+  const timeoutLogSvg = await page.$eval('#stress-chart-container #panelA-timeout text', (el) => el.textContent);
+  assert.strictEqual(timeoutLogSvg, 'timeout', 'SVG timeout marker must remain present and visible in log mode');
+  await page.click('#stress-scale-toggle');
+  assert.strictEqual(await page.$eval('#stress-chart-container', (el) => el.getAttribute('data-scale')), 'linear');
 
   // Scope A: Clear stale results on every successful build
   console.log('Testing Scope A: Clear stale results on rebuild...');
