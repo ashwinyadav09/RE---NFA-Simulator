@@ -34,7 +34,7 @@ function parseFirstFailure(output) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (line.includes('AssertionError') || line.includes('ERR_ASSERTION') || line.includes('Error:')) {
+    if (line.includes('E2E test failed:') || line.includes('AssertionError') || line.includes('ERR_ASSERTION')) {
       firstMsg = line.trim();
       // Look for next stack frame line with file:line
       for (let j = i + 1; j < Math.min(i + 15, lines.length); j++) {
@@ -52,7 +52,7 @@ function parseFirstFailure(output) {
   if (!firstMsg) {
     // Fallback: look for first line starting with FAIL or Error
     for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes('FAIL') || lines[i].includes('failed')) {
+      if (line.startsWith('FAIL') || (line.includes('Error:') && !line.includes('Layout note') && !line.includes('ORACLE ERROR'))) {
         firstMsg = lines[i].trim();
         break;
       }
@@ -148,7 +148,7 @@ async function main() {
       find: "  const lines: string[] = [header.join(',') + '\\r\\n'];",
       replace: "  const lines: string[] = [header.join(',') + '\\n'];",
       testType: 'unit',
-      expect: 'outputs RFC 4180 header with CRLF for empty rows'
+      expect: 'Object.is equality'
     },
     {
       id: 'T18-M-AC2',

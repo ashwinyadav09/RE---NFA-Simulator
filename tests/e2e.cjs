@@ -1825,12 +1825,12 @@ const assert = require('node:assert');
   const toggleBtnTextAfter = await page.textContent('#stress-scale-toggle');
   assert.strictEqual(toggleBtnTextAfter.trim(), 'Log scale', 'Toggle button label must remain stable as "Log scale"');
 
+  const circlesAfterToggle = await page.evaluate(() => document.querySelectorAll('#stress-chart-container svg circle').length);
+  assert.strictEqual(circlesAfterToggle, circlesBeforeToggle, 'Stress chart must retain points across scale toggle');
+
   const chartSvgText = await page.textContent('#stress-chart-container svg');
   assert(chartSvgText.includes('(log scale)'), 'Panel A title must include "(log scale)" in log mode');
   assert(chartSvgText.includes('≤0.01 ms'), 'Panel A Y-axis must include "≤0.01 ms" tick in log mode');
-
-  const circlesAfterToggle = await page.evaluate(() => document.querySelectorAll('#stress-chart-container svg circle').length);
-  assert.strictEqual(circlesAfterToggle, circlesBeforeToggle, 'Stress chart must retain points across scale toggle');
 
   // Toggle back to linear
   await page.click('#stress-scale-toggle');
@@ -1845,7 +1845,7 @@ const assert = require('node:assert');
 
   const liveRegionBeforeCopy = await page.textContent('#live-region');
   await page.click('#stress-copy-csv');
-  await page.waitForFunction(() => document.getElementById('stress-copy-status')?.getAttribute('data-copied') === 'true');
+  await page.waitForFunction(() => document.getElementById('stress-copy-status')?.textContent === 'Copied!');
   const copyStatusText = await page.textContent('#stress-copy-status');
   assert.strictEqual(copyStatusText, 'Copied!', '#stress-copy-status must show "Copied!"');
   assert.strictEqual(await page.$eval('#stress-copy-status', (el) => el.getAttribute('data-copied')), 'true', 'data-copied must be set to true on successful copy');
@@ -2145,8 +2145,8 @@ const assert = require('node:assert');
   // Ticket 18 AC5: Timeout marker stays at ceiling in log mode
   await page.click('#stress-scale-toggle');
   assert.strictEqual(await page.$eval('#stress-chart-container', (el) => el.getAttribute('data-scale')), 'log');
-  const timeoutLogSvg = await page.$eval('#stress-chart-container #panelA-timeout text', (el) => el.textContent);
-  assert.strictEqual(timeoutLogSvg, 'timeout', 'SVG timeout marker must remain present and visible in log mode');
+  const timeoutMarkerInLog = await page.evaluate(() => document.querySelector('#stress-chart-container #panelA-timeout text')?.textContent || null);
+  assert.strictEqual(timeoutMarkerInLog, 'timeout', 'SVG timeout marker must remain present and visible in log mode');
   await page.click('#stress-scale-toggle');
   assert.strictEqual(await page.$eval('#stress-chart-container', (el) => el.getAttribute('data-scale')), 'linear');
 
