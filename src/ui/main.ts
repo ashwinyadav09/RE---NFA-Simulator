@@ -28,6 +28,7 @@ import {
   type Preset
 } from '../engine/index';
 import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions, renderStressChartSvg, type StressChartPoint } from '../diagram/index';
+import type { StressRow, RegExpVerdict } from './stress-types';
 import {
   clampZoom,
   zoomAt,
@@ -1826,6 +1827,48 @@ const stressStatusEl = document.getElementById('stress-status');
 
 let stressCancelled = false;
 let stressGeneration = 0;
+let currentStressRows: StressRow[] = [];
+
+function stressRowsToChartPoints(rows: StressRow[]): StressChartPoint[] {
+  return rows.map((r) => ({
+    n: r.n,
+    regExpTime:
+      r.regExpVerdict === 'TIMEOUT'
+        ? 8000
+        : r.regExpVerdict === 'SKIPPED' || r.regExpVerdict === 'ERROR'
+        ? null
+        : r.regExpTimeMs,
+    regExpTimeout: r.regExpVerdict === 'TIMEOUT',
+    nfaTime: r.nfaTimeMs
+  }));
+}
+
+function renderStressTableRow(row: StressRow): HTMLTableRowElement {
+  const tr = document.createElement('tr');
+  const regExpTimeDisplay =
+    row.regExpVerdict === 'TIMEOUT'
+      ? '> 8,000 ms (timeout)'
+      : row.regExpVerdict === 'SKIPPED'
+      ? '— (skipped)'
+      : row.regExpVerdict === 'ERROR'
+      ? 'Error'
+      : row.regExpTimeMs !== null
+      ? `${row.regExpTimeMs.toFixed(1)} ms`
+      : '—';
+
+  const regExpVerdictDisplay =
+    row.regExpVerdict === 'SKIPPED' ? '—' : row.regExpVerdict;
+
+  tr.innerHTML = `
+    <td>${row.n}</td>
+    <td>${row.inputLength}</td>
+    <td>${regExpTimeDisplay}</td>
+    <td>${row.nfaTimeMs.toFixed(2)} ms</td>
+    <td>${regExpVerdictDisplay}</td>
+    <td>${row.nfaVerdict}</td>
+  `;
+  return tr;
+}
 
 if (stressCancelBtn) {
   stressCancelBtn.addEventListener('click', () => {
@@ -1844,6 +1887,7 @@ if (stressRunBtn) {
     stressCancelled = false;
     const gen = ++stressGeneration;
     stressIsActive = true;
+    currentStressRows = [];
     stressRunBtn.disabled = true;
     if (diffRunBtn) {
       diffRunBtn.disabled = true;
@@ -1864,7 +1908,6 @@ if (stressRunBtn) {
     const analysis = analyze(family.expression, { notation: family.notation });
     const jsPattern = analysis.ok ? toJs(analysis.parseTree) : family.expression;
 
-    const chartPoints: StressChartPoint[] = [];
     let regExpStopped = false;
 
     if (stressChartContainer) {
@@ -1889,10 +1932,8 @@ if (stressRunBtn) {
         const nfaRes = runStressNfa(family.id, n);
 
         // Run RegExp (in worker, 8s cap)
-        let regExpTimeDisplay = '—';
-        let regExpVerdictDisplay = '—';
         let regExpDurationMs: number | null = null;
-        let regExpTimedOut = false;
+        let regExpVerdict: RegExpVerdict = 'SKIPPED';
 
         if (!regExpStopped) {
           const t0 = performance.now();
@@ -1905,46 +1946,36 @@ if (stressRunBtn) {
 
           if (res.timeout || elapsed >= 8000) {
             regExpStopped = true;
-            regExpTimedOut = true;
             regExpDurationMs = 8000;
-            regExpTimeDisplay = '> 8,000 ms (timeout)';
-            regExpVerdictDisplay = 'TIMEOUT';
+            regExpVerdict = 'TIMEOUT';
           } else if (res.error) {
-            regExpTimeDisplay = 'Error';
-            regExpVerdictDisplay = 'ERROR';
+            regExpVerdict = 'ERROR';
           } else {
             regExpDurationMs = elapsed;
-            regExpTimeDisplay = `${elapsed.toFixed(1)} ms`;
             const matched = res.matches && res.matches[0];
-            regExpVerdictDisplay = matched ? 'ACCEPT' : 'REJECT';
+            regExpVerdict = matched ? 'ACCEPT' : 'REJECT';
           }
         } else {
-          regExpTimeDisplay = '— (skipped)';
-          regExpVerdictDisplay = '—';
+          regExpVerdict = 'SKIPPED';
         }
 
-        chartPoints.push({
+        const row: StressRow = {
+          family: family.id,
           n,
-          regExpTime: regExpDurationMs,
-          regExpTimeout: regExpTimedOut,
-          nfaTime: nfaRes.durationMs
-        });
+          inputLength: input.length,
+          regExpTimeMs: regExpDurationMs,
+          regExpVerdict,
+          nfaTimeMs: nfaRes.durationMs,
+          nfaVerdict: nfaRes.verdict
+        };
+        currentStressRows.push(row);
 
         if (stressTableBody && gen === stressGeneration) {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td>${n}</td>
-            <td>${input.length}</td>
-            <td>${regExpTimeDisplay}</td>
-            <td>${nfaRes.durationMs.toFixed(2)} ms</td>
-            <td>${regExpVerdictDisplay}</td>
-            <td>${nfaRes.verdict}</td>
-          `;
-          stressTableBody.appendChild(tr);
+          stressTableBody.appendChild(renderStressTableRow(row));
         }
 
         if (stressChartContainer && gen === stressGeneration) {
-          stressChartContainer.innerHTML = renderStressChartSvg(chartPoints, {
+          stressChartContainer.innerHTML = renderStressChartSvg(stressRowsToChartPoints(currentStressRows), {
             title: `${family.name} - Backtracking vs Thompson NFA`
           });
         }
@@ -1967,27 +1998,23 @@ if (stressRunBtn) {
 
         if (stressCancelled || gen !== stressGeneration) break;
 
-        chartPoints.push({
+        const row: StressRow = {
+          family: family.id,
           n,
-          regExpTime: null,
-          nfaTime: nfaRes.durationMs
-        });
+          inputLength: input.length,
+          regExpTimeMs: null,
+          regExpVerdict: 'SKIPPED',
+          nfaTimeMs: nfaRes.durationMs,
+          nfaVerdict: nfaRes.verdict
+        };
+        currentStressRows.push(row);
 
         if (stressTableBody && gen === stressGeneration) {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td>${n}</td>
-            <td>${input.length}</td>
-            <td>— (skipped)</td>
-            <td>${nfaRes.durationMs.toFixed(2)} ms</td>
-            <td>—</td>
-            <td>${nfaRes.verdict}</td>
-          `;
-          stressTableBody.appendChild(tr);
+          stressTableBody.appendChild(renderStressTableRow(row));
         }
 
         if (stressChartContainer && gen === stressGeneration) {
-          stressChartContainer.innerHTML = renderStressChartSvg(chartPoints, {
+          stressChartContainer.innerHTML = renderStressChartSvg(stressRowsToChartPoints(currentStressRows), {
             title: `${family.name} - Backtracking vs Thompson NFA`
           });
         }
