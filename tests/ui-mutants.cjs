@@ -256,7 +256,7 @@ async function main() {
       desc: 'AC3: toggle re-renders from an empty array',
       file: 'src/ui/main.ts',
       find: "    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log'));\n    updateStressChart();",
-      replace: "    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log'));\n    stressChartContainer.innerHTML = renderStressChartSvg([], { scale: currentStressScale });",
+      replace: "    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log'));\n    updateStressChart();\n    stressChartContainer.innerHTML = renderStressChartSvg([], { scale: currentStressScale });",
       expect: 'Stress chart must retain points across scale toggle'
     },
 
@@ -324,7 +324,7 @@ async function main() {
       desc: 'AC6: Copy disabled mid-run after the first row',
       file: 'src/ui/main.ts',
       find: '    stressCopyCsvBtn.disabled = !hasRows;',
-      replace: '    stressCopyCsvBtn.disabled = hasRows ? true : !hasRows;',
+      replace: '    stressCopyCsvBtn.disabled = stressIsActive || !hasRows;',
       expect: '#stress-copy-csv must be re-enabled once rows are added mid-run'
     },
     {
