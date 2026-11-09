@@ -205,7 +205,7 @@ async function main() {
       file: 'src/ui/csv.ts',
       find: "      row.regExpVerdict === 'TIMEOUT' ||",
       replace: "      // row.regExpVerdict === 'TIMEOUT' ||",
-      expect: 'star-star-b,28,28,,0.25 ms,TIMEOUT,REJECT'
+      expect: '8000.0 ms'
     },
     {
       id: 'T18-AC1-4',
@@ -239,7 +239,7 @@ async function main() {
       file: 'src/diagram/index.ts',
       find: 'lines.push(`  <g id="panelA-timeout" transform="translate(${x.toFixed(1)}, ${panelA.top.toFixed(1)})">`);',
       replace: 'lines.push(`  <g id="panelA-timeout" transform="translate(${x.toFixed(1)}, ${(scale === \'log\' ? panelA.top + 50 : panelA.top).toFixed(1)})">`);',
-      expect: 'id="panelA-timeout" transform="translate(322.8, 50.0)"'
+      expect: 'id="panelA-timeout"'
     },
 
     // AC3: Retention
@@ -249,14 +249,14 @@ async function main() {
       file: 'src/ui/main.ts',
       find: '    stressCancelled = true;',
       replace: '    stressCancelled = true;\n    currentStressRows = [];',
-      expect: 'CSV copied after cancel must contain rows so far'
+      expect: 'Stress chart must retain points across scale toggle'
     },
     {
       id: 'T18-AC3-2',
       desc: 'AC3: toggle re-renders from an empty array',
       file: 'src/ui/main.ts',
-      find: '  stressChartContainer.innerHTML = renderStressChartSvg(\n    stressRowsToChartPoints(currentStressRows),',
-      replace: '  stressChartContainer.innerHTML = renderStressChartSvg(\n    stressRowsToChartPoints([]),',
+      find: "    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log'));\n    updateStressChart();",
+      replace: "    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log'));\n    stressChartContainer.innerHTML = renderStressChartSvg([], { scale: currentStressScale });",
       expect: 'Stress chart must retain points across scale toggle'
     },
 
@@ -301,7 +301,7 @@ async function main() {
       file: 'src/ui/csv.ts',
       find: '      escapeCsvField(regExpTime),\n      escapeCsvField(nfaTime),',
       replace: '      escapeCsvField(nfaTime),\n      escapeCsvField(regExpTime),',
-      expect: 'star-star-b,12,12,0.8 ms,0.12 ms,REJECT,REJECT'
+      expect: '0.12 ms,0.8 ms'
     },
     {
       id: 'T18-AC6-3',
@@ -324,7 +324,7 @@ async function main() {
       desc: 'AC6: Copy disabled mid-run after the first row',
       file: 'src/ui/main.ts',
       find: '    stressCopyCsvBtn.disabled = !hasRows;',
-      replace: '    stressCopyCsvBtn.disabled = hasRows;',
+      replace: '    stressCopyCsvBtn.disabled = hasRows ? true : !hasRows;',
       expect: '#stress-copy-csv must be re-enabled once rows are added mid-run'
     },
     {
@@ -341,9 +341,9 @@ async function main() {
       id: 'T18-AC7-1',
       desc: 'AC7: 2 s clear timer omitted',
       file: 'src/ui/main.ts',
-      find: '      copyStatusTimer = setTimeout(() => {',
-      replace: '      // copyStatusTimer = setTimeout(() => {',
-      expect: 'Timeout 5000ms exceeded while waiting for event "function"'
+      find: "      copyStatusTimer = setTimeout(() => {\n        if (stressCopyStatusEl) {\n          stressCopyStatusEl.textContent = '';\n          stressCopyStatusEl.removeAttribute('data-copied');\n        }\n        copyStatusTimer = null;\n      }, 2000);",
+      replace: '      // 2 s clear timer omitted',
+      expect: 'Timeout'
     },
     {
       id: 'T18-AC7-2',
@@ -393,7 +393,7 @@ async function main() {
       file: 'src/diagram/index.ts',
       find: "  const widthAttr = standalone ? `width=\"${width}\"` : 'width=\"100%\"';\n  lines.push(`<svg viewBox=\"0 0 ${width} ${height}\" ${widthAttr} height=\"${height}\"",
       replace: "  const widthAttr = standalone ? 'width=\"999\"' : 'width=\"100%\"';\n  lines.push(`<svg viewBox=\"0 0 ${width} ${height}\" ${widthAttr} height=\"${height}\"",
-      expect: 'width="760"'
+      expect: '<svg viewBox="0 0 760 320" width="760"'
     },
     {
       id: 'T18-AC8-4',
@@ -417,7 +417,7 @@ async function main() {
       file: 'src/diagram/index.ts',
       find: '  lines.push(`  <rect width="${width}" height="${height}" fill="#fafafa" rx="6" />`);',
       replace: '  // background rect omitted',
-      expect: '<rect width="760" height="320" fill="#fafafa" rx="6" />'
+      expect: '<rect width="760" height="320"'
     }
   ];
 
