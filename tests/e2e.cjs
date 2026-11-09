@@ -1754,6 +1754,7 @@ const assert = require('node:assert');
   const initialChartExists = await page.evaluate(() => !!document.querySelector('#stress-chart-container svg'));
   assert(initialChartExists, 'Initial inline-SVG chart must be rendered in #stress-chart-container');
   assert.strictEqual(await page.$eval('#stress-copy-csv', (el) => el.disabled), true, '#stress-copy-csv must initially be disabled');
+  assert.strictEqual(await page.$eval('#stress-export-svg', (el) => el.disabled), true, '#stress-export-svg must initially be disabled');
 
   // 3. Start run for default family ((a*)*b on a^n)
   await page.click('#stress-run');
@@ -1863,16 +1864,74 @@ const assert = require('node:assert');
   await page.waitForFunction(() => !document.getElementById('stress-copy-status')?.hasAttribute('data-copied'), null, { timeout: 5000 });
   assert.strictEqual(await page.textContent('#stress-copy-status'), '', 'Copy status text must be cleared after 2 s');
 
+  // Ticket 18 AC8: SVG export
+  console.log('Testing Ticket 18 AC8: SVG export...');
+  assert.strictEqual(await page.$eval('#stress-export-svg', (el) => el.disabled), false, '#stress-export-svg must be enabled when rows exist');
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#stress-export-svg')
+  ]);
+
+  const filename = download.suggestedFilename();
+  assert.strictEqual(filename, 'stress-chart-star-star-b-linear.svg', 'Exported SVG filename must match stress-chart-<family>-<scale>.svg');
+
+  const stream = await download.createReadStream();
+  const chunks = [];
+  for await (const chunk of stream) {
+    chunks.push(chunk);
+  }
+  const downloadedSvg = Buffer.concat(chunks).toString('utf-8');
+
+  // Verify XML validity in the page using DOMParser
+  const xmlParseResult = await page.evaluate((svgText) => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgText, 'image/svg+xml');
+    const errors = doc.querySelectorAll('parsererror');
+    return {
+      errorCount: errors.length,
+      hasTitle: !!doc.querySelector('title'),
+      hasDesc: !!doc.querySelector('desc'),
+      rootTag: doc.documentElement.tagName,
+      width: doc.documentElement.getAttribute('width'),
+      height: doc.documentElement.getAttribute('height'),
+      viewBox: doc.documentElement.getAttribute('viewBox')
+    };
+  }, downloadedSvg);
+
+  assert.strictEqual(xmlParseResult.errorCount, 0, 'Exported SVG must parse as valid XML without parsererror');
+  assert.strictEqual(xmlParseResult.rootTag, 'svg', 'Root element must be svg');
+  assert.strictEqual(xmlParseResult.width, '760', 'Width must be explicit 760');
+  assert.strictEqual(xmlParseResult.height, '320', 'Height must be explicit 320');
+  assert.strictEqual(xmlParseResult.viewBox, '0 0 760 320', 'viewBox must be "0 0 760 320"');
+  assert.strictEqual(xmlParseResult.hasTitle, true, 'Exported SVG must contain <title>');
+  assert.strictEqual(xmlParseResult.hasDesc, true, 'Exported SVG must contain <desc>');
+  assert(downloadedSvg.startsWith('<?xml version="1.0" encoding="UTF-8"?>'), 'Exported SVG must start with XML declaration');
+
+  // Also test export filename in log mode
+  await page.click('#stress-scale-toggle');
+  const [downloadLog] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#stress-export-svg')
+  ]);
+  assert.strictEqual(downloadLog.suggestedFilename(), 'stress-chart-star-star-b-log.svg', 'Exported SVG filename in log mode must be stress-chart-<family>-log.svg');
+  await page.click('#stress-scale-toggle'); // restore linear
+
   // 8. Test second family ((a+)+ on a^n b)
   await page.selectOption('#stress-family', 'plus-plus');
   await page.evaluate(() => { window.__stressRowAdded = false; window.__stressDone = false; });
   const disabledOnRun = await page.evaluate(() => {
     document.getElementById('stress-run').click();
-    return document.getElementById('stress-copy-csv')?.disabled;
+    return {
+      copyCsv: document.getElementById('stress-copy-csv')?.disabled,
+      exportSvg: document.getElementById('stress-export-svg')?.disabled
+    };
   });
-  assert.strictEqual(disabledOnRun, true, '#stress-copy-csv must be disabled when run starts with 0 rows');
+  assert.strictEqual(disabledOnRun.copyCsv, true, '#stress-copy-csv must be disabled when run starts with 0 rows');
+  assert.strictEqual(disabledOnRun.exportSvg, true, '#stress-export-svg must be disabled when run starts with 0 rows');
   await page.waitForFunction('window.__stressRowAdded === true', null, { timeout: 15000 });
   assert.strictEqual(await page.$eval('#stress-copy-csv', (el) => el.disabled), false, '#stress-copy-csv must be re-enabled once rows are added mid-run');
+  assert.strictEqual(await page.$eval('#stress-export-svg', (el) => el.disabled), false, '#stress-export-svg must be re-enabled once rows are added mid-run');
 
   const plusRowText = await page.$eval('#stress-table tbody tr:first-child', (el) => el.textContent);
   console.log('Second family first row text:', plusRowText);

@@ -1904,6 +1904,39 @@ if (stressCopyCsvBtn) {
   });
 }
 
+if (stressExportSvgBtn) {
+  stressExportSvgBtn.addEventListener('click', () => {
+    if (currentStressRows.length === 0) return;
+    const familyId = stressFamilySelect ? stressFamilySelect.value : 'star-star-b';
+    const family = STRESS_FAMILIES[familyId] || STRESS_FAMILIES['star-star-b'];
+    const title = `${family.name} - Backtracking vs Thompson NFA`;
+    const desc = `Benchmark comparison chart for ${family.name} comparing RegExp backtracking with Thompson NFA under ${currentStressScale} scale.`;
+
+    const svgString = renderStressChartSvg(
+      stressRowsToChartPoints(currentStressRows),
+      {
+        title,
+        desc,
+        scale: currentStressScale,
+        standalone: true
+      }
+    );
+
+    const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `stress-chart-${familyId}-${currentStressScale}.svg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 1000);
+  });
+}
+
 function stressRowsToChartPoints(rows: StressRow[]): StressChartPoint[] {
   return rows.map((r) => ({
     n: r.n,

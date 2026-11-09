@@ -198,6 +198,14 @@ async function main() {
       find: "    stressCopyCsvBtn.disabled = !hasRows;",
       replace: "    stressCopyCsvBtn.disabled = false;",
       expect: '#stress-copy-csv must initially be disabled'
+    },
+    {
+      id: 'T18-M-AC8',
+      desc: 'AC8: Export SVG filename wrong',
+      file: 'src/ui/main.ts',
+      find: "    a.download = `stress-chart-${familyId}-${currentStressScale}.svg`;",
+      replace: "    a.download = 'chart.svg';",
+      expect: 'Exported SVG filename must match stress-chart-<family>-<scale>.svg'
     }
   ];
 
