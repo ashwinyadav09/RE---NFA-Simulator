@@ -179,14 +179,7 @@ let currentFitZoom: number | null = null;
 const WHEEL_ZOOM_K = 0.0015;
 
 function getCanvasViewport(): HTMLElement | null {
-  let viewport = document.getElementById('canvas-viewport');
-  if (!viewport && canvasEl) {
-    viewport = document.createElement('div');
-    viewport.id = 'canvas-viewport';
-    viewport.setAttribute('data-testid', 'canvas-viewport');
-    canvasEl.appendChild(viewport);
-  }
-  return viewport as HTMLElement | null;
+  return document.getElementById('canvas-viewport');
 }
 
 function updateToolbarButtonStates(): void {

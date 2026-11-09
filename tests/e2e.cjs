@@ -2247,18 +2247,49 @@ const assert = require('node:assert');
     assert.strictEqual(hasHOverflow, false, `161-token final view must not have horizontal overflow at ${vp.width}x${vp.height}`);
   }
 
-  // 2. 400-token (cap) final view
-  const exprCap400 = 'a'.repeat(400); // 400 postfix tokens
-  await page.fill('#regex-input', exprCap400);
+  // 2. Real worst case allowed: 'a'.repeat(200) has 200 symbols and 199 implicit concatenations,
+  // totaling 200 + 199 = 399 postfix tokens. Because 150 < 399 <= 400 (CAPS.textbookStepping),
+  // flat stepping is disabled, but textbook stepping and the final NFA view remain allowed.
+  const expr399 = 'a'.repeat(200);
+  for (const vp of [{ width: 1280, height: 800 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(vp);
+    await page.fill('#regex-input', expr399);
+    await page.click('#build-button');
+    await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 399'));
+    await page.selectOption('#view-toggle', 'final');
+    await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+
+    const hasHOverflow399 = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+    assert.strictEqual(hasHOverflow399, false, `399-token final view must not have horizontal overflow at ${vp.width}x${vp.height}`);
+    const mode399 = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
+    assert.strictEqual(mode399, 'start', `399-token final view initial mode must be start at ${vp.width}x${vp.height}`);
+    const zoom399 = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
+    assert.strictEqual(zoom399, '1.0000', `399-token final view initial zoom must be 1.0000 at ${vp.width}x${vp.height}`);
+
+    await page.click('#zoom-fit-btn');
+    const svgInside = await page.evaluate(() => {
+      const canvas = document.getElementById('canvas');
+      const svg = document.querySelector('#canvas-viewport svg');
+      if (!canvas || !svg) return false;
+      const c = canvas.getBoundingClientRect();
+      const s = svg.getBoundingClientRect();
+      return s.left >= c.left - 1 && s.right <= c.right + 1 && s.top >= c.top - 1 && s.bottom <= c.bottom + 1;
+    });
+    assert.strictEqual(svgInside, true, `399-token final view SVG rect must be inside frame after Fit at ${vp.width}x${vp.height}`);
+  }
+
+  // 3. Above the cap, message view, no overflow: 'a'.repeat(400) = 400 symbols + 399 concats = 799 postfix tokens (> 400 limit)
+  const exprCap799 = 'a'.repeat(400);
+  await page.fill('#regex-input', exprCap799);
   await page.click('#build-button');
   await page.waitForFunction(() => document.querySelector('#canvas')?.textContent.includes('Diagram is disabled'));
   for (const vp of [{ width: 1280, height: 800 }, { width: 1920, height: 1080 }]) {
     await page.setViewportSize(vp);
     const hasHOverflowCap = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
-    assert.strictEqual(hasHOverflowCap, false, `400-token cap view must not have horizontal overflow at ${vp.width}x${vp.height}`);
+    assert.strictEqual(hasHOverflowCap, false, `Above-the-cap message view must not have horizontal overflow at ${vp.width}x${vp.height}`);
   }
 
-  // 3. Textbook last step at the cap
+  // 4. Textbook last step at the cap (161 postfix tokens)
   await page.fill('#regex-input', expr161);
   await page.click('#build-button');
   await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 161'));
@@ -2417,6 +2448,25 @@ const assert = require('node:assert');
   const resetZoom = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
   assert.strictEqual(resetZoom, '1.0000', '100% button must reset zoom to 1.0000');
 
+  // Zoom in to max zoom (10.0): zoom-in button must become disabled
+  for (let i = 0; i < 15; i++) {
+    const disabled = await page.$eval('#zoom-in-btn', (el) => el.disabled);
+    if (disabled) break;
+    await page.click('#zoom-in-btn');
+  }
+  const maxZoomVal = parseFloat(await page.$eval('#canvas', (el) => el.getAttribute('data-zoom')));
+  assert(Math.abs(maxZoomVal - 10.0) < 1e-3, `Zoom must reach max zoom 10.0, got ${maxZoomVal}`);
+  assert.strictEqual(await page.$eval('#zoom-in-btn', (el) => el.disabled), true, 'Zoom in button must be disabled at max zoom');
+  assert.strictEqual((await page.textContent('#zoom-level')).trim(), '1000%', 'Zoom level text must show 1000% at max zoom');
+
+  // Clicking zoom out re-enables zoom in
+  await page.click('#zoom-out-btn');
+  assert.strictEqual(await page.$eval('#zoom-in-btn', (el) => el.disabled), false, 'Zoom in button must be re-enabled after zooming out from max');
+
+  // Rebuild to restore clean initial state for AC7
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 3'));
+
   // AC7: Wheel: Ctrl+wheel zooms about cursor; plain wheel not intercepted; Shift/horizontal wheel pans
   console.log('Testing AC7: Wheel...');
   const zBeforePlain = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
@@ -2565,9 +2615,10 @@ const assert = require('node:assert');
   // AC10: Resets on rebuild
   console.log('Testing AC10: Resets on rebuild...');
   await page.click('#zoom-in-btn');
-  await page.fill('#regex-input', 'a');
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'manual');
   await page.click('#build-button');
-  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 1'));
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
+  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'fit', 'Rebuild must reset viewport to fit mode');
   const zoomAfterRebuild = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
   assert.strictEqual(zoomAfterRebuild, '1.0000', 'New build must reset zoom to default');
 
@@ -2757,7 +2808,7 @@ const assert = require('node:assert');
   // Toggle view
   await page.selectOption('#view-toggle', 'final');
   // Cap message
-  await page.fill('#regex-input', 'a'.repeat(210));
+  await page.fill('#regex-input', 'a'.repeat(201)); // 201 symbols + 200 concats = 401 postfix tokens (> 400)
   await page.click('#build-button');
   await page.waitForFunction(() => document.querySelector('#canvas')?.textContent.includes('Diagram is disabled'));
   // Refused build
