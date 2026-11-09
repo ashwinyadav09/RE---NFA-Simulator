@@ -59,9 +59,19 @@ describe('formatStressCsv', () => {
       nfaTimeMs: 0.05,
       nfaVerdict: 'ACCEPT'
     };
+    const commaRow: StressRow = {
+      family: 'only,comma',
+      n: 14,
+      inputLength: 14,
+      regExpTimeMs: 1.23,
+      regExpVerdict: 'ACCEPT',
+      nfaTimeMs: 0.05,
+      nfaVerdict: 'ACCEPT'
+    };
 
-    const csv = formatStressCsv([syntheticRow]);
+    const csv = formatStressCsv([syntheticRow, commaRow]);
     expect(csv).toContain('"test,""family""\r\nwith,comma",14,14,1.2,0.05,ACCEPT,ACCEPT\r\n');
+    expect(csv).toContain('"only,comma",14,14,1.2,0.05,ACCEPT,ACCEPT\r\n');
   });
 
   it('escapeCsvField escapes strings only when needed', () => {

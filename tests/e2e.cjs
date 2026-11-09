@@ -1860,6 +1860,44 @@ const assert = require('node:assert');
   assert(copiedCsv.includes('star-star-b,12,12,'), 'CSV must contain first row data');
   assert(copiedCsv.includes('REJECT'), 'CSV must contain verdict');
 
+  // Ticket 18b: Full row-for-row equality check between table and CSV
+  const stressTableRows = await page.$$eval('#stress-table tbody tr', (trs) =>
+    trs.map((tr) => Array.from(tr.querySelectorAll('td')).map((td) => td.textContent.trim()))
+  );
+  assert(stressTableRows.length >= 3, 'Stress table must contain at least 3 rows after cancel');
+
+  const selectedFamily = await page.$eval('#stress-family', (el) => el.value);
+  const csvLines = copiedCsv.split('\r\n');
+  assert.strictEqual(csvLines[0], 'family,n,string_length,regexp_time_ms,nfa_time_ms,regexp_verdict,nfa_verdict', 'CSV header must match exactly');
+  assert.strictEqual(csvLines[csvLines.length - 1], '', 'CSV must end with trailing CRLF');
+  const csvDataLines = csvLines.slice(1, -1);
+
+  assert.strictEqual(csvDataLines.length, stressTableRows.length, 'CSV data row count must equal table row count');
+
+  for (let i = 0; i < stressTableRows.length; i++) {
+    const csvCols = csvDataLines[i].split(',');
+    assert.strictEqual(csvCols.length, 7, `CSV row ${i} must have 7 columns`);
+    const [cFamily, cN, cLen, cRegExpTime, cNfaTime, cRegExpVerdict, cNfaVerdict] = csvCols;
+    const [tN, tLen, tRegExpTimeRaw, tNfaTimeRaw, tRegExpVerdict, tNfaVerdict] = stressTableRows[i];
+
+    assert.strictEqual(cFamily, selectedFamily, `Row ${i} family must match selected family`);
+    assert.strictEqual(cN, tN, `Row ${i} n must match table`);
+    assert.strictEqual(cLen, tLen, `Row ${i} string length must match table`);
+
+    let expectedRegExpTime = '';
+    if (tRegExpVerdict !== 'TIMEOUT' && tRegExpVerdict !== 'SKIPPED' && tRegExpVerdict !== '—' && tRegExpVerdict !== 'ERROR') {
+      expectedRegExpTime = tRegExpTimeRaw.endsWith(' ms') ? tRegExpTimeRaw.slice(0, -3).trim() : tRegExpTimeRaw;
+    }
+    assert.strictEqual(cRegExpTime, expectedRegExpTime, 'CSV RegExp time must match table RegExp time');
+
+    const expectedNfaTime = tNfaTimeRaw.endsWith(' ms') ? tNfaTimeRaw.slice(0, -3).trim() : tNfaTimeRaw;
+    assert.strictEqual(cNfaTime, expectedNfaTime, 'CSV NFA time must match table NFA time');
+
+    const expectedRegExpVerdict = tRegExpVerdict === '—' ? 'SKIPPED' : tRegExpVerdict;
+    assert.strictEqual(cRegExpVerdict, expectedRegExpVerdict, 'CSV RegExp verdict must match table');
+    assert.strictEqual(cNfaVerdict, tNfaVerdict, 'CSV NFA verdict must match table');
+  }
+
   // Verify 2 s clear timer with waitForFunction (no fixed sleep)
   await page.waitForFunction(() => !document.getElementById('stress-copy-status')?.hasAttribute('data-copied'), null, { timeout: 5000 });
   assert.strictEqual(await page.textContent('#stress-copy-status'), '', 'Copy status text must be cleared after 2 s');
