@@ -272,7 +272,7 @@ async function main() {
       }
     } finally {
       // Revert with git checkout in finally
-      execSync(`git checkout -- "${m.file}"`, { stdio: 'pipe' });
+      execSync('git checkout -- .', { stdio: 'pipe' });
       const statusAfter = getGitStatus();
       if (statusAfter) {
         console.error(`FATAL: tree dirty after reverting ${m.id}: ${statusAfter}`);
