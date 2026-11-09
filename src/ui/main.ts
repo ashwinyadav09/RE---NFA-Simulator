@@ -29,6 +29,7 @@ import {
 } from '../engine/index';
 import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions, renderStressChartSvg, type StressChartPoint } from '../diagram/index';
 import type { StressRow, RegExpVerdict } from './stress-types';
+import { formatStressCsv } from './csv';
 import {
   clampZoom,
   zoomAt,
@@ -1821,12 +1822,87 @@ const stressCancelBtn = document.getElementById('stress-cancel') as HTMLButtonEl
 const stressFamilySelect = document.getElementById('stress-family') as HTMLSelectElement | null;
 const stressTableBody = document.querySelector('#stress-table tbody') as HTMLElement | null;
 const stressStatusEl = document.getElementById('stress-status');
+const stressCopyCsvBtn = document.getElementById('stress-copy-csv') as HTMLButtonElement | null;
+const stressCopyStatusEl = document.getElementById('stress-copy-status');
+const stressExportSvgBtn = document.getElementById('stress-export-svg') as HTMLButtonElement | null;
 
 let currentStressScale: 'linear' | 'log' = 'linear';
 
 let stressCancelled = false;
 let stressGeneration = 0;
 let currentStressRows: StressRow[] = [];
+
+function updateStressActionButtons() {
+  const hasRows = currentStressRows.length > 0;
+  if (stressCopyCsvBtn) {
+    stressCopyCsvBtn.disabled = !hasRows;
+  }
+  if (stressExportSvgBtn) {
+    stressExportSvgBtn.disabled = !hasRows;
+  }
+}
+
+updateStressActionButtons();
+
+let copyStatusTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fallback to execCommand
+    }
+  }
+
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '-9999px';
+    textarea.setAttribute('readonly', '');
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+if (stressCopyCsvBtn) {
+  stressCopyCsvBtn.addEventListener('click', async () => {
+    if (currentStressRows.length === 0) return;
+    const csv = formatStressCsv(currentStressRows);
+    const success = await copyTextToClipboard(csv);
+
+    if (stressCopyStatusEl) {
+      if (copyStatusTimer !== null) {
+        clearTimeout(copyStatusTimer);
+        copyStatusTimer = null;
+      }
+
+      if (success) {
+        stressCopyStatusEl.textContent = 'Copied!';
+        stressCopyStatusEl.setAttribute('data-copied', 'true');
+      } else {
+        stressCopyStatusEl.textContent = 'Copy failed';
+        stressCopyStatusEl.setAttribute('data-copied', 'false');
+      }
+
+      copyStatusTimer = setTimeout(() => {
+        if (stressCopyStatusEl) {
+          stressCopyStatusEl.textContent = '';
+          stressCopyStatusEl.removeAttribute('data-copied');
+        }
+        copyStatusTimer = null;
+      }, 2000);
+    }
+  });
+}
 
 function stressRowsToChartPoints(rows: StressRow[]): StressChartPoint[] {
   return rows.map((r) => ({
@@ -1919,6 +1995,7 @@ if (stressRunBtn) {
     const gen = ++stressGeneration;
     stressIsActive = true;
     currentStressRows = [];
+    updateStressActionButtons();
     stressRunBtn.disabled = true;
     if (diffRunBtn) {
       diffRunBtn.disabled = true;
@@ -1998,6 +2075,7 @@ if (stressRunBtn) {
           nfaVerdict: nfaRes.verdict
         };
         currentStressRows.push(row);
+        updateStressActionButtons();
 
         if (stressTableBody && gen === stressGeneration) {
           stressTableBody.appendChild(renderStressTableRow(row));
@@ -2035,6 +2113,7 @@ if (stressRunBtn) {
           nfaVerdict: nfaRes.verdict
         };
         currentStressRows.push(row);
+        updateStressActionButtons();
 
         if (stressTableBody && gen === stressGeneration) {
           stressTableBody.appendChild(renderStressTableRow(row));
@@ -2054,6 +2133,7 @@ if (stressRunBtn) {
       }
     } finally {
       stressIsActive = false;
+      updateStressActionButtons();
       if (gen === stressGeneration) {
         stressRunBtn.disabled = diffIsActive;
         if (stressFamilySelect) {

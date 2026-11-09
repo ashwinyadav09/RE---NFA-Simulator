@@ -5,6 +5,7 @@ const assert = require('node:assert');
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
 
   const logs = [];
   const consoleErrors = [];
@@ -1749,9 +1750,10 @@ const assert = require('node:assert');
     'Browser info must identify V8 / Chromium / Chrome'
   );
 
-  // 2. Initial inline-SVG chart exists
+  // 2. Initial inline-SVG chart exists and action buttons are disabled
   const initialChartExists = await page.evaluate(() => !!document.querySelector('#stress-chart-container svg'));
   assert(initialChartExists, 'Initial inline-SVG chart must be rendered in #stress-chart-container');
+  assert.strictEqual(await page.$eval('#stress-copy-csv', (el) => el.disabled), true, '#stress-copy-csv must initially be disabled');
 
   // 3. Start run for default family ((a*)*b on a^n)
   await page.click('#stress-run');
@@ -1836,11 +1838,41 @@ const assert = require('node:assert');
   const ariaPressedLinear = await page.$eval('#stress-scale-toggle', (el) => el.getAttribute('aria-pressed'));
   assert.strictEqual(ariaPressedLinear, 'false', 'aria-pressed must be false after toggling back to linear');
 
+  // Ticket 18 AC6 & AC7: Copy CSV and feedback UX
+  console.log('Testing Ticket 18 AC6 & AC7: Copy CSV and feedback UX...');
+  assert.strictEqual(await page.$eval('#stress-copy-csv', (el) => el.disabled), false, '#stress-copy-csv must be enabled after rows exist');
+
+  const liveRegionBeforeCopy = await page.textContent('#live-region');
+  await page.click('#stress-copy-csv');
+  await page.waitForFunction(() => document.getElementById('stress-copy-status')?.getAttribute('data-copied') === 'true');
+  const copyStatusText = await page.textContent('#stress-copy-status');
+  assert.strictEqual(copyStatusText, 'Copied!', '#stress-copy-status must show "Copied!"');
+  assert.strictEqual(await page.$eval('#stress-copy-status', (el) => el.getAttribute('data-copied')), 'true', 'data-copied must be set to true on successful copy');
+
+  // Verify live region is NOT touched (D5)
+  const liveRegionAfterCopy = await page.textContent('#live-region');
+  assert.strictEqual(liveRegionAfterCopy, liveRegionBeforeCopy, 'Copy action must not write to #live-region');
+
+  // Verify copied CSV text
+  const copiedCsv = await page.evaluate(() => navigator.clipboard.readText());
+  assert(copiedCsv.startsWith('family,n,string_length,regexp_time_ms,nfa_time_ms,regexp_verdict,nfa_verdict\r\n'), 'CSV must start with correct header and CRLF');
+  assert(copiedCsv.includes('star-star-b,12,12,'), 'CSV must contain first row data');
+  assert(copiedCsv.includes('REJECT'), 'CSV must contain verdict');
+
+  // Verify 2 s clear timer with waitForFunction (no fixed sleep)
+  await page.waitForFunction(() => !document.getElementById('stress-copy-status')?.hasAttribute('data-copied'), null, { timeout: 5000 });
+  assert.strictEqual(await page.textContent('#stress-copy-status'), '', 'Copy status text must be cleared after 2 s');
+
   // 8. Test second family ((a+)+ on a^n b)
   await page.selectOption('#stress-family', 'plus-plus');
   await page.evaluate(() => { window.__stressRowAdded = false; window.__stressDone = false; });
-  await page.click('#stress-run');
+  const disabledOnRun = await page.evaluate(() => {
+    document.getElementById('stress-run').click();
+    return document.getElementById('stress-copy-csv')?.disabled;
+  });
+  assert.strictEqual(disabledOnRun, true, '#stress-copy-csv must be disabled when run starts with 0 rows');
   await page.waitForFunction('window.__stressRowAdded === true', null, { timeout: 15000 });
+  assert.strictEqual(await page.$eval('#stress-copy-csv', (el) => el.disabled), false, '#stress-copy-csv must be re-enabled once rows are added mid-run');
 
   const plusRowText = await page.$eval('#stress-table tbody tr:first-child', (el) => el.textContent);
   console.log('Second family first row text:', plusRowText);

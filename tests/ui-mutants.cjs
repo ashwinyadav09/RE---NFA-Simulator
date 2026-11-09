@@ -182,6 +182,22 @@ async function main() {
       find: "      if (pt.regExpTimeout) {",
       replace: "      if (pt.regExpTimeout && scale !== 'log') {",
       expect: 'SVG timeout marker must remain present and visible in log mode'
+    },
+    {
+      id: 'T18-M-AC6',
+      desc: 'AC6: Copy status data-copied attribute omitted',
+      file: 'src/ui/main.ts',
+      find: "        stressCopyStatusEl.setAttribute('data-copied', 'true');",
+      replace: "        // data-copied omitted",
+      expect: 'data-copied must be set to true on successful copy'
+    },
+    {
+      id: 'T18-M-AC7',
+      desc: 'AC7: stress-copy-csv initially enabled',
+      file: 'src/ui/main.ts',
+      find: "    stressCopyCsvBtn.disabled = !hasRows;",
+      replace: "    stressCopyCsvBtn.disabled = false;",
+      expect: '#stress-copy-csv must initially be disabled'
     }
   ];
 
