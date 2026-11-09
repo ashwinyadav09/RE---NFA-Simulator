@@ -29,7 +29,7 @@ import {
 } from '../engine/index';
 import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions, renderStressChartSvg, type StressChartPoint } from '../diagram/index';
 import type { StressRow, RegExpVerdict } from './stress-types';
-import { formatStressCsv } from './csv';
+import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
 import {
   clampZoom,
   zoomAt,
@@ -1993,7 +1993,7 @@ function renderStressTableRow(row: StressRow): HTMLTableRowElement {
       : row.regExpVerdict === 'ERROR'
       ? 'Error'
       : row.regExpTimeMs !== null
-      ? `${row.regExpTimeMs.toFixed(1)} ms`
+      ? `${formatRegExpTime(row.regExpTimeMs)} ms`
       : '—';
 
   const regExpVerdictDisplay =
@@ -2003,7 +2003,7 @@ function renderStressTableRow(row: StressRow): HTMLTableRowElement {
     <td>${row.n}</td>
     <td>${row.inputLength}</td>
     <td>${regExpTimeDisplay}</td>
-    <td>${row.nfaTimeMs.toFixed(2)} ms</td>
+    <td>${formatNfaTime(row.nfaTimeMs)} ms</td>
     <td>${regExpVerdictDisplay}</td>
     <td>${row.nfaVerdict}</td>
   `;

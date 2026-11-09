@@ -1,5 +1,13 @@
 import type { StressRow } from './stress-types';
 
+export function formatRegExpTime(ms: number): string {
+  return ms.toFixed(1);
+}
+
+export function formatNfaTime(ms: number): string {
+  return ms.toFixed(2);
+}
+
 export function escapeCsvField(val: string): string {
   if (val.includes('"') || val.includes(',') || val.includes('\n') || val.includes('\r')) {
     return `"${val.replace(/"/g, '""')}"`;
@@ -26,9 +34,9 @@ export function formatStressCsv(rows: StressRow[]): string {
       row.regExpVerdict === 'ERROR' ||
       row.regExpTimeMs === null
         ? ''
-        : `${row.regExpTimeMs.toFixed(1)} ms`;
+        : formatRegExpTime(row.regExpTimeMs);
 
-    const nfaTime = `${row.nfaTimeMs.toFixed(2)} ms`;
+    const nfaTime = formatNfaTime(row.nfaTimeMs);
     const regExpVerdict = row.regExpVerdict;
     const nfaVerdict = row.nfaVerdict;
 

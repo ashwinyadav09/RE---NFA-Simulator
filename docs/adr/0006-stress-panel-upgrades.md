@@ -32,7 +32,7 @@ export interface StressRow {
 ### 2. Log Scale for Panel A
 - Linear scale remains the default; scale state is kept in module state (not `localStorage`).
 - Floor is set to $0.01\text{ ms}$ ($10^{-2}$). Values $\le 0.01\text{ ms}$ map to the bottom axis ($y = 265\text{ px}$), with the bottom tick labeled `"≤0.01 ms"`.
-- Fixed tick set: `[0.01, 0.1, 1, 10, 100, 1000, 8000]` ms, evenly spaced in log decades.
+- Fixed tick set: decades 0.01 to 1000 plus the 8000 ms ceiling (`[0.01, 0.1, 1, 10, 100, 1000, 8000]` ms).
 - At $8000\text{ ms}$, the ceiling and timeout marker (`#panelA-timeout`) coincide with the linear ceiling ($y = 50\text{ px}$).
 - Panel B remains linear $[0, 10]\text{ ms}$ over domain $[0, 1000]$.
 - Control: STABLE button label `"Log scale"`, flipping `aria-pressed="true"|"false"`. Container carries `data-scale="linear|log"`.
@@ -41,7 +41,7 @@ export interface StressRow {
 - Pure function `formatStressCsv(rows: StressRow[]): string` in `src/ui/csv.ts`.
 - RFC 4180 quoting: fields containing comma, quote, or newline are enclosed in double quotes, with internal quotes escaped as `""`.
 - Header: `family,n,string_length,regexp_time_ms,nfa_time_ms,regexp_verdict,nfa_verdict`.
-- Line endings: strict CRLF (`\r\n`) with trailing CRLF. Time formatting matches table cells; timeouts and skipped runs produce empty time fields.
+- Line endings: strict CRLF (`\r\n`) with trailing CRLF. Time columns contain bare numbers formatted with the shared formatters (1 decimal place for RegExp time, 2 decimal places for NFA time, matching the precision of the table cells without the " ms" suffix); timeouts, skipped runs, and errors produce empty time fields (e.g. `star-star-b,12,12,1.1,0.40,REJECT,REJECT`).
 - Copy-only (no file download for CSV). Uses `navigator.clipboard.writeText` with a hidden `<textarea>` + `document.execCommand('copy')` fallback for compatibility.
 - Visual feedback is directed solely to `#stress-copy-status` (`role="status"`, `data-copied="true"|"false"`), auto-clearing after 2 seconds. In accordance with ADR 0004, it never writes to `#live-region`.
 
