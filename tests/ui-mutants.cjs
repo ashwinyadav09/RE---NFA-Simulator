@@ -205,15 +205,15 @@ async function main() {
       file: 'src/ui/csv.ts',
       find: "      row.regExpVerdict === 'TIMEOUT' ||",
       replace: "      // row.regExpVerdict === 'TIMEOUT' ||",
-      expect: '8000.0 ms'
+      expect: '8000.0'
     },
     {
       id: 'T18-AC1-4',
       desc: 'AC1: trailing CRLF omitted in CSV',
       file: 'src/ui/csv.ts',
-      find: "    lines.push(fields.join(',') + '\\r\\n');",
-      replace: "    lines.push(fields.join(','));",
-      expect: 'expected 2 to be 5'
+      find: "  return lines.join('');",
+      replace: "  return rows.length > 0 ? lines.join('').slice(0, -2) : lines.join('');",
+      expect: 'expected 4 to be 5'
     },
 
     // AC2: Log math
@@ -301,7 +301,7 @@ async function main() {
       file: 'src/ui/csv.ts',
       find: '      escapeCsvField(regExpTime),\n      escapeCsvField(nfaTime),',
       replace: '      escapeCsvField(nfaTime),\n      escapeCsvField(regExpTime),',
-      expect: '0.12 ms,0.8 ms'
+      expect: '0.12,0.8'
     },
     {
       id: 'T18-AC6-3',
@@ -418,6 +418,60 @@ async function main() {
       find: '  lines.push(`  <rect width="${width}" height="${height}" fill="#fafafa" rx="6" />`);',
       replace: '  // background rect omitted',
       expect: '<rect width="760" height="320"'
+    },
+
+    // Ticket 18b Mutants (T18b-1 through T18b-6)
+    {
+      id: 'T18b-1',
+      desc: 'T18b-1: table uses toFixed(2) for RegExp time (CSV unchanged)',
+      file: 'src/ui/main.ts',
+      find: '      ? `${formatRegExpTime(row.regExpTimeMs)} ms`',
+      replace: '      ? `${row.regExpTimeMs.toFixed(2)} ms`',
+      testType: 'e2e',
+      expect: 'CSV RegExp time must match table RegExp time'
+    },
+    {
+      id: 'T18b-2',
+      desc: 'T18b-2: CSV uses toFixed(2) for RegExp time (table unchanged)',
+      file: 'src/ui/csv.ts',
+      find: '        : formatRegExpTime(row.regExpTimeMs);',
+      replace: '        : row.regExpTimeMs.toFixed(2);',
+      testType: 'e2e',
+      expect: 'CSV RegExp time must match table RegExp time'
+    },
+    {
+      id: 'T18b-3',
+      desc: 'T18b-3: CSV omits the last row (tested via E2E equality)',
+      file: 'src/ui/csv.ts',
+      find: '  for (const row of rows) {',
+      replace: '  for (const row of rows.slice(0, -1)) {',
+      testType: 'e2e',
+      expect: 'CSV data row count must equal table row count'
+    },
+    {
+      id: 'T18b-4',
+      desc: 'T18b-4: two CSV columns swapped (tested via E2E equality)',
+      file: 'src/ui/csv.ts',
+      find: '      escapeCsvField(regExpTime),\n      escapeCsvField(nfaTime),',
+      replace: '      escapeCsvField(nfaTime),\n      escapeCsvField(regExpTime),',
+      testType: 'e2e',
+      expect: 'CSV RegExp time must match table RegExp time'
+    },
+    {
+      id: 'T18b-5',
+      desc: 'T18b-5: comma field not wrapped in quotes',
+      file: 'src/ui/csv.ts',
+      find: "  if (val.includes('\"') || val.includes(',') || val.includes('\\n') || val.includes('\\r')) {",
+      replace: "  if (val.includes('\"') || val.includes('\\n') || val.includes('\\r')) {",
+      expect: '"only,comma"'
+    },
+    {
+      id: 'T18b-6',
+      desc: 'T18b-6: internal quote not doubled',
+      file: 'src/ui/csv.ts',
+      find: '    return `"${val.replace(/"/g, \'""\')}"`;',
+      replace: '    return `"${val}"`;',
+      expect: '"test,""family""'
     }
   ];
 
@@ -460,8 +514,8 @@ async function main() {
       const mutated = original.replace(findTarget, m.replace);
       fs.writeFileSync(fullPath, mutated, 'utf8');
 
-      // For unit-tested files, run vitest BEFORE e2e
-      if (UNIT_TESTED_FILES.has(m.file)) {
+      // For unit-tested files, run vitest BEFORE e2e (unless testType is e2e)
+      if (UNIT_TESTED_FILES.has(m.file) && m.testType !== 'e2e') {
         const vitestRes = runCommand('npx.cmd vitest run');
         if (!vitestRes.ok) {
           const parsed = parseFirstFailure(vitestRes.output);
