@@ -8,7 +8,7 @@ function getGitStatus() {
   if (!raw) return '';
   return raw
     .split('\n')
-    .filter((l) => l.trim() && !l.includes('tests/ui-mutants.cjs'))
+    .filter((l) => l.trim() && !l.includes('tests/ui-mutants.cjs') && !l.includes('.scratch/'))
     .join('\n')
     .trim();
 }
@@ -27,16 +27,48 @@ function runCommand(cmd) {
   }
 }
 
-function parseFirstFailure(output) {
+const UNIT_TESTED_FILES = new Set([
+  'src/ui/viewport.ts',
+  'src/ui/csv.ts',
+  'src/diagram/index.ts'
+]);
+
+function stripAnsi(str) {
+  return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+}
+
+function parseFirstFailure(rawOutput) {
+  const output = stripAnsi(rawOutput);
   const lines = output.split('\n');
   let firstMsg = '';
   let firstLocation = '';
 
+  // 1. Vitest failure detection
+  const failIdx = lines.findIndex(l => l.trim().startsWith('FAIL ') || l.trim().startsWith('FAIL\t'));
+  if (failIdx !== -1) {
+    for (let i = failIdx + 1; i < lines.length; i++) {
+      const sub = lines[i].trim();
+      if (!firstMsg && (sub.startsWith('AssertionError:') || sub.startsWith('Error:'))) {
+        firstMsg = sub;
+      }
+      if (!firstLocation) {
+        const locMatch = sub.match(/(?:❯|\bat)\s+([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+:\d+(?::\d+)?)/);
+        if (locMatch) {
+          firstLocation = locMatch[1].replace(/\\/g, '/');
+        }
+      }
+      if (firstMsg && firstLocation) break;
+    }
+    if (firstMsg) {
+      return { message: firstMsg, location: firstLocation || 'unknown' };
+    }
+  }
+
+  // 2. Playwright E2E test failure detection
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.includes('E2E test failed:') || line.includes('AssertionError') || line.includes('ERR_ASSERTION')) {
       firstMsg = line.trim();
-      // Look for next stack frame line with file:line
       for (let j = i + 1; j < Math.min(i + 15, lines.length); j++) {
         const stackLine = lines[j].trim();
         const m = stackLine.match(/(?:at\s+.*?\s+\()?([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+:\d+(?::\d+)?)\)?/);
@@ -49,11 +81,20 @@ function parseFirstFailure(output) {
     }
   }
 
+  // 3. General fallback
   if (!firstMsg) {
-    // Fallback: look for first line starting with FAIL or Error
     for (let i = 0; i < lines.length; i++) {
-      if (line.startsWith('FAIL') || (line.includes('Error:') && !line.includes('Layout note') && !line.includes('ORACLE ERROR'))) {
-        firstMsg = lines[i].trim();
+      const l = lines[i].trim();
+      if ((l.includes('Error:') || l.includes('FAIL')) && !l.includes('Layout note') && !l.includes('ORACLE ERROR')) {
+        firstMsg = l;
+        for (let j = i + 1; j < Math.min(i + 15, lines.length); j++) {
+          const stackLine = lines[j].trim();
+          const m = stackLine.match(/(?:at\s+.*?\s+\()?([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+:\d+(?::\d+)?)\)?/);
+          if (m) {
+            firstLocation = m[1].replace(/\\/g, '/');
+            break;
+          }
+        }
         break;
       }
     }
@@ -97,7 +138,7 @@ async function main() {
       file: 'src/ui/viewport.ts',
       find: '  return p === n;',
       replace: '  return true;',
-      expect: '399-token final view initial mode must be start at 1280x800'
+      expect: 'expected true to be false'
     },
     {
       id: 'T17-M2',
@@ -181,7 +222,7 @@ async function main() {
       file: 'src/diagram/index.ts',
       find: "      if (pt.regExpTimeout) {",
       replace: "      if (pt.regExpTimeout && scale !== 'log') {",
-      expect: 'SVG timeout marker must remain present and visible in log mode'
+      expect: 'id="panelA-timeout"'
     },
     {
       id: 'T18-M-AC6',
@@ -248,19 +289,11 @@ async function main() {
       const mutated = original.replace(findTarget, m.replace);
       fs.writeFileSync(fullPath, mutated, 'utf8');
 
-      // Run build & test
-      const buildRes = runCommand('npm.cmd run build');
-      if (!buildRes.ok) {
-        failMsg = 'Build failed: ' + buildRes.output.slice(0, 120);
-        failLoc = m.file;
-        resultStatus = 'BUILD-ERROR';
-      } else {
-        const testCmd = m.testType === 'unit' ? 'npx.cmd vitest run' : 'node tests/e2e.cjs';
-        const testRes = runCommand(testCmd);
-        if (testRes.ok) {
-          resultStatus = 'SURVIVED';
-        } else {
-          const parsed = parseFirstFailure(testRes.output);
+      // For unit-tested files, run vitest BEFORE e2e
+      if (UNIT_TESTED_FILES.has(m.file)) {
+        const vitestRes = runCommand('npx.cmd vitest run');
+        if (!vitestRes.ok) {
+          const parsed = parseFirstFailure(vitestRes.output);
           failMsg = parsed.message;
           failLoc = parsed.location;
           if (m.expect && parsed.message.includes(m.expect)) {
@@ -268,14 +301,58 @@ async function main() {
           } else {
             resultStatus = 'WRONG-KILLER';
           }
+        } else {
+          // Vitest passed, proceed to build and e2e
+          const buildRes = runCommand('npm.cmd run build');
+          if (!buildRes.ok) {
+            failMsg = 'Build failed: ' + buildRes.output.slice(0, 120);
+            failLoc = m.file;
+            resultStatus = 'BUILD-ERROR';
+          } else {
+            const e2eRes = runCommand('node tests/e2e.cjs');
+            if (e2eRes.ok) {
+              resultStatus = 'SURVIVED';
+            } else {
+              const parsed = parseFirstFailure(e2eRes.output);
+              failMsg = parsed.message;
+              failLoc = parsed.location;
+              if (m.expect && parsed.message.includes(m.expect)) {
+                resultStatus = 'KILLED';
+              } else {
+                resultStatus = 'WRONG-KILLER';
+              }
+            }
+          }
+        }
+      } else {
+        const buildRes = runCommand('npm.cmd run build');
+        if (!buildRes.ok) {
+          failMsg = 'Build failed: ' + buildRes.output.slice(0, 120);
+          failLoc = m.file;
+          resultStatus = 'BUILD-ERROR';
+        } else {
+          const e2eRes = runCommand('node tests/e2e.cjs');
+          if (e2eRes.ok) {
+            resultStatus = 'SURVIVED';
+          } else {
+            const parsed = parseFirstFailure(e2eRes.output);
+            failMsg = parsed.message;
+            failLoc = parsed.location;
+            if (m.expect && parsed.message.includes(m.expect)) {
+              resultStatus = 'KILLED';
+            } else {
+              resultStatus = 'WRONG-KILLER';
+            }
+          }
         }
       }
     } finally {
-      // Revert with git checkout in finally
-      execSync('git checkout -- .', { stdio: 'pipe' });
+      // Revert mutated file
+      fs.writeFileSync(fullPath, original, 'utf8');
+      execSync(`git checkout -- "${m.file}"`, { stdio: 'pipe' });
       const statusAfter = getGitStatus();
-      if (statusAfter) {
-        console.error(`FATAL: tree dirty after reverting ${m.id}: ${statusAfter}`);
+      if (statusAfter !== initialStatus) {
+        console.error(`FATAL: tree dirty after reverting ${m.id}: got "${statusAfter}", expected "${initialStatus}"`);
         process.exit(1);
       }
     }

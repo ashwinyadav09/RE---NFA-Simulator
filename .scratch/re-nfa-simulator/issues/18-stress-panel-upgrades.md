@@ -4,7 +4,7 @@
 
 **Blocked by:** 17: Zoom and pan for diagram canvases
 
-**Status:** done
+**Status:** in-review
 
 - [x] AC1 Pure CSV serialization & RFC 4180 escaping (unit): `formatStressCsv` outputs correct header, CRLF line endings, table-identical time formatting, real verdicts, empty times for timeout/skipped runs, and quotes fields containing comma, quote, or newline.
   - Proof: `tests/csv.test.ts:4-72`. Mutant: `T18-M-AC1` (LF instead of CRLF in CSV header) killed at `tests/csv.test.ts:7`.
