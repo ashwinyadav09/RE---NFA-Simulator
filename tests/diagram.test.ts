@@ -1219,6 +1219,80 @@ test('[T14-10] Diagram seam: renderStressChartSvg escapes title in <text> and ar
   expect(svgWithPoints).not.toContain('<family>');
 });
 
+test('[T18-AC2-1] Diagram seam: renderStressChartSvg log-scale math and rendering', () => {
+  const points = [
+    { n: 12, regExpTime: 0.005, nfaTime: 0.005 },
+    { n: 14, regExpTime: 0.1, nfaTime: 0.1 },
+    { n: 16, regExpTime: 1.0, nfaTime: 0.2 },
+    { n: 18, regExpTime: 10.0, nfaTime: 0.3 },
+    { n: 20, regExpTime: 100.0, nfaTime: 0.4 },
+    { n: 22, regExpTime: 1000.0, nfaTime: 0.5 },
+    { n: 28, regExpTime: 8000, regExpTimeout: true, nfaTime: 0.6 }
+  ];
+
+  const svgLog = renderStressChartSvg(points, { scale: 'log' });
+  expect(svgLog).toContain('(log scale)');
+  expect(svgLog).toContain('≤0.01 ms');
+  expect(svgLog).toContain('0.1 ms');
+  expect(svgLog).toContain('1 ms');
+  expect(svgLog).toContain('10 ms');
+  expect(svgLog).toContain('100 ms');
+  expect(svgLog).toContain('1000 ms');
+  expect(svgLog).toContain('8000 ms');
+
+  // Timeout marker at ceiling (y = 50.0) for n = 28 (getXA(28) = 322.8)
+  expect(svgLog).toContain('id="panelA-timeout" transform="translate(322.8, 50.0)"');
+
+  // Sub-millisecond (0.005 ms) is floored to 0.01 ms -> y = 265.0
+  expect(svgLog).toContain('cy="265.0" r="4" fill="#d93025"');
+
+  // Coordinates helper
+  const getCircleY = (svg: string, label: string): number => {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`<circle\\s+cx="[0-9.]+"\\s+cy="([0-9.]+)"[^>]*>\\s*<title>${escaped}<\\/title>`, 'i');
+    const m = svg.match(regex);
+    if (!m) throw new Error(`Circle for "${label}" not found in SVG`);
+    return parseFloat(m[1]);
+  };
+
+  const y001 = getCircleY(svgLog, 'n=12: RegExp 0.0ms');
+  const y01 = getCircleY(svgLog, 'n=14: RegExp 0.1ms');
+  const y1 = getCircleY(svgLog, 'n=16: RegExp 1.0ms');
+  const y10 = getCircleY(svgLog, 'n=18: RegExp 10.0ms');
+  const y100 = getCircleY(svgLog, 'n=20: RegExp 100.0ms');
+  const y1000 = getCircleY(svgLog, 'n=22: RegExp 1000.0ms');
+
+  // Strictly monotonic: smaller y means higher on canvas (larger duration)
+  expect(y1000).toBeLessThan(y100);
+  expect(y100).toBeLessThan(y10);
+  expect(y10).toBeLessThan(y1);
+  expect(y1).toBeLessThan(y01);
+  expect(y01).toBeLessThan(y001);
+});
+
+test('[T18-AC2-2] Diagram seam: renderStressChartSvg standalone SVG export', () => {
+  const points = [{ n: 12, regExpTime: 1.5, nfaTime: 0.1 }];
+  const svgStandalone = renderStressChartSvg(points, {
+    standalone: true,
+    title: 'Custom <Title> & "Export"',
+    desc: 'Export <description> & info'
+  });
+
+  expect(svgStandalone.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
+  expect(svgStandalone).toContain('width="760"');
+  expect(svgStandalone).toContain('height="320"');
+  expect(svgStandalone).toContain('viewBox="0 0 760 320"');
+  expect(svgStandalone).toContain('<title>Custom &lt;Title&gt; &amp; &quot;Export&quot;</title>');
+  expect(svgStandalone).toContain('<desc>Export &lt;description&gt; &amp; info</desc>');
+  expect(svgStandalone).toContain('<rect width="760" height="320" fill="#fafafa" rx="6" />');
+
+  // Security / standalone sanity: no scripts, no handlers, no external references (beyond standard xmlns)
+  expect(svgStandalone).not.toMatch(/<script\b/i);
+  expect(svgStandalone).not.toMatch(/\bon\w+\s*=/i);
+  expect(svgStandalone).not.toMatch(/(?:href|src)\s*=\s*['"]?https?:\/\//i);
+  expect(svgStandalone).not.toMatch(/url\(/i);
+});
+
 
 
 

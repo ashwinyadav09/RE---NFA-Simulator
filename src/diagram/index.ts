@@ -530,6 +530,9 @@ export interface StressChartOptions {
   width?: number;
   height?: number;
   title?: string;
+  scale?: 'linear' | 'log';
+  standalone?: boolean;
+  desc?: string;
 }
 
 export function renderStressChartSvg(
@@ -539,13 +542,21 @@ export function renderStressChartSvg(
   const width = options.width || 760;
   const height = options.height || 320;
   const title = options.title || 'Backtracking vs Thompson NFA';
+  const scale = options.scale || 'linear';
+  const standalone = options.standalone || false;
   const escapedTitle = escapeXml(title);
+  const desc = options.desc || 'Comparison chart between RegExp backtracking and Thompson NFA execution time.';
+  const escapedDesc = escapeXml(desc);
 
   if (points.length === 0) {
-    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapedTitle}">
+    const widthAttr = standalone ? `width="${width}"` : 'width="100%"';
+    const xmlDecl = standalone ? '<?xml version="1.0" encoding="UTF-8"?>\n' : '';
+    const descTag = standalone ? `\n  <desc>${escapedDesc}</desc>` : '';
+    return `${xmlDecl}<svg viewBox="0 0 ${width} ${height}" ${widthAttr} height="${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapedTitle}">
+  <title>${escapedTitle}</title>${descTag}
   <rect width="${width}" height="${height}" fill="#fafafa" rx="6" />
   <text x="${width / 2}" y="24" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#202124">${escapedTitle}</text>
-  <text x="${width / 2}" y="${height / 2 + 10}" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#777">Run stress test to see comparison chart</text>
+  <text x="${width / 2}" y="${height / 2 + 10}" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#777777">Run stress test to see comparison chart</text>
 </svg>`;
   }
 
@@ -579,6 +590,13 @@ export function renderStressChartSvg(
   };
 
   const getYA = (ms: number): number => {
+    if (scale === 'log') {
+      const minLog = Math.log10(0.01);
+      const maxLog = Math.log10(8000);
+      const clamped = Math.max(0.01, Math.min(ms, 8000));
+      const t = (Math.log10(clamped) - minLog) / (maxLog - minLog);
+      return panelA.top + panelA.height - t * panelA.height;
+    }
     const clamped = Math.max(0, Math.min(ms, panelA.maxY));
     return panelA.top + panelA.height - (clamped / panelA.maxY) * panelA.height;
   };
@@ -593,7 +611,15 @@ export function renderStressChartSvg(
   };
 
   const lines: string[] = [];
-  lines.push(`<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapedTitle}">`);
+  if (standalone) {
+    lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+  }
+  const widthAttr = standalone ? `width="${width}"` : 'width="100%"';
+  lines.push(`<svg viewBox="0 0 ${width} ${height}" ${widthAttr} height="${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapedTitle}">`);
+  lines.push(`  <title>${escapedTitle}</title>`);
+  if (standalone) {
+    lines.push(`  <desc>${escapedDesc}</desc>`);
+  }
   lines.push(`  <rect width="${width}" height="${height}" fill="#fafafa" rx="6" />`);
   lines.push(`  <text x="${width / 2}" y="22" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#202124">${escapedTitle}</text>`);
 
@@ -601,24 +627,45 @@ export function renderStressChartSvg(
   lines.push(`  <g transform="translate(${width - 240}, 10)" font-family="sans-serif" font-size="11">`);
   lines.push(`    <line x1="0" y1="10" x2="16" y2="10" stroke="#d93025" stroke-width="2.5" />`);
   lines.push(`    <circle cx="8" cy="10" r="3.5" fill="#d93025" />`);
-  lines.push(`    <text x="22" y="14" fill="#333">RegExp</text>`);
+  lines.push(`    <text x="22" y="14" fill="#333333">RegExp</text>`);
   lines.push(`    <line x1="100" y1="10" x2="116" y2="10" stroke="#1a73e8" stroke-width="2.5" />`);
   lines.push(`    <circle cx="108" cy="10" r="3.5" fill="#1a73e8" />`);
-  lines.push(`    <text x="122" y="14" fill="#333">Thompson NFA</text>`);
+  lines.push(`    <text x="122" y="14" fill="#333333">Thompson NFA</text>`);
   lines.push(`  </g>`);
 
   // ==========================================
   // PANEL A: n = 12 to 30 (Both Series)
   // ==========================================
-  lines.push(`  <text x="${panelA.left + panelA.width / 2}" y="${panelA.top - 12}" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="bold" fill="#3c4043">Panel A: n = 12 to 30 (Backtracking vs NFA)</text>`);
+  const panelATitle = scale === 'log'
+    ? 'Panel A: n = 12 to 30 (Backtracking vs NFA) (log scale)'
+    : 'Panel A: n = 12 to 30 (Backtracking vs NFA)';
+  lines.push(`  <text x="${panelA.left + panelA.width / 2}" y="${panelA.top - 12}" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="bold" fill="#3c4043">${panelATitle}</text>`);
 
   // Grid lines & Y ticks for Panel A
-  const yTicksA = [0, 2000, 4000, 6000, 8000];
-  for (const yt of yTicksA) {
-    const yPos = getYA(yt);
-    lines.push(`  <line x1="${panelA.left}" y1="${yPos.toFixed(1)}" x2="${panelA.left + panelA.width}" y2="${yPos.toFixed(1)}" stroke="${yt === 8000 ? '#ea4335' : '#e0e0e0'}" stroke-width="${yt === 8000 ? '1.5' : '1'}" ${yt === 8000 ? 'stroke-dasharray="4,4"' : ''} />`);
-    const label = yt === 8000 ? '8000 ms' : `${yt} ms`;
-    lines.push(`  <text x="${panelA.left - 8}" y="${(yPos + 4).toFixed(1)}" text-anchor="end" font-family="sans-serif" font-size="10" fill="${yt === 8000 ? '#ea4335' : '#5f6368'}">${label}</text>`);
+  if (scale === 'log') {
+    const logTicks: Array<{ val: number; label: string }> = [
+      { val: 0.01, label: '≤0.01 ms' },
+      { val: 0.1, label: '0.1 ms' },
+      { val: 1, label: '1 ms' },
+      { val: 10, label: '10 ms' },
+      { val: 100, label: '100 ms' },
+      { val: 1000, label: '1000 ms' },
+      { val: 8000, label: '8000 ms' }
+    ];
+    for (const { val, label } of logTicks) {
+      const yPos = getYA(val);
+      const isTop = val === 8000;
+      lines.push(`  <line x1="${panelA.left}" y1="${yPos.toFixed(1)}" x2="${panelA.left + panelA.width}" y2="${yPos.toFixed(1)}" stroke="${isTop ? '#ea4335' : '#e0e0e0'}" stroke-width="${isTop ? '1.5' : '1'}" ${isTop ? 'stroke-dasharray="4,4"' : ''} />`);
+      lines.push(`  <text x="${panelA.left - 8}" y="${(yPos + 4).toFixed(1)}" text-anchor="end" font-family="sans-serif" font-size="10" fill="${isTop ? '#ea4335' : '#5f6368'}">${label}</text>`);
+    }
+  } else {
+    const yTicksA = [0, 2000, 4000, 6000, 8000];
+    for (const yt of yTicksA) {
+      const yPos = getYA(yt);
+      lines.push(`  <line x1="${panelA.left}" y1="${yPos.toFixed(1)}" x2="${panelA.left + panelA.width}" y2="${yPos.toFixed(1)}" stroke="${yt === 8000 ? '#ea4335' : '#e0e0e0'}" stroke-width="${yt === 8000 ? '1.5' : '1'}" ${yt === 8000 ? 'stroke-dasharray="4,4"' : ''} />`);
+      const label = yt === 8000 ? '8000 ms' : `${yt} ms`;
+      lines.push(`  <text x="${panelA.left - 8}" y="${(yPos + 4).toFixed(1)}" text-anchor="end" font-family="sans-serif" font-size="10" fill="${yt === 8000 ? '#ea4335' : '#5f6368'}">${label}</text>`);
+    }
   }
 
   // Axes lines for Panel A

@@ -139,6 +139,25 @@ async function main() {
       find: "    } else if (e.key === 'f' || e.key === 'F') {\n      e.preventDefault();\n      if (zoomFitBtn && !zoomFitBtn.disabled) zoomFitBtn.click();\n    }",
       replace: "    } else if (e.key === 'f' || e.key === 'F') {\n      e.preventDefault();\n      if (zoomFitBtn && !zoomFitBtn.disabled) zoomFitBtn.click();\n    } else if (!e.shiftKey && e.key === 'ArrowRight') {\n      e.stopPropagation();\n    }",
       expect: 'Plain ArrowRight must step construction'
+    },
+    // Ticket 18 Mutants
+    {
+      id: 'T18-M-AC1',
+      desc: 'AC1: CSV header uses LF instead of CRLF',
+      file: 'src/ui/csv.ts',
+      find: "  const lines: string[] = [header.join(',') + '\\r\\n'];",
+      replace: "  const lines: string[] = [header.join(',') + '\\n'];",
+      testType: 'unit',
+      expect: 'outputs RFC 4180 header with CRLF for empty rows'
+    },
+    {
+      id: 'T18-M-AC2',
+      desc: 'AC2: Log-scale bottom tick drops <= prefix',
+      file: 'src/diagram/index.ts',
+      find: "      { val: 0.01, label: '≤0.01 ms' },",
+      replace: "      { val: 0.01, label: '0.01 ms' },",
+      testType: 'unit',
+      expect: '≤0.01 ms'
     }
   ];
 
