@@ -24,7 +24,7 @@ Furthermore, Graphviz renders diagrams at substantial compute cost (~55-63 ms pe
 - **Option 3 (`svg-pan-zoom` library)**: Rejected. Minified `svg-pan-zoom` adds ~36.5 KB to `dist/index.html`, violating our single offline file constraint. Because the stepper replaces `canvasEl.innerHTML` on every step, `svg-pan-zoom` instances would have to be destroyed and reinitialized on each step, risking memory leaks and losing viewport continuity.
 
 ## Consequences
-- Zero external runtime dependencies added; production bundle size increases by under 2 KB.
+- Zero external runtime dependencies added; production bundle size increases by 7,031 bytes (from 1,439,928 bytes at d4d081b to 1,446,959 bytes, ~1.5 KB gzip).
 - Zoom and pan operations are pure CSS matrix transforms taking ~0 ms, completely decoupled from Graphviz rendering.
 - Native browser hit-testing, state hover tooltips, and click handlers function reliably under 2D CSS transforms.
 - State labels remain crisp and vector-sharp up to 10x magnification in Chromium.
