@@ -54,6 +54,9 @@ Open the built `dist/index.html` directly in a browser over `file://` (with netw
 7. **Stress Testing**:
    - In the Stress section, click **Run Stress Test**.
      - Expected: As $n$ increases, backtracking RegExp execution time grows steeply while Thompson NFA execution remains flat/linear. Cancelling halts execution immediately without UI freeze.
+   - Click **Log scale** to toggle logarithmic scale for Panel A without re-running the benchmark. Points, ticks (down to `≤0.01 ms`), and any timeout ceiling markers adjust instantaneously.
+   - Click **Copy CSV** to copy the stress benchmark table to clipboard in RFC 4180 format with visual status feedback.
+   - Click **Export SVG** to download the standalone chart SVG with complete XML metadata and hex styling.
 8. **Keyboard & Accessibility**:
    - Repeat steps 1 to 3 using keyboard alone (Tab, Enter, Arrow keys).
    - Polite live region (`#live-region`) announces verdicts upon running and step numbers with applied rules upon stepping. All indicators carry explicit textual labels (never colour-only).

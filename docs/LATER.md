@@ -3,8 +3,7 @@ Parked ideas from tickets 08-15, ranked. Nothing here is in scope unless a ticke
 
 | # | Item | From |
 |---|------|------|
-| 4 | Log/linear toggle for stress Panel A | T14 |
-| 5 | Exports: copy-as-CSV for the stress table, SVG of the stress chart, SVG/DOT of the NFA | T14, T15 |
+| 5 | Exports: SVG/DOT of the NFA (Ticket 19) | T14, T15, T19 |
 | 6 | URL query deep links (regex plus settings); depends on the hosting decision (SPEC open question 3) | T15 |
 | 7 | Keyboard-shortcut help | T15 |
 | 8 | Mismatch inspector; suite filter/search | T13 |
