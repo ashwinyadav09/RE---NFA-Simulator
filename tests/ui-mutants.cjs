@@ -539,6 +539,9 @@ async function main() {
     console.log(`  -> ${resultStatus}: ${failMsg} (${failLoc})`);
   }
 
+  // Ensure dist is rebuilt clean after all mutations
+  runCommand('npm.cmd run build');
+
   const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
 
   console.log('\n### UI Mutants Summary Table\n');
