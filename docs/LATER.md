@@ -9,7 +9,7 @@ Parked ideas from tickets 08-15, ranked. Nothing here is in scope unless a ticke
 | 7 | Keyboard-shortcut help | T15 |
 | 8 | Mismatch inspector; suite filter/search | T13 |
 | 9 | Custom regex or generator in the stress panel (keep the 8 s worker kill) | T14 |
-| 10 | Polish: localStorage for #compact-labels, user-configurable cap overrides, visual badge for repeated live-region announcements, animated trace transitions (respect prefers-reduced-motion) | T09, T10, T15 |
+| 10 | Polish: localStorage for #compact-labels, user-configurable cap overrides, visual badge for repeated live-region announcements, animated trace and canvas fit/reset transitions (respect prefers-reduced-motion) | T09, T10, T15, T17 |
 | 11 | Consolidate early-return build error / notice rendering (layoutNoteEl.textContent vs #canvas innerHTML) into a single helper | T16 |
 | 12 | Two-finger pinch and touch panning on diagram canvases | T17 |
 | 13 | Jump-to-start-state key (Home or 's') on diagram canvas | T17 |

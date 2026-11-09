@@ -4,7 +4,7 @@
 
 **Blocked by:** 16: Release hygiene
 
-**Status:** in-review
+**Status:** done
 
 - [x] AC1 Pure maths (unit): clampZoom, zoomAt, panBy, fitToContainer, initialView, sameFrame.
   - Proof: `tests/viewport.test.ts:1-120` (7 vitest unit tests cover clampZoom, zoomAt, panBy, fitToContainer, initialView, sameFrame).
