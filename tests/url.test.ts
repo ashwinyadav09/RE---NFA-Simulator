@@ -20,6 +20,7 @@ test('round-trip serialization of special characters (+, &, #, %, space, |, (, )
 
   const decoded = decodeAppState(encoded);
   expect(decoded.ignoredKeys).toEqual([]);
+  expect(decoded.state.notation).toBe('textbook');
   expect(decoded.state).toEqual(state);
 });
 

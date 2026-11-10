@@ -575,6 +575,106 @@ async function main() {
       replace: '    canvasEl.setAttribute(\'data-current-step\', String(targetStep));\n    if (result.ok) {\n      currentDot = "digraph STALE {}";',
       testType: 'e2e',
       expect: 'Exported DOT after rebuild must belong to new expression'
+    },
+    // Ticket 19 Mutants (T19-AC5 through T19-AC8)
+    {
+      id: 'T19-AC5-1',
+      desc: 'T19-AC5-1: + not encoded in encodeAppState',
+      file: 'src/ui/url.ts',
+      find: '  return params.toString();',
+      replace: '  return params.toString().replace(/%2B/g, "+");',
+      testType: 'vitest',
+      expect: "to contain '%2B'"
+    },
+    {
+      id: 'T19-AC5-2',
+      desc: 'T19-AC5-2: notation always standard in decodeAppState',
+      file: 'src/ui/url.ts',
+      find: '        state.notation = rawVal;',
+      replace: '        state.notation = "standard";',
+      testType: 'vitest',
+      expect: "expected 'standard' to be 'textbook'"
+    },
+    {
+      id: 'T19-AC5-3',
+      desc: 'T19-AC5-3: query length limit removed in decodeAppState',
+      file: 'src/ui/url.ts',
+      find: "  if (query.length > LIMITS.maxQueryLength) {\n    return { state: {}, ignoredKeys: ['query_too_long'] };\n  }",
+      replace: '  // limit removed',
+      testType: 'vitest',
+      expect: 'query_too_long'
+    },
+    {
+      id: 'T19-AC6-1',
+      desc: 'T19-AC6-1: build skipped in initDeepLink',
+      file: 'src/ui/main.ts',
+      find: "  if (inputEl && inputEl.value.trim() !== '') {\n    await handleBuild();",
+      replace: "  if (false && inputEl && inputEl.value.trim() !== '') {\n    await handleBuild();",
+      testType: 'e2e',
+      expect: 'Auto-build must populate #stats on deep link load'
+    },
+    {
+      id: 'T19-AC6-2',
+      desc: 'T19-AC6-2: preset skipped in initDeepLink',
+      file: 'src/ui/main.ts',
+      find: "      if (presetSelectEl) presetSelectEl.value = state.preset;",
+      replace: "      // preset skipped",
+      testType: 'e2e',
+      expect: 'Preset select must be restored on deep link load'
+    },
+    {
+      id: 'T19-AC6-3',
+      desc: 'T19-AC6-3: view restore skipped in initDeepLink',
+      file: 'src/ui/main.ts',
+      find: "        if (targetView && viewToggleSelect) {\n          viewToggleSelect.value = targetView;\n          currentView = targetView;\n        }\n        await navigateToStep(stepNum);",
+      replace: "        // view skipped",
+      testType: 'e2e',
+      expect: 'View must be restored on deep link load'
+    },
+    {
+      id: 'T19-AC6-4',
+      desc: 'T19-AC6-4: link notice omitted in initDeepLink',
+      file: 'src/ui/main.ts',
+      find: "  if (ignoredKeys.length > 0 && linkNoticeEl) {\n    linkNoticeEl.textContent = `Ignored link parameters: ${[...new Set(ignoredKeys)].join(', ')}`;\n    linkNoticeEl.className = 'warning';\n  }",
+      replace: "  // link notice omitted",
+      testType: 'e2e',
+      expect: 'Link notice must display ignored parameters'
+    },
+    {
+      id: 'T19-AC7-1',
+      desc: 'T19-AC7-1: error text set via innerHTML',
+      file: 'src/ui/main.ts',
+      find: "        errorEl.textContent =\n          analysis.position !== undefined\n            ? `${analysis.message} at position ${analysis.position}`\n            : analysis.message;",
+      replace: "        errorEl.innerHTML =\n          analysis.position !== undefined\n            ? `${analysis.message} at position ${analysis.position}`\n            : analysis.message;",
+      testType: 'e2e',
+      expect: 'Malicious param must not execute XSS script'
+    },
+    {
+      id: 'T19-AC8-1',
+      desc: 'T19-AC8-1: copy link clear timer omitted',
+      file: 'src/ui/main.ts',
+      find: "    showTransientStatus(\n      copyLinkStatusEl,\n      success,\n      'Link copied!',\n      'Copy failed',\n      () => copyLinkTimer,\n      (t) => {\n        copyLinkTimer = t;\n      },\n      2000\n    );",
+      replace: "    if (copyLinkStatusEl) {\n      copyLinkStatusEl.textContent = 'Link copied!';\n      copyLinkStatusEl.setAttribute('data-copied', 'true');\n    }",
+      testType: 'e2e',
+      expect: 'Copy link status text must be cleared after 2 s'
+    },
+    {
+      id: 'T19-AC8-2',
+      desc: 'T19-AC8-2: copy link missing query string',
+      file: 'src/ui/main.ts',
+      find: "    const success = await copyTextToClipboard(fullUrl);",
+      replace: "    const success = await copyTextToClipboard(baseUrl);",
+      testType: 'e2e',
+      expect: 'Clipboard must contain copied deep link URL'
+    },
+    {
+      id: 'T19-AC8-3',
+      desc: 'T19-AC8-3: copy link writes to live region',
+      file: 'src/ui/main.ts',
+      find: "    const success = await copyTextToClipboard(fullUrl);",
+      replace: "    const success = await copyTextToClipboard(fullUrl);\n    announceLiveRegion('Link copied!');",
+      testType: 'e2e',
+      expect: 'Copy Link must not write to #live-region'
     }
   ];
 

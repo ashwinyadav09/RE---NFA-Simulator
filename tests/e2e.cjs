@@ -3269,6 +3269,109 @@ const assert = require('node:assert');
   assert.strictEqual(await page.$eval('#export-dot-btn', (el) => el.disabled), true, 'Export buttons must be disabled after refused build');
   assert.strictEqual(await page.$eval('#export-svg-btn', (el) => el.disabled), true, 'Export buttons must be disabled after refused build');
 
+  // ==========================================
+  // Ticket 19 AC6 - AC8: Deep Links and Copy Link
+  // ==========================================
+  console.log('Testing Ticket 19 AC6 - AC8: Deep Links and Copy Link...');
+
+  // AC6: Deep link load in a fresh page
+  const freshAc6Page = await createHarnessPage(browser);
+  const deepLinkUrl = fileUrl + '?regex=(a%7Cb)*a&notation=bad_notation&view=textbook&step=999&input=ba&preset=nonexistent_preset';
+  await freshAc6Page.goto(deepLinkUrl);
+  await freshAc6Page.waitForFunction('window.__ready === true', null, { timeout: 15000 });
+  await freshAc6Page.waitForFunction(() => document.body.getAttribute('data-deep-link-done') === 'true', null, { timeout: 15000 });
+
+  // Auto-build and controls set
+  const ac6Stats = await freshAc6Page.textContent('#stats');
+  assert(ac6Stats.includes('States: 10, Transitions: 12'), 'Auto-build must populate #stats on deep link load');
+  assert.strictEqual(await freshAc6Page.$eval('#regex-input', (el) => el.value), '(a|b)*a', 'Regex input must be set from deep link');
+  assert.strictEqual(await freshAc6Page.$eval('#test-input', (el) => el.value), 'ba', 'Test input must be set from deep link');
+  assert.strictEqual(await freshAc6Page.textContent('#verdict'), 'ACCEPT', 'Simulation verdict must be rendered on deep link load');
+
+  // View and step clamped
+  assert.strictEqual(await freshAc6Page.$eval('#view-toggle', (el) => el.value), 'textbook', 'View must be restored on deep link load');
+  const ac6StepText = await freshAc6Page.textContent('#step-counter');
+  assert.strictEqual(ac6StepText, 'step 6 / 6', 'Step index over total steps must be clamped to max step');
+
+  // Link notice for invalid params
+  const ac6NoticeText = await freshAc6Page.textContent('#link-notice');
+  assert(ac6NoticeText.includes('Ignored link parameters:'), 'Link notice must display ignored parameters');
+  assert(ac6NoticeText.includes('notation') && ac6NoticeText.includes('preset'), 'Link notice must report ignored notation and preset');
+  assert.strictEqual(await freshAc6Page.$eval('#link-notice', (el) => el.getAttribute('role')), 'status', '#link-notice must have role=status');
+
+  await freshAc6Page.close();
+
+  // AC6 preset restore in fresh page
+  const freshPresetPage = await createHarnessPage(browser);
+  await freshPresetPage.goto(fileUrl + '?preset=worked-example');
+  await freshPresetPage.waitForFunction('window.__ready === true', null, { timeout: 15000 });
+  await freshPresetPage.waitForFunction(() => document.body.getAttribute('data-deep-link-done') === 'true', null, { timeout: 15000 });
+  assert.strictEqual(await freshPresetPage.$eval('#preset-select', (el) => el.value), 'worked-example', 'Preset select must be restored on deep link load');
+  assert(await freshPresetPage.evaluate(() => document.getElementById('link-notice')?.textContent === ''), '#link-notice must be empty when no invalid params');
+  await freshPresetPage.close();
+
+  // AC7: XSS safety in fresh page
+  const xssPage = await createHarnessPage(browser);
+  const xssUrl = fileUrl + '?regex=a&alphabet=%3Cimg+src%3Dx+onerror%3Dwindow.__pwned%3D1%3E';
+  await xssPage.goto(xssUrl);
+  await xssPage.waitForFunction('window.__ready === true', null, { timeout: 15000 });
+  await xssPage.waitForFunction(() => document.body.getAttribute('data-deep-link-done') === 'true', null, { timeout: 15000 });
+  const pwned = await xssPage.evaluate(() => window.__pwned);
+  assert.strictEqual(pwned, undefined, 'Malicious param must not execute XSS script');
+  const errText = await xssPage.textContent('#error-message');
+  assert(errText.includes('<img src=x onerror=window.__pwned=1>'), 'Error message must display escaped malicious regex text');
+  await xssPage.close();
+
+  // Malicious regex param renders safely as raw characters
+  const xssRegexPage = await createHarnessPage(browser);
+  await xssRegexPage.goto(fileUrl + '?regex=%3Cimg+src%3Dx+onerror%3Dwindow.__pwned%3D1%3E');
+  await xssRegexPage.waitForFunction('window.__ready === true', null, { timeout: 15000 });
+  await xssRegexPage.waitForFunction(() => document.body.getAttribute('data-deep-link-done') === 'true', null, { timeout: 15000 });
+  assert.strictEqual(await xssRegexPage.$eval('#regex-input', (el) => el.value), '<img src=x onerror=window.__pwned=1>', 'Malicious regex input value must match raw string');
+  assert.strictEqual(await xssRegexPage.evaluate(() => window.__pwned), undefined, 'Malicious regex must not execute XSS script');
+  await xssRegexPage.close();
+
+  // AC8: Copy Link button
+  // Configure page state: custom alphabet, compact labels, step 2
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  await page.fill('#alphabet-input', 'a, b, x');
+  await page.evaluate(() => document.getElementById('alphabet-input')?.dispatchEvent(new Event('change')));
+  await page.click('#compact-labels');
+  await page.click('#step-next'); // step 2
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 2 / 6'));
+
+  // Click Copy Link
+  await page.click('#copy-link-btn');
+  await page.waitForFunction(() => document.getElementById('copy-link-status')?.textContent === 'Link copied!');
+  assert.strictEqual(await page.textContent('#copy-link-status'), 'Link copied!', '#copy-link-status must display "Link copied!"');
+  assert.strictEqual(await page.$eval('#copy-link-status', (el) => el.getAttribute('data-copied')), 'true', 'data-copied must be true on copy link');
+  assert.strictEqual(await page.$eval('#copy-link-status', (el) => el.getAttribute('role')), 'status', '#copy-link-status must have role=status');
+  assert(!((await page.textContent('#live-region')) || '').includes('Link copied!'), 'Copy Link must not write to #live-region');
+
+  const copiedUrl = await page.evaluate(() => navigator.clipboard.readText());
+  assert(copiedUrl.includes('regex='), 'Clipboard must contain copied deep link URL');
+  assert(copiedUrl.includes('alphabet='), 'Copied URL must include edited alphabet');
+  assert(copiedUrl.includes('compact=1'), 'Copied URL must include compact=1');
+  assert(copiedUrl.includes('step=2'), 'Copied URL must include step=2');
+
+  // Verify 2s clear timer
+  await page.waitForFunction(() => !document.getElementById('copy-link-status')?.hasAttribute('data-copied'), null, { timeout: 5000 });
+  assert.strictEqual(await page.textContent('#copy-link-status'), '', 'Copy link status text must be cleared after 2 s');
+
+  // Verify opening copied URL reproduces exact state in fresh page
+  const freshCopyPage = await createHarnessPage(browser);
+  await freshCopyPage.goto(copiedUrl);
+  await freshCopyPage.waitForFunction('window.__ready === true', null, { timeout: 15000 });
+  await freshCopyPage.waitForFunction(() => document.querySelector('#stats')?.textContent.includes('States:'), null, { timeout: 15000 });
+
+  assert.strictEqual(await freshCopyPage.$eval('#regex-input', (el) => el.value), '(a|b)*a', 'Regex must reproduce in fresh page');
+  assert.strictEqual(await freshCopyPage.$eval('#compact-labels', (el) => el.checked), true, 'Compact labels must reproduce in fresh page');
+  const copyStepText = await freshCopyPage.textContent('#step-counter');
+  assert.strictEqual(copyStepText, 'step 2 / 6', 'Step counter must reproduce step 2 in fresh page');
+  await freshCopyPage.close();
+
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);

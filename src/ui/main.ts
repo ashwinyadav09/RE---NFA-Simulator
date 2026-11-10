@@ -29,6 +29,7 @@ import {
 } from '../engine/index';
 import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions, renderStressChartSvg, type StressChartPoint } from '../diagram/index';
 import { formatStandaloneSvg, getExportFilename } from './export';
+import { encodeAppState, decodeAppState, type AppUrlState } from './url';
 import type { StressRow, RegExpVerdict } from './stress-types';
 import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
 import {
@@ -175,7 +176,11 @@ const zoomResetBtn = document.getElementById('zoom-reset-btn') as HTMLButtonElem
 const zoomLevelEl = document.getElementById('zoom-level');
 const exportDotBtn = document.getElementById('export-dot-btn') as HTMLButtonElement | null;
 const exportSvgBtn = document.getElementById('export-svg-btn') as HTMLButtonElement | null;
+const copyLinkBtn = document.getElementById('copy-link-btn') as HTMLButtonElement | null;
+const copyLinkStatusEl = document.getElementById('copy-link-status');
+const linkNoticeEl = document.getElementById('link-notice');
 let currentDot: string | null = null;
+let copyLinkTimer: ReturnType<typeof setTimeout> | null = null;
 
 let currentViewport: ViewportState = { zoom: 1.0, panX: 0, panY: 0 };
 let currentViewportMode: ViewportMode = 'fit';
@@ -1009,7 +1014,7 @@ async function handleBuild() {
   });
 
   // If a previously edited alphabet lacks a symbol required by the new expression, reset it
-  if (!analysis.ok && analysis.code === 'INVALID_ALPHABET' && userEditedAlphabet) {
+  if (!analysis.ok && analysis.code === 'INVALID_ALPHABET' && userEditedAlphabet && analysis.message.includes('Cannot remove symbol')) {
     userEditedAlphabet = null;
     analysis = analyze(source, { notation, concatenation });
   }
@@ -2300,3 +2305,150 @@ if (stressRunBtn) {
     }
   });
 }
+
+if (copyLinkBtn) {
+  copyLinkBtn.addEventListener('click', async () => {
+    const state: AppUrlState = {};
+    if (inputEl && inputEl.value.trim() !== '') {
+      state.regex = inputEl.value;
+    }
+    if (notationSelectEl && notationSelectEl.value !== 'standard') {
+      state.notation = notationSelectEl.value as 'standard' | 'textbook';
+    }
+    if (concatSelectEl && concatSelectEl.value !== 'epsilon-link') {
+      state.concat = concatSelectEl.value as 'epsilon-link' | 'merge';
+    }
+    if (presetSelectEl && presetSelectEl.value) {
+      state.preset = presetSelectEl.value;
+    }
+    if (userEditedAlphabet && alphabetInputEl && alphabetInputEl.value.trim() !== '') {
+      state.alphabet = alphabetInputEl.value;
+    }
+    if (testInputEl && testInputEl.value !== '') {
+      state.input = testInputEl.value;
+    }
+    if (currentView !== 'flat') {
+      state.view = currentView;
+    }
+    if (currentStepIndex > 1 && currentView !== 'final') {
+      state.step = currentStepIndex;
+    }
+    if (isCompactLabels()) {
+      state.compact = true;
+    }
+
+    const query = encodeAppState(state);
+    const baseUrl = window.location.href.split('?')[0].split('#')[0];
+    const fullUrl = query ? `${baseUrl}?${query}` : baseUrl;
+
+    const success = await copyTextToClipboard(fullUrl);
+    showTransientStatus(
+      copyLinkStatusEl,
+      success,
+      'Link copied!',
+      'Copy failed',
+      () => copyLinkTimer,
+      (t) => {
+        copyLinkTimer = t;
+      },
+      2000
+    );
+  });
+}
+
+async function initDeepLink(): Promise<void> {
+  const search = window.location.search;
+  if (!search) return;
+
+  const { state, ignoredKeys } = decodeAppState(search);
+
+  if (state.preset) {
+    const preset = PRESETS.find((p) => p.id === state.preset);
+    if (!preset) {
+      ignoredKeys.push('preset');
+    } else {
+      if (presetSelectEl) presetSelectEl.value = state.preset;
+      if (inputEl) inputEl.value = preset.regex;
+      if (notationSelectEl) notationSelectEl.value = preset.notation;
+      if (preset.concatenation && concatSelectEl) {
+        concatSelectEl.value = preset.concatenation;
+      }
+      if (preset.testInput && testInputEl) {
+        testInputEl.value = preset.testInput;
+      }
+    }
+  }
+
+  if (state.regex !== undefined && inputEl) {
+    inputEl.value = state.regex;
+    if (presetSelectEl && presetSelectEl.value) {
+      const activePreset = PRESETS.find((p) => p.id === presetSelectEl.value);
+      if (activePreset && activePreset.regex !== inputEl.value) {
+        presetSelectEl.value = '';
+      }
+    }
+  }
+
+  if (state.notation !== undefined && notationSelectEl) {
+    notationSelectEl.value = state.notation;
+  }
+
+  if (state.concat !== undefined && concatSelectEl) {
+    concatSelectEl.value = state.concat;
+  }
+
+  if (state.alphabet !== undefined && alphabetInputEl) {
+    userEditedAlphabet = state.alphabet.split(',').map((s) => s.trim()).filter(Boolean);
+    alphabetInputEl.value = userEditedAlphabet.join(', ');
+  }
+
+  if (state.input !== undefined && testInputEl) {
+    testInputEl.value = state.input;
+  }
+
+  if (state.compact !== undefined && compactLabelsEl) {
+    compactLabelsEl.checked = state.compact;
+  }
+
+  if (ignoredKeys.length > 0 && linkNoticeEl) {
+    linkNoticeEl.textContent = `Ignored link parameters: ${[...new Set(ignoredKeys)].join(', ')}`;
+    linkNoticeEl.className = 'warning';
+  }
+
+  if (inputEl && inputEl.value.trim() !== '') {
+    await handleBuild();
+
+    if (testInputEl && testInputEl.value !== '') {
+      handleRun();
+    }
+
+    if (currentAnalysis) {
+      const capMode = checkDiagramCap(currentAnalysis.postfix.length);
+      const totalSteps = currentAnalysis.steps.length;
+
+      let targetView = state.view;
+      if (targetView) {
+        if (capMode === 'off' && targetView !== 'final') {
+          targetView = 'final';
+        } else if (capMode === 'textbook' && targetView === 'flat') {
+          targetView = 'textbook';
+        }
+      }
+
+      if (targetView === 'final') {
+        await renderFinalView();
+      } else if (targetView || state.step !== undefined) {
+        const stepNum = state.step !== undefined ? Math.min(Math.max(1, state.step), totalSteps) : 1;
+        if (targetView && viewToggleSelect) {
+          viewToggleSelect.value = targetView;
+          currentView = targetView;
+        }
+        await navigateToStep(stepNum);
+      }
+    }
+  }
+
+  document.body.setAttribute('data-deep-link-done', 'true');
+}
+
+initDeepLink();
