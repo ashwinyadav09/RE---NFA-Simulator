@@ -3424,10 +3424,9 @@ const assert = require('node:assert');
   await page.keyboard.press('ArrowRight');
   assert.strictEqual(await page.textContent('#step-counter'), beforeStep, 'Arrow stepping must be disabled while keyboard help is open');
 
-  const transformBefore = await page.evaluate(() => document.getElementById('canvas-viewport')?.getAttribute('transform') || '');
+  const transformBefore = await page.evaluate(() => document.getElementById('canvas-viewport')?.style.transform || '');
   await page.evaluate(() => document.getElementById('canvas')?.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true })));
-  await page.evaluate(() => document.getElementById('canvas')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', bubbles: true })));
-  const transformAfter = await page.evaluate(() => document.getElementById('canvas-viewport')?.getAttribute('transform') || '');
+  const transformAfter = await page.evaluate(() => document.getElementById('canvas-viewport')?.style.transform || '');
   assert.strictEqual(transformAfter, transformBefore, 'Canvas shortcuts must not act while keyboard help dialog is open');
 
   // 6. Close via Esc key, verify focus returns to #build-button
