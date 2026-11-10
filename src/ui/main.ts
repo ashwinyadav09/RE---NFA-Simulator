@@ -193,6 +193,10 @@ function openKeyboardHelp(opener?: HTMLElement | null): void {
 function closeKeyboardHelp(): void {
   if (!keyboardHelpDialog || !keyboardHelpDialog.open) return;
   keyboardHelpDialog.close();
+  if (lastHelpOpener && typeof lastHelpOpener.focus === 'function') {
+    lastHelpOpener.focus();
+  }
+  lastHelpOpener = null;
 }
 let currentDot: string | null = null;
 let copyLinkTimer: ReturnType<typeof setTimeout> | null = null;
