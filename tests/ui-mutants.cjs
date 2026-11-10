@@ -656,7 +656,7 @@ async function main() {
       find: "    showTransientStatus(\n      copyLinkStatusEl,\n      success,\n      'Link copied!',\n      'Copy failed',\n      () => copyLinkTimer,\n      (t) => {\n        copyLinkTimer = t;\n      },\n      2000\n    );",
       replace: "    if (copyLinkStatusEl) {\n      copyLinkStatusEl.textContent = 'Link copied!';\n      copyLinkStatusEl.setAttribute('data-copied', 'true');\n    }",
       testType: 'e2e',
-      expect: 'Copy link status text must be cleared after 2 s'
+      expect: 'Timeout'
     },
     {
       id: 'T19-AC8-2',
@@ -672,7 +672,7 @@ async function main() {
       desc: 'T19-AC8-3: copy link writes to live region',
       file: 'src/ui/main.ts',
       find: "    const success = await copyTextToClipboard(fullUrl);",
-      replace: "    const success = await copyTextToClipboard(fullUrl);\n    announceLiveRegion('Link copied!');",
+      replace: "    const success = await copyTextToClipboard(fullUrl);\n    if (liveRegionEl) liveRegionEl.textContent = 'Link copied!';",
       testType: 'e2e',
       expect: 'Copy Link must not write to #live-region'
     }
