@@ -1873,34 +1873,57 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
   }
 }
 
+function showTransientStatus(
+  statusEl: HTMLElement | null,
+  success: boolean,
+  successText: string,
+  failureText: string,
+  getActiveTimer: () => ReturnType<typeof setTimeout> | null,
+  setActiveTimer: (t: ReturnType<typeof setTimeout> | null) => void,
+  durationMs = 2000
+): void {
+  if (!statusEl) return;
+  const currentTimer = getActiveTimer();
+  if (currentTimer !== null) {
+    clearTimeout(currentTimer);
+    setActiveTimer(null);
+  }
+
+  if (success) {
+    statusEl.textContent = successText;
+    statusEl.setAttribute('data-copied', 'true');
+  } else {
+    statusEl.textContent = failureText;
+    statusEl.setAttribute('data-copied', 'false');
+  }
+
+  const timer = setTimeout(() => {
+    if (statusEl) {
+      statusEl.textContent = '';
+      statusEl.removeAttribute('data-copied');
+    }
+    setActiveTimer(null);
+  }, durationMs);
+  setActiveTimer(timer);
+}
+
 if (stressCopyCsvBtn) {
   stressCopyCsvBtn.addEventListener('click', async () => {
     if (currentStressRows.length === 0) return;
     const csv = formatStressCsv(currentStressRows);
     const success = await copyTextToClipboard(csv);
 
-    if (stressCopyStatusEl) {
-      if (copyStatusTimer !== null) {
-        clearTimeout(copyStatusTimer);
-        copyStatusTimer = null;
-      }
-
-      if (success) {
-        stressCopyStatusEl.textContent = 'Copied!';
-        stressCopyStatusEl.setAttribute('data-copied', 'true');
-      } else {
-        stressCopyStatusEl.textContent = 'Copy failed';
-        stressCopyStatusEl.setAttribute('data-copied', 'false');
-      }
-
-      copyStatusTimer = setTimeout(() => {
-        if (stressCopyStatusEl) {
-          stressCopyStatusEl.textContent = '';
-          stressCopyStatusEl.removeAttribute('data-copied');
-        }
-        copyStatusTimer = null;
-      }, 2000);
-    }
+    showTransientStatus(
+      stressCopyStatusEl,
+      success,
+      'Copied!',
+      'Copy failed',
+      () => copyStatusTimer,
+      (t) => {
+        copyStatusTimer = t;
+      },
+      2000
+    );
   });
 }
 

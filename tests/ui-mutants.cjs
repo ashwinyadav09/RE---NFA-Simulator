@@ -341,8 +341,8 @@ async function main() {
       id: 'T18-AC7-1',
       desc: 'AC7: 2 s clear timer omitted',
       file: 'src/ui/main.ts',
-      find: "      copyStatusTimer = setTimeout(() => {\n        if (stressCopyStatusEl) {\n          stressCopyStatusEl.textContent = '';\n          stressCopyStatusEl.removeAttribute('data-copied');\n        }\n        copyStatusTimer = null;\n      }, 2000);",
-      replace: '      // 2 s clear timer omitted',
+      find: "  const timer = setTimeout(() => {\n    if (statusEl) {\n      statusEl.textContent = '';\n      statusEl.removeAttribute('data-copied');\n    }\n    setActiveTimer(null);\n  }, durationMs);",
+      replace: '  // 2 s clear timer omitted',
       expect: 'Timeout'
     },
     {
@@ -357,16 +357,16 @@ async function main() {
       id: 'T18-AC7-3',
       desc: 'AC7: "Copy failed" path omitted',
       file: 'src/ui/main.ts',
-      find: "      } else {\n        stressCopyStatusEl.textContent = 'Copy failed';",
-      replace: '      } else {\n        // "Copy failed" path omitted',
+      find: "  } else {\n    statusEl.textContent = failureText;",
+      replace: '  } else {\n    // "Copy failed" path omitted',
       expect: 'Status must show Copy failed when both writeText and execCommand fail'
     },
     {
       id: 'T18-AC7-4',
       desc: 'AC7: a write to #live-region added',
       file: 'src/ui/main.ts',
-      find: "        stressCopyStatusEl.textContent = 'Copied!';",
-      replace: "        stressCopyStatusEl.textContent = 'Copied!';\n        const lr = document.getElementById('live-region'); if (lr) lr.textContent = 'Copied!';",
+      find: "  if (success) {\n    statusEl.textContent = successText;",
+      replace: "  if (success) {\n    statusEl.textContent = successText;\n    const lr = document.getElementById('live-region'); if (lr) lr.textContent = 'Copied!';",
       expect: 'Copy action must not write to #live-region'
     },
 
@@ -477,8 +477,10 @@ async function main() {
 
   const results = [];
   const startTime = Date.now();
+  const filterArg = process.argv[2];
+  const activeMutants = filterArg ? mutants.filter((m) => m.id.includes(filterArg)) : mutants;
 
-  for (const m of mutants) {
+  for (const m of activeMutants) {
     console.log(`Running mutant ${m.id}: ${m.desc}...`);
     const fullPath = path.resolve(m.file);
     let original = fs.readFileSync(fullPath, 'utf8');
