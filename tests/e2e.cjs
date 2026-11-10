@@ -3333,10 +3333,11 @@ const assert = require('node:assert');
 
   // AC8: Copy Link button
   // Configure page state: custom alphabet, compact labels, step 2
-  await page.selectOption('#view-toggle', 'flat');
   await page.fill('#regex-input', '(a|b)*a');
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  await page.selectOption('#view-toggle', 'flat');
+  await page.waitForFunction(() => document.querySelector('#view-toggle')?.value === 'flat');
   await page.fill('#alphabet-input', 'a, b, x');
   await page.evaluate(() => document.getElementById('alphabet-input')?.dispatchEvent(new Event('change')));
   await page.fill('#test-input', 'ba');
