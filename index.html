@@ -68,6 +68,38 @@
       white-space: nowrap;
       border: 0;
     }
+    dialog#keyboard-help-dialog {
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      padding: 16px 20px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      max-width: 520px;
+      width: 90%;
+      background: #ffffff;
+      color: #202124;
+    }
+    dialog#keyboard-help-dialog::backdrop {
+      background: rgba(0, 0, 0, 0.4);
+    }
+    dialog#keyboard-help-dialog table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    dialog#keyboard-help-dialog th,
+    dialog#keyboard-help-dialog td {
+      padding: 6px 8px;
+      text-align: left;
+      border-bottom: 1px solid #e8eaed;
+    }
+    dialog#keyboard-help-dialog kbd {
+      background: #f1f3f4;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      padding: 2px 5px;
+      font-family: inherit;
+      font-size: 12px;
+    }
   </style>
 </head>
 
@@ -93,6 +125,7 @@
       <button id="build-button">Build</button>
       <button id="copy-link-btn" data-testid="copy-link-btn" type="button">Copy Link</button>
       <span id="copy-link-status" data-testid="copy-link-status" role="status"></span>
+      <button id="keyboard-help-btn" data-testid="keyboard-help-btn" type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
     </div>
     <div id="link-notice" data-testid="link-notice" role="status"></div>
     <div class="alphabet-controls">
@@ -231,6 +264,59 @@
         <div id="stress-chart-container" data-testid="stress-chart-container" data-scale="linear" style="margin-top: 8px;"></div>
       </div>
     </div>
+
+    <dialog id="keyboard-help-dialog" data-testid="keyboard-help-dialog" aria-labelledby="keyboard-help-title">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 16px;">
+        <h2 id="keyboard-help-title" style="margin: 0; font-size: 1.15rem;">Keyboard Shortcuts</h2>
+        <button id="keyboard-help-close" data-testid="keyboard-help-close" type="button" aria-label="Close dialog" style="font-size: 18px; line-height: 1; padding: 2px 8px; cursor: pointer;">✕</button>
+      </div>
+      <table id="keyboard-help-table" data-testid="keyboard-help-table">
+        <thead>
+          <tr>
+            <th scope="col">Key</th>
+            <th scope="col">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><kbd>Enter</kbd></td>
+            <td>Build NFA from regex</td>
+          </tr>
+          <tr>
+            <td><kbd>←</kbd> / <kbd>→</kbd></td>
+            <td>Step backward / forward through construction</td>
+          </tr>
+          <tr>
+            <td><kbd>+</kbd> or <kbd>=</kbd></td>
+            <td>Zoom in canvas</td>
+          </tr>
+          <tr>
+            <td><kbd>-</kbd> or <kbd>_</kbd></td>
+            <td>Zoom out canvas</td>
+          </tr>
+          <tr>
+            <td><kbd>0</kbd></td>
+            <td>Reset canvas zoom and pan</td>
+          </tr>
+          <tr>
+            <td><kbd>f</kbd></td>
+            <td>Fit diagram to canvas viewport</td>
+          </tr>
+          <tr>
+            <td><kbd>Shift</kbd> + <kbd>←</kbd> / <kbd>→</kbd> / <kbd>↑</kbd> / <kbd>↓</kbd></td>
+            <td>Pan canvas in direction</td>
+          </tr>
+          <tr>
+            <td><kbd>?</kbd></td>
+            <td>Open keyboard shortcuts help</td>
+          </tr>
+          <tr>
+            <td><kbd>Esc</kbd></td>
+            <td>Close keyboard shortcuts help</td>
+          </tr>
+        </tbody>
+      </table>
+    </dialog>
 
   </div>
   <script type="module" src="/src/ui/main.ts"></script>

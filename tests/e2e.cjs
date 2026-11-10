@@ -3372,6 +3372,54 @@ const assert = require('node:assert');
   assert.strictEqual(copyStepText, 'step 2 / 6', 'Step counter must reproduce step 2 in fresh page');
   await freshCopyPage.close();
 
+  // ---------------------------------------------------------
+  // Ticket 19 AC9: Keyboard help dialog
+  // ---------------------------------------------------------
+  // 1. Initial state: dialog is closed
+  assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), false, 'Keyboard help dialog must initially be closed');
+
+  // 2. Table has exactly 9 shortcut rows covering required shortcuts
+  const shortcutRows = await page.$$eval('#keyboard-help-table tbody tr', (rows) =>
+    rows.map((r) => r.textContent.trim())
+  );
+  assert.strictEqual(shortcutRows.length, 9, 'Keyboard help table must contain 9 shortcut rows');
+  assert(shortcutRows.some((t) => t.includes('Enter')), 'Keyboard help table must list Enter');
+  assert(shortcutRows.some((t) => t.includes('←') || t.includes('Left')), 'Keyboard help table must list Left/Right arrows');
+  assert(shortcutRows.some((t) => t.includes('+') || t.includes('=')), 'Keyboard help table must list + or =');
+  assert(shortcutRows.some((t) => t.includes('-') || t.includes('_')), 'Keyboard help table must list - or _');
+  assert(shortcutRows.some((t) => t.includes('0')), 'Keyboard help table must list 0');
+  assert(shortcutRows.some((t) => t.includes('f')), 'Keyboard help table must list f');
+  assert(shortcutRows.some((t) => t.includes('Shift')), 'Keyboard help table must list Shift+arrows');
+  assert(shortcutRows.some((t) => t.includes('?')), 'Keyboard help table must list ?');
+  assert(shortcutRows.some((t) => t.includes('Esc')), 'Keyboard help table must list Esc');
+
+  // 3. Open dialog via button click, close via close button, verify focus returns to button
+  await page.click('#keyboard-help-btn');
+  assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), true, 'Clicking #keyboard-help-btn must open dialog');
+  await page.click('#keyboard-help-close');
+  assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), false, 'Clicking #keyboard-help-close must close dialog');
+  assert.strictEqual(await page.evaluate(() => document.activeElement?.id), 'keyboard-help-btn', 'Focus must return to opener button on close');
+
+  // 4. Open dialog via '?' key shortcut from a non-input element
+  await page.focus('#build-button');
+  await page.keyboard.press('?');
+  assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), true, 'Pressing ? outside inputs must open dialog');
+
+  // 5. While open, global arrow stepping and canvas keys do nothing
+  const beforeStep = await page.textContent('#step-counter');
+  await page.keyboard.press('ArrowRight');
+  assert.strictEqual(await page.textContent('#step-counter'), beforeStep, 'Arrow stepping must be disabled while keyboard help is open');
+
+  // 6. Close via Esc key, verify focus returns to #build-button
+  await page.keyboard.press('Escape');
+  assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), false, 'Pressing Esc must close keyboard help dialog');
+  assert.strictEqual(await page.evaluate(() => document.activeElement?.id), 'build-button', 'Focus must return to opener element on Esc close');
+
+  // 7. Verify ? is ignored while typing inside input elements
+  await page.focus('#regex-input');
+  await page.keyboard.press('?');
+  assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), false, 'Typing ? in input must not open keyboard help');
+
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);

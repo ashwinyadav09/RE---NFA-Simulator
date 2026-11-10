@@ -179,6 +179,21 @@ const exportSvgBtn = document.getElementById('export-svg-btn') as HTMLButtonElem
 const copyLinkBtn = document.getElementById('copy-link-btn') as HTMLButtonElement | null;
 const copyLinkStatusEl = document.getElementById('copy-link-status');
 const linkNoticeEl = document.getElementById('link-notice');
+const keyboardHelpBtn = document.getElementById('keyboard-help-btn') as HTMLButtonElement | null;
+const keyboardHelpDialog = document.getElementById('keyboard-help-dialog') as HTMLDialogElement | null;
+const keyboardHelpClose = document.getElementById('keyboard-help-close') as HTMLButtonElement | null;
+let lastHelpOpener: HTMLElement | null = null;
+
+function openKeyboardHelp(opener?: HTMLElement | null): void {
+  if (!keyboardHelpDialog || keyboardHelpDialog.open) return;
+  lastHelpOpener = opener ?? (document.activeElement as HTMLElement | null);
+  keyboardHelpDialog.showModal();
+}
+
+function closeKeyboardHelp(): void {
+  if (!keyboardHelpDialog || !keyboardHelpDialog.open) return;
+  keyboardHelpDialog.close();
+}
 let currentDot: string | null = null;
 let copyLinkTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -1692,6 +1707,7 @@ if (canvasEl) {
   canvasEl.addEventListener('pointercancel', endDrag);
 
   canvasEl.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (keyboardHelpDialog?.open) return;
     if (!currentContentRect) return;
 
     if (e.key === '+' || e.key === '=') {
@@ -1725,7 +1741,27 @@ if (canvasEl) {
 
 window.addEventListener('keydown', (e: KeyboardEvent) => {
   const target = e.target as HTMLElement | null;
-  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) {
+  const isInput = Boolean(
+    target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable)
+  );
+
+  if (!isInput && !e.ctrlKey && !e.altKey && !e.metaKey && e.key === '?') {
+    if (keyboardHelpDialog && !keyboardHelpDialog.open) {
+      e.preventDefault();
+      openKeyboardHelp(target);
+    }
+    return;
+  }
+
+  if (keyboardHelpDialog?.open) {
+    return;
+  }
+
+  if (isInput) {
     return;
   }
   if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) {
@@ -1745,6 +1781,27 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     }
   }
 });
+
+if (keyboardHelpBtn) {
+  keyboardHelpBtn.addEventListener('click', () => {
+    openKeyboardHelp(keyboardHelpBtn);
+  });
+}
+
+if (keyboardHelpClose) {
+  keyboardHelpClose.addEventListener('click', () => {
+    closeKeyboardHelp();
+  });
+}
+
+if (keyboardHelpDialog) {
+  keyboardHelpDialog.addEventListener('close', () => {
+    if (lastHelpOpener && typeof lastHelpOpener.focus === 'function') {
+      lastHelpOpener.focus();
+    }
+    lastHelpOpener = null;
+  });
+}
 
 // Initially disable stepper buttons until a build occurs
 if (stepFirstBtn) stepFirstBtn.disabled = true;

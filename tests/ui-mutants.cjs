@@ -675,6 +675,42 @@ async function main() {
       replace: "    const success = await copyTextToClipboard(fullUrl);\n    if (liveRegionEl) liveRegionEl.textContent = 'Link copied!';",
       testType: 'e2e',
       expect: 'Copy Link must not write to #live-region'
+    },
+    {
+      id: 'T19-AC9-1',
+      desc: 'T19-AC9-1: input guard removed from ? shortcut',
+      file: 'src/ui/main.ts',
+      find: "  if (!isInput && !e.ctrlKey && !e.altKey && !e.metaKey && e.key === '?') {",
+      replace: "  if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key === '?') {",
+      testType: 'e2e',
+      expect: 'Typing ? in input must not open keyboard help'
+    },
+    {
+      id: 'T19-AC9-2',
+      desc: 'T19-AC9-2: open-guard on arrow handler removed',
+      file: 'src/ui/main.ts',
+      find: "  if (keyboardHelpDialog?.open) {\n    return;\n  }",
+      replace: "  // open guard on arrow handler removed",
+      testType: 'e2e',
+      expect: 'Arrow stepping must be disabled while keyboard help is open'
+    },
+    {
+      id: 'T19-AC9-3',
+      desc: 'T19-AC9-3: focus return omitted on dialog close',
+      file: 'src/ui/main.ts',
+      find: "    if (lastHelpOpener && typeof lastHelpOpener.focus === 'function') {\n      lastHelpOpener.focus();\n    }",
+      replace: "    // focus return omitted",
+      testType: 'e2e',
+      expect: 'Focus must return to opener button on close'
+    },
+    {
+      id: 'T19-AC9-4',
+      desc: 'T19-AC9-4: one list row removed from keyboard help table',
+      file: 'index.html',
+      find: "          <tr>\n            <td><kbd>Esc</kbd></td>\n            <td>Close keyboard shortcuts help</td>\n          </tr>",
+      replace: "          <!-- row removed -->",
+      testType: 'e2e',
+      expect: 'Keyboard help table must contain 9 shortcut rows'
     }
   ];
 
