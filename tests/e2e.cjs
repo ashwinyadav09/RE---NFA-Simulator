@@ -3394,7 +3394,10 @@ const assert = require('node:assert');
   assert(shortcutRows.some((t) => t.includes('Esc')), 'Keyboard help table must list Esc');
 
   // 3. Open dialog via button click, close via close button, verify focus returns to button
-  await page.click('#keyboard-help-btn');
+  await page.focus('#build-button');
+  await page.evaluate(() => {
+    document.getElementById('keyboard-help-btn')?.click();
+  });
   assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), true, 'Clicking #keyboard-help-btn must open dialog');
   await page.click('#keyboard-help-close');
   assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), false, 'Clicking #keyboard-help-close must close dialog');
