@@ -532,6 +532,15 @@ async function main() {
       expect: 'Exported DOT must match the rendered view DOT'
     },
     {
+      id: 'T19-AC2-3',
+      desc: 'T19-AC2-3: diagram-capped build exports DOT with wrong node count',
+      file: 'src/ui/main.ts',
+      find: '    currentDot = toDot(analysis.nfa, {\n      compactLabels: isCompactLabels()\n    });',
+      replace: '    currentDot = \'digraph G {\\n  q0 [label="0"];\\n}\';',
+      testType: 'e2e',
+      expect: 'Capped DOT node count must equal #stats state count'
+    },
+    {
       id: 'T19-AC3-1',
       desc: 'T19-AC3-1: SVG export button enabled when diagram is capped (>400 tokens)',
       file: 'src/ui/main.ts',
@@ -641,6 +650,15 @@ async function main() {
       expect: 'Link notice must display ignored parameters'
     },
     {
+      id: 'T19-AC6-5',
+      desc: 'T19-AC6-5: invalid param aborts whole deep link',
+      file: 'src/ui/url.ts',
+      find: '  return { state, ignoredKeys };',
+      replace: '  if (ignoredKeys.length > 0) return { state: {}, ignoredKeys };\n  return { state, ignoredKeys };',
+      testType: 'e2e',
+      expect: 'Auto-build must populate #stats on deep link load'
+    },
+    {
       id: 'T19-AC7-1',
       desc: 'T19-AC7-1: error text set via innerHTML',
       file: 'src/ui/main.ts',
@@ -677,6 +695,15 @@ async function main() {
       expect: 'Copy Link must not write to #live-region'
     },
     {
+      id: 'T19-AC8-4',
+      desc: 'T19-AC8-4: copy link omits step parameter',
+      file: 'src/ui/main.ts',
+      find: '      step: currentStep !== null ? currentStep : undefined,',
+      replace: '      step: undefined,',
+      testType: 'e2e',
+      expect: 'Step counter must reproduce step 2 in fresh page'
+    },
+    {
       id: 'T19-AC9-1',
       desc: 'T19-AC9-1: input guard removed from ? shortcut',
       file: 'src/ui/main.ts',
@@ -711,6 +738,24 @@ async function main() {
       replace: "          <!-- row removed -->",
       testType: 'e2e',
       expect: 'Keyboard help table must contain 9 shortcut rows'
+    },
+    {
+      id: 'T19-AC9-5',
+      desc: 'T19-AC9-5: ? opens with Ctrl or Alt held',
+      file: 'src/ui/main.ts',
+      find: "  if (!isInput && !e.ctrlKey && !e.altKey && !e.metaKey && e.key === '?') {",
+      replace: "  if (!isInput && e.key === '?') {",
+      testType: 'e2e',
+      expect: 'Ctrl+? must not open keyboard help'
+    },
+    {
+      id: 'T19-AC9-6',
+      desc: 'T19-AC9-6: canvas shortcuts act while keyboard help dialog is open',
+      file: 'src/ui/main.ts',
+      find: "  canvasEl.addEventListener('keydown', (e: KeyboardEvent) => {\n    if (keyboardHelpDialog?.open) {\n      return;\n    }",
+      replace: "  canvasEl.addEventListener('keydown', (e: KeyboardEvent) => {\n    // open-guard removed",
+      testType: 'e2e',
+      expect: 'Canvas shortcuts must not act while keyboard help dialog is open'
     }
   ];
 

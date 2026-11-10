@@ -3208,7 +3208,7 @@ const assert = require('node:assert');
   assert.strictEqual(finalDotText, lastRenderedDot, 'Exported DOT must match the rendered view DOT');
 
   // AC3: Button states & Diagram-capped build (> 400 postfix tokens)
-  const cappedExpr = 'a'.repeat(401);
+  const cappedExpr = 'a'.repeat(210);
   await page.fill('#regex-input', cappedExpr);
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
@@ -3338,6 +3338,7 @@ const assert = require('node:assert');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
   await page.fill('#alphabet-input', 'a, b, x');
   await page.evaluate(() => document.getElementById('alphabet-input')?.dispatchEvent(new Event('change')));
+  await page.fill('#test-input', 'ba');
   await page.click('#compact-labels');
   await page.click('#step-next'); // step 2
   await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 2 / 6'));
@@ -3353,6 +3354,7 @@ const assert = require('node:assert');
   const copiedUrl = await page.evaluate(() => navigator.clipboard.readText());
   assert(copiedUrl.includes('regex='), 'Clipboard must contain copied deep link URL');
   assert(copiedUrl.includes('alphabet='), 'Copied URL must include edited alphabet');
+  assert(copiedUrl.includes('input=ba'), 'Copied URL must include test input');
   assert(copiedUrl.includes('compact=1'), 'Copied URL must include compact=1');
   assert(copiedUrl.includes('step=2'), 'Copied URL must include step=2');
 
@@ -3367,9 +3369,12 @@ const assert = require('node:assert');
   await freshCopyPage.waitForFunction(() => document.querySelector('#stats')?.textContent.includes('States:'), null, { timeout: 15000 });
 
   assert.strictEqual(await freshCopyPage.$eval('#regex-input', (el) => el.value), '(a|b)*a', 'Regex must reproduce in fresh page');
+  assert.strictEqual(await freshCopyPage.$eval('#notation-select', (el) => el.value), 'standard', 'Notation must reproduce in fresh page');
+  assert.strictEqual(await freshCopyPage.$eval('#concat-select', (el) => el.value), 'epsilon', 'Concat mode must reproduce in fresh page');
+  assert.strictEqual(await freshCopyPage.$eval('#test-input', (el) => el.value), 'ba', 'Test input must reproduce in fresh page');
+  assert.strictEqual(await freshCopyPage.$eval('#view-toggle', (el) => el.value), 'flat', 'View mode must reproduce in fresh page');
+  assert.strictEqual(await freshCopyPage.textContent('#step-counter'), 'step 2 / 6', 'Step counter must reproduce step 2 in fresh page');
   assert.strictEqual(await freshCopyPage.$eval('#compact-labels', (el) => el.checked), true, 'Compact labels must reproduce in fresh page');
-  const copyStepText = await freshCopyPage.textContent('#step-counter');
-  assert.strictEqual(copyStepText, 'step 2 / 6', 'Step counter must reproduce step 2 in fresh page');
   await freshCopyPage.close();
 
   // ---------------------------------------------------------
@@ -3405,6 +3410,11 @@ const assert = require('node:assert');
 
   // 4. Open dialog via '?' key shortcut from a non-input element
   await page.focus('#build-button');
+  await page.keyboard.press('Control+?');
+  assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), false, 'Ctrl+? must not open keyboard help');
+  await page.keyboard.press('Alt+?');
+  assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), false, 'Alt+? must not open keyboard help');
+
   await page.keyboard.press('?');
   assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), true, 'Pressing ? outside inputs must open dialog');
 
@@ -3412,6 +3422,12 @@ const assert = require('node:assert');
   const beforeStep = await page.textContent('#step-counter');
   await page.keyboard.press('ArrowRight');
   assert.strictEqual(await page.textContent('#step-counter'), beforeStep, 'Arrow stepping must be disabled while keyboard help is open');
+
+  const transformBefore = await page.evaluate(() => document.getElementById('canvas-viewport')?.getAttribute('transform') || '');
+  await page.evaluate(() => document.getElementById('canvas')?.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true })));
+  await page.evaluate(() => document.getElementById('canvas')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', bubbles: true })));
+  const transformAfter = await page.evaluate(() => document.getElementById('canvas-viewport')?.getAttribute('transform') || '');
+  assert.strictEqual(transformAfter, transformBefore, 'Canvas shortcuts must not act while keyboard help dialog is open');
 
   // 6. Close via Esc key, verify focus returns to #build-button
   await page.keyboard.press('Escape');
