@@ -699,7 +699,7 @@ async function main() {
       desc: 'T19-AC9-3: focus return omitted on dialog close',
       file: 'src/ui/main.ts',
       find: "    if (lastHelpOpener && typeof lastHelpOpener.focus === 'function') {\n      lastHelpOpener.focus();\n    }",
-      replace: "    // focus return omitted",
+      replace: "    (document.activeElement as HTMLElement)?.blur(); // focus return omitted",
       testType: 'e2e',
       expect: 'Focus must return to opener button on close'
     },
