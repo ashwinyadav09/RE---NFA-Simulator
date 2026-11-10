@@ -3430,9 +3430,8 @@ const assert = require('node:assert');
   assert.strictEqual(transformAfter, transformBefore, 'Canvas shortcuts must not act while keyboard help dialog is open');
 
   // 6. Close via Esc key, verify focus returns to #build-button
-  const escClosePromise = page.$eval('#keyboard-help-dialog', (el) => new Promise((resolve) => el.addEventListener('close', resolve, { once: true })));
   await page.keyboard.press('Escape');
-  await escClosePromise;
+  await page.waitForFunction(() => !document.getElementById('keyboard-help-dialog')?.open && document.activeElement?.id === 'build-button');
   assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), false, 'Pressing Esc must close keyboard help dialog');
   assert.strictEqual(await page.evaluate(() => document.activeElement?.id), 'build-button', 'Focus must return to opener element on Esc close');
 

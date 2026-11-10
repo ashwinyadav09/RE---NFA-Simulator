@@ -761,8 +761,10 @@ async function main() {
 
   const results = [];
   const startTime = Date.now();
-  const filterArg = process.argv[2];
-  const activeMutants = filterArg ? mutants.filter((m) => m.isControl || m.id.includes(filterArg)) : mutants;
+  const filterArgs = process.argv.slice(2);
+  const activeMutants = filterArgs.length > 0
+    ? mutants.filter((m) => m.isControl || filterArgs.some((arg) => m.id.includes(arg)))
+    : mutants;
 
   for (const m of activeMutants) {
     console.log(`Running mutant ${m.id}: ${m.desc}...`);
