@@ -73,7 +73,7 @@ const assert = require('node:assert');
     assert(!distHtml.includes(hook), `dist/index.html must not contain test hook "${hook}"`);
   }
 
-  await page.addInitScript(() => {
+  const harnessInitScript = () => {
     // 1. Worker instrumentation for ping/pong test and fault injection
     const origWorker = window.Worker;
     window.Worker = function(...args) {
@@ -131,6 +131,7 @@ const assert = require('node:assert');
     // 2. Set __ready when DOM scripts are done
     window.__ready = false;
     window.__harnessRenderCalls = [];
+    window.__lastRenderedDot = null;
     window.__testForceLayoutFailure = false;
     window.__testForcePinnedRenderFailure = false;
     window.__testRenderDelay = null;
@@ -164,6 +165,9 @@ const assert = require('node:assert');
               format: options && options.format,
               engine: options && options.engine
             });
+            if (!options || options.format !== 'json') {
+              window.__lastRenderedDot = dot;
+            }
             if (window.__testForceLayoutFailure && options && options.format === 'json') {
               return { ok: false, error: 'Forced test failure' };
             }
@@ -172,6 +176,8 @@ const assert = require('node:assert');
             }
             if (window.__testRenderDelay && window.__testRenderDelay[2] && dot.includes('box_0_1')) {
               await new Promise((r) => setTimeout(r, window.__testRenderDelay[2] || 250));
+            } else if (typeof window.__testRenderDelay === 'number') {
+              await new Promise((r) => setTimeout(r, window.__testRenderDelay));
             } else if (window.__testRenderDelay && !dot.includes('n0 -> n1') && !dot.includes('box_0_1')) {
               await new Promise((r) => setTimeout(r, 250));
             }
@@ -364,7 +370,15 @@ const assert = require('node:assert');
     } else {
       setupStressObserver();
     }
-  });
+  };
+
+  await page.addInitScript(harnessInitScript);
+
+  async function createHarnessPage(targetBrowser) {
+    const freshPage = await targetBrowser.newPage();
+    await freshPage.addInitScript(harnessInitScript);
+    return freshPage;
+  }
 
   const fileUrl = 'file:///' + distHtmlPath.replace(/\\/g, '/');
 
@@ -373,6 +387,8 @@ const assert = require('node:assert');
 
   // 1. Check page readiness
   await page.waitForFunction('window.__ready === true', null, { timeout: 15000 });
+  assert.strictEqual(await page.$eval('#export-dot-btn', (el) => el.disabled), true, '#export-dot-btn must initially be disabled');
+  assert.strictEqual(await page.$eval('#export-svg-btn', (el) => el.disabled), true, '#export-svg-btn must initially be disabled');
 
   // 2. Check inline worker round-trip over file://
   await page.waitForFunction('window.__workerResult !== undefined', null, { timeout: 15000 });
@@ -3086,6 +3102,172 @@ const assert = require('node:assert');
     }
   });
   await canvasLocator.screenshot({ path: `${scratchDir}/ac15_161_10x.png` });
+
+  // ==========================================
+  // Ticket 19 AC1 - AC4: NFA Exports
+  // ==========================================
+  console.log('Testing Ticket 19 AC1 - AC4: NFA Exports...');
+
+  // Reset to clean expression (a|b)*a
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  assert.strictEqual(await page.$eval('#export-dot-btn', (el) => el.disabled), false, 'Normal build enables #export-dot-btn');
+  assert.strictEqual(await page.$eval('#export-svg-btn', (el) => el.disabled), false, 'Normal build enables #export-svg-btn');
+
+  // Step 2 flat view export
+  await page.click('#step-next'); // step 2
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 2 / 6'));
+
+  // AC1: SVG export flat step 2
+  const [downloadStep2] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#export-svg-btn')
+  ]);
+  assert.strictEqual(downloadStep2.suggestedFilename(), 'nfa-step-2-flat.svg', 'Exported flat step 2 filename must be nfa-step-2-flat.svg');
+  const step2SvgStream = await downloadStep2.createReadStream();
+  const step2Chunks = [];
+  for await (const chunk of step2SvgStream) step2Chunks.push(chunk);
+  const step2SvgText = Buffer.concat(step2Chunks).toString('utf-8');
+
+  assert(step2SvgText.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n'), 'Exported SVG must start with XML declaration');
+  const xmlDeclMatches = step2SvgText.match(/<\?xml\b/g);
+  assert(xmlDeclMatches && xmlDeclMatches.length === 1, 'Exported SVG must have exactly one XML declaration');
+  assert(step2SvgText.includes('<rect width="100%" height="100%" fill="#ffffff"/>'), 'Exported SVG must contain opaque white background rect');
+
+  const onScreenStep2Vb = await page.evaluate(() => document.querySelector('#canvas-viewport svg')?.getAttribute('viewBox'));
+
+  const step2Xml = await page.evaluate((svgText) => {
+    const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+    return {
+      errors: doc.querySelectorAll('parsererror').length,
+      root: doc.documentElement.tagName.toLowerCase(),
+      xmlns: doc.documentElement.getAttribute('xmlns'),
+      xlink: doc.documentElement.getAttribute('xmlns:xlink'),
+      width: doc.documentElement.getAttribute('width'),
+      height: doc.documentElement.getAttribute('height'),
+      viewBox: doc.documentElement.getAttribute('viewBox')
+    };
+  }, step2SvgText);
+
+  assert.strictEqual(step2Xml.errors, 0, 'Exported SVG must parse with 0 errors');
+  assert.strictEqual(step2Xml.root, 'svg', 'Root must be svg');
+  assert.strictEqual(step2Xml.xmlns, 'http://www.w3.org/2000/svg', 'xmlns must be SVG namespace');
+  assert.strictEqual(step2Xml.xlink, 'http://www.w3.org/1999/xlink', 'xlink must be present');
+  assert(step2Xml.width && step2Xml.height, 'Exported SVG must have explicit width and height');
+  assert.strictEqual(step2Xml.viewBox, onScreenStep2Vb, 'Exported SVG viewBox must match original diagram viewBox without zoom transform leakage');
+
+  // Zoom canvas and export again - prove zoom does not leak
+  await page.click('#zoom-in-btn');
+  await page.click('#zoom-in-btn');
+  const [downloadStep2Zoom] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#export-svg-btn')
+  ]);
+  const step2ZoomStream = await downloadStep2Zoom.createReadStream();
+  const step2ZoomChunks = [];
+  for await (const chunk of step2ZoomStream) step2ZoomChunks.push(chunk);
+  const step2ZoomSvg = Buffer.concat(step2ZoomChunks).toString('utf-8');
+  const step2ZoomVb = await page.evaluate((svgText) => {
+    const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+    return doc.documentElement.getAttribute('viewBox');
+  }, step2ZoomSvg);
+  assert.strictEqual(step2ZoomVb, onScreenStep2Vb, 'Exported SVG viewBox must match original diagram viewBox without zoom transform leakage');
+  assert(!step2ZoomSvg.includes('data-created-by-step'), 'Exported SVG must come from cached SVG string, never from mutated DOM');
+  await page.click('#zoom-reset-btn');
+
+  // Textbook step export
+  await page.selectOption('#view-toggle', 'textbook');
+  await page.waitForFunction(() => document.querySelector('#view-toggle')?.value === 'textbook');
+  const [downloadTextbook] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#export-svg-btn')
+  ]);
+  assert.strictEqual(downloadTextbook.suggestedFilename(), 'nfa-step-2-textbook.svg', 'Exported textbook step filename must be nfa-step-2-textbook.svg');
+
+  // Final view export
+  await page.selectOption('#view-toggle', 'final');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+  const [downloadFinalSvg] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#export-svg-btn')
+  ]);
+  assert.strictEqual(downloadFinalSvg.suggestedFilename(), 'nfa-final.svg', 'Exported final SVG filename must be nfa-final.svg');
+
+  // AC2: DOT export equals rendered view DOT
+  const [downloadFinalDot] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#export-dot-btn')
+  ]);
+  assert.strictEqual(downloadFinalDot.suggestedFilename(), 'nfa-final.dot', 'Exported DOT filename must match expected convention');
+  const finalDotStream = await downloadFinalDot.createReadStream();
+  const finalDotChunks = [];
+  for await (const chunk of finalDotStream) finalDotChunks.push(chunk);
+  const finalDotText = Buffer.concat(finalDotChunks).toString('utf-8');
+  const lastRenderedDot = await page.evaluate(() => window.__lastRenderedDot);
+  assert.strictEqual(finalDotText, lastRenderedDot, 'Exported DOT must match the rendered view DOT');
+
+  // AC3: Button states & Diagram-capped build (> 400 postfix tokens)
+  const cappedExpr = 'a'.repeat(401);
+  await page.fill('#regex-input', cappedExpr);
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  assert.strictEqual(await page.$eval('#export-dot-btn', (el) => el.disabled), false, '#export-dot-btn must be enabled when diagram is capped');
+  assert.strictEqual(await page.$eval('#export-svg-btn', (el) => el.disabled), true, '#export-svg-btn must be disabled when diagram is capped');
+
+  // For capped build, compare DOT node count with #stats state count
+  const [downloadCappedDot] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#export-dot-btn')
+  ]);
+  const cappedDotStream = await downloadCappedDot.createReadStream();
+  const cappedDotChunks = [];
+  for await (const chunk of cappedDotStream) cappedDotChunks.push(chunk);
+  const cappedDotText = Buffer.concat(cappedDotChunks).toString('utf-8');
+  const dotNodeMatches = cappedDotText.match(/^\s*q\d+\s*\[/gm);
+  const statsStatesText = await page.textContent('#stats');
+  const statesMatch = statsStatesText.match(/States:\s*(\d+)/);
+  const expectedStates = statesMatch ? parseInt(statesMatch[1], 10) : 0;
+  assert.strictEqual(dotNodeMatches ? dotNodeMatches.length : 0, expectedStates, 'Capped DOT node count must equal #stats state count');
+
+  // Check disabled in flight
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.evaluate(() => { window.__testRenderDelay = 500; });
+  const buildPromise = page.click('#build-button');
+  await page.waitForFunction(() => window.__buildDone === false);
+  assert.strictEqual(await page.$eval('#export-dot-btn', (el) => el.disabled), true, 'Export buttons must be disabled during build in flight');
+  assert.strictEqual(await page.$eval('#export-svg-btn', (el) => el.disabled), true, 'Export buttons must be disabled during build in flight');
+  await buildPromise;
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  await page.evaluate(() => { window.__testRenderDelay = null; });
+
+  // Over 2000 tokens engine limit refusal
+  const over2000Expr = 'a'.repeat(2001);
+  await page.fill('#regex-input', over2000Expr);
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#error-message')?.textContent.includes('exceeds the engine limit'));
+  assert.strictEqual(await page.$eval('#export-dot-btn', (el) => el.disabled), true, 'Export buttons must be disabled after 2000+ token refusal');
+  assert.strictEqual(await page.$eval('#export-svg-btn', (el) => el.disabled), true, 'Export buttons must be disabled after 2000+ token refusal');
+
+  // AC4: No stale export after rebuilding different expression
+  await page.fill('#regex-input', 'b');
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  const [downloadNewDot] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#export-dot-btn')
+  ]);
+  const newDotChunks = [];
+  for await (const chunk of await downloadNewDot.createReadStream()) newDotChunks.push(chunk);
+  const newDotText = Buffer.concat(newDotChunks).toString('utf-8');
+  assert(newDotText.includes('b (new)'), 'Exported DOT after rebuild must belong to new expression');
+
+  // AC4: No stale export after refused build
+  await page.fill('#regex-input', '(a|');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#error-message')?.textContent.includes('Missing operand'));
+  assert.strictEqual(await page.$eval('#export-dot-btn', (el) => el.disabled), true, 'Export buttons must be disabled after refused build');
+  assert.strictEqual(await page.$eval('#export-svg-btn', (el) => el.disabled), true, 'Export buttons must be disabled after refused build');
 
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);

@@ -28,6 +28,7 @@ import {
   type Preset
 } from '../engine/index';
 import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions, renderStressChartSvg, type StressChartPoint } from '../diagram/index';
+import { formatStandaloneSvg, getExportFilename } from './export';
 import type { StressRow, RegExpVerdict } from './stress-types';
 import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
 import {
@@ -172,6 +173,9 @@ const zoomOutBtn = document.getElementById('zoom-out-btn') as HTMLButtonElement 
 const zoomFitBtn = document.getElementById('zoom-fit-btn') as HTMLButtonElement | null;
 const zoomResetBtn = document.getElementById('zoom-reset-btn') as HTMLButtonElement | null;
 const zoomLevelEl = document.getElementById('zoom-level');
+const exportDotBtn = document.getElementById('export-dot-btn') as HTMLButtonElement | null;
+const exportSvgBtn = document.getElementById('export-svg-btn') as HTMLButtonElement | null;
+let currentDot: string | null = null;
 
 let currentViewport: ViewportState = { zoom: 1.0, panX: 0, panY: 0 };
 let currentViewportMode: ViewportMode = 'fit';
@@ -537,6 +541,9 @@ function clearResults(): void {
   masterPositions = null;
   stepSvgCache.clear();
   layoutFailed = false;
+  currentDot = null;
+  if (exportDotBtn) exportDotBtn.disabled = true;
+  if (exportSvgBtn) exportSvgBtn.disabled = true;
   if (layoutNoteEl) {
     layoutNoteEl.textContent = '';
     layoutNoteEl.className = '';
@@ -700,15 +707,6 @@ async function navigateToStep(stepIndex: number): Promise<void> {
   const bGen = buildGeneration;
   const cacheKey = `${currentView}-${targetStep}`;
 
-  if (stepSvgCache.has(cacheKey)) {
-    if (canvasEl) {
-      canvasEl.setAttribute('data-current-step', String(targetStep));
-      setCanvasContent(stepSvgCache.get(cacheKey)!);
-      attachStateHoverListeners(canvasEl);
-    }
-    return;
-  }
-
   const snapshot = getStepSnapshot(currentAnalysis.steps, targetStep);
   let dot: string;
   let renderEngine: string | undefined;
@@ -722,6 +720,18 @@ async function navigateToStep(stepIndex: number): Promise<void> {
   } else {
     dot = toDot(snapshot, { view: 'flat', postfixCount: currentAnalysis.postfix.length });
     renderEngine = undefined;
+  }
+
+  if (stepSvgCache.has(cacheKey)) {
+    currentDot = dot;
+    if (exportDotBtn) exportDotBtn.disabled = false;
+    if (exportSvgBtn) exportSvgBtn.disabled = false;
+    if (canvasEl) {
+      canvasEl.setAttribute('data-current-step', String(targetStep));
+      setCanvasContent(stepSvgCache.get(cacheKey)!);
+      attachStateHoverListeners(canvasEl);
+    }
+    return;
   }
 
   let result = await renderer.render(dot, renderEngine ? { engine: renderEngine } : undefined);
@@ -745,12 +755,18 @@ async function navigateToStep(stepIndex: number): Promise<void> {
   if (canvasEl) {
     canvasEl.setAttribute('data-current-step', String(targetStep));
     if (result.ok) {
+      currentDot = dot;
+      if (exportDotBtn) exportDotBtn.disabled = false;
+      if (exportSvgBtn) exportSvgBtn.disabled = false;
       setCanvasContent(result.svg);
       attachStateHoverListeners(canvasEl);
       if (bGen === buildGeneration) {
         stepSvgCache.set(cacheKey, result.svg);
       }
     } else {
+      currentDot = null;
+      if (exportDotBtn) exportDotBtn.disabled = true;
+      if (exportSvgBtn) exportSvgBtn.disabled = true;
       setCanvasContent(result.error ? `Error rendering diagram: ${result.error}` : '', true);
     }
   }
@@ -766,6 +782,11 @@ async function renderFinalView(): Promise<void> {
 
   const mode = checkDiagramCap(currentAnalysis.postfix.length);
   if (mode === 'off') {
+    currentDot = toDot(currentAnalysis.nfa, {
+      compactLabels: isCompactLabels()
+    });
+    if (exportDotBtn) exportDotBtn.disabled = false;
+    if (exportSvgBtn) exportSvgBtn.disabled = true;
     const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping} postfix tokens (limit: ${CAPS.textbookStepping}). Table, simulation, and tests remain available.`;
     if (canvasEl) {
       setCanvasContent(message, true);
@@ -813,7 +834,19 @@ async function renderFinalView(): Promise<void> {
   const activeStr = currentActiveStates ? currentActiveStates.join(',') : 'none';
   const cacheKey = `final-${compact}-${activeStr}`;
 
+  const options: DiagramOptions = {
+    compactLabels: compact,
+    ...(currentActiveStates ? { activeStates: currentActiveStates } : {})
+  };
+
+  if (masterPositions && !layoutFailed) {
+    options.pin = masterPositions;
+  }
+
   if (stepSvgCache.has(cacheKey)) {
+    currentDot = toDot(currentAnalysis.nfa, options);
+    if (exportDotBtn) exportDotBtn.disabled = false;
+    if (exportSvgBtn) exportSvgBtn.disabled = false;
     if (canvasEl) {
       canvasEl.setAttribute('data-view', 'final');
       canvasEl.removeAttribute('data-current-step');
@@ -827,11 +860,6 @@ async function renderFinalView(): Promise<void> {
     }
     return;
   }
-
-  const options: DiagramOptions = {
-    compactLabels: compact,
-    ...(currentActiveStates ? { activeStates: currentActiveStates } : {})
-  };
 
   let renderEngine: string | undefined;
   if (masterPositions && !layoutFailed) {
@@ -868,12 +896,18 @@ async function renderFinalView(): Promise<void> {
     }
 
     if (result.ok) {
+      currentDot = dot;
+      if (exportDotBtn) exportDotBtn.disabled = false;
+      if (exportSvgBtn) exportSvgBtn.disabled = false;
       setCanvasContent(result.svg);
       attachStateHoverListeners(canvasEl);
       if (bGen === buildGeneration) {
         stepSvgCache.set(cacheKey, result.svg);
       }
     } else {
+      currentDot = null;
+      if (exportDotBtn) exportDotBtn.disabled = true;
+      if (exportSvgBtn) exportSvgBtn.disabled = true;
       setCanvasContent(result.error ? `Error rendering diagram: ${result.error}` : '', true);
     }
   }
@@ -946,6 +980,9 @@ async function handleBuild() {
   if (!inputEl) return;
   stopPlayback();
   currentViewBox = null;
+  currentDot = null;
+  if (exportDotBtn) exportDotBtn.disabled = true;
+  if (exportSvgBtn) exportSvgBtn.disabled = true;
   const gen = ++buildGeneration;
   ++diffGeneration;
   if (diffStatusEl) diffStatusEl.textContent = '';
@@ -1083,6 +1120,12 @@ async function handleBuild() {
     if (stepCounterEl) {
       stepCounterEl.textContent = 'step 0 / 0';
     }
+
+    currentDot = toDot(analysis.nfa, {
+      compactLabels: isCompactLabels()
+    });
+    if (exportDotBtn) exportDotBtn.disabled = false;
+    if (exportSvgBtn) exportSvgBtn.disabled = true;
 
     const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping} postfix tokens (limit: ${CAPS.textbookStepping}). Table, simulation, and tests remain available.`;
     if (canvasEl) {
@@ -1522,6 +1565,58 @@ if (zoomResetBtn) {
     const panY = ((canvasEl.clientHeight || 500) - currentContentRect.height) / 2;
     currentViewport = { zoom: 1.0, panX, panY };
     applyViewport();
+  });
+}
+
+if (exportDotBtn) {
+  exportDotBtn.addEventListener('click', () => {
+    if (!currentAnalysis || !currentDot) return;
+    const filename = getExportFilename(currentView, currentStepIndex, 'dot');
+    const blob = new Blob([currentDot], { type: 'text/vnd.graphviz;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 1000);
+  });
+}
+
+if (exportSvgBtn) {
+  exportSvgBtn.addEventListener('click', () => {
+    if (!currentAnalysis) return;
+    const mode = checkDiagramCap(currentAnalysis.postfix.length);
+    if (mode === 'off') return;
+
+    let rawSvg: string | undefined;
+    if (currentView === 'final') {
+      const compact = isCompactLabels();
+      const activeStr = currentActiveStates ? currentActiveStates.join(',') : 'none';
+      const cacheKey = `final-${compact}-${activeStr}`;
+      rawSvg = stepSvgCache.get(cacheKey);
+    } else {
+      const cacheKey = `${currentView}-${currentStepIndex}`;
+      rawSvg = stepSvgCache.get(cacheKey);
+    }
+
+    if (!rawSvg) return;
+    const standaloneSvg = formatStandaloneSvg(rawSvg);
+    const filename = getExportFilename(currentView, currentStepIndex, 'svg');
+    const blob = new Blob([standaloneSvg], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 1000);
   });
 }
 

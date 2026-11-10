@@ -474,6 +474,107 @@ async function main() {
       find: '    return `"${val.replace(/"/g, \'""\')}"`;',
       replace: '    return `"${val}"`;',
       expect: '"test,""family""'
+    },
+
+    // Ticket 19 Mutants (T19-AC1 through T19-AC4)
+    {
+      id: 'T19-AC1-1',
+      desc: 'T19-AC1-1: XML declaration omitted in standalone SVG',
+      file: 'src/ui/export.ts',
+      find: 'return `<?xml version="1.0" encoding="UTF-8"?>\\n<svg${attrs}>${finalInner}`;',
+      replace: 'return `<svg${attrs}>${finalInner}`;',
+      testType: 'e2e',
+      expect: 'Exported SVG must start with XML declaration'
+    },
+    {
+      id: 'T19-AC1-2',
+      desc: 'T19-AC1-2: XML declaration duplicated in standalone SVG',
+      file: 'src/ui/export.ts',
+      find: 'return `<?xml version="1.0" encoding="UTF-8"?>\\n<svg${attrs}>${finalInner}`;',
+      replace: 'return `<?xml version="1.0" encoding="UTF-8"?>\\n<?xml version="1.0" encoding="UTF-8"?>\\n<svg${attrs}>${finalInner}`;',
+      testType: 'e2e',
+      expect: 'Exported SVG must have exactly one XML declaration'
+    },
+    {
+      id: 'T19-AC1-3',
+      desc: 'T19-AC1-3: white background rect omitted in standalone SVG',
+      file: 'src/ui/export.ts',
+      find: '  const rectTag = \'<rect width="100%" height="100%" fill="#ffffff"/>\';',
+      replace: '  const rectTag = \'\';',
+      testType: 'e2e',
+      expect: 'Exported SVG must contain opaque white background rect'
+    },
+    {
+      id: 'T19-AC1-4',
+      desc: 'T19-AC1-4: SVG export taken from DOM after zoom instead of raw cache',
+      file: 'src/ui/main.ts',
+      find: '    const standaloneSvg = formatStandaloneSvg(rawSvg);',
+      replace: '    const standaloneSvg = formatStandaloneSvg(document.getElementById(\'canvas-viewport\')?.innerHTML || rawSvg);',
+      testType: 'e2e',
+      expect: 'Exported SVG must come from cached SVG string, never from mutated DOM'
+    },
+    {
+      id: 'T19-AC2-1',
+      desc: 'T19-AC2-1: wrong filename convention for final DOT export',
+      file: 'src/ui/export.ts',
+      find: 'return `nfa-final.${format}`;',
+      replace: 'return format === "dot" ? "wrong-final.dot" : `nfa-final.${format}`;',
+      testType: 'e2e',
+      expect: 'Exported DOT filename must match expected convention'
+    },
+    {
+      id: 'T19-AC2-2',
+      desc: 'T19-AC2-2: export stores wrong view DOT for final view',
+      file: 'src/ui/main.ts',
+      find: '    canvasEl.setAttribute(\'data-view\', \'final\');\n    canvasEl.removeAttribute(\'data-current-step\');\n    if (isDeadRun) {\n      canvasEl.setAttribute(\'data-run-status\', \'dead\');\n    } else {\n      canvasEl.removeAttribute(\'data-run-status\');\n    }\n\n    if (result.ok) {\n      currentDot = dot;',
+      replace: '    canvasEl.setAttribute(\'data-view\', \'final\');\n    canvasEl.removeAttribute(\'data-current-step\');\n    if (isDeadRun) {\n      canvasEl.setAttribute(\'data-run-status\', \'dead\');\n    } else {\n      canvasEl.removeAttribute(\'data-run-status\');\n    }\n\n    if (result.ok) {\n      currentDot = "digraph WRONG_FINAL {}";',
+      testType: 'e2e',
+      expect: 'Exported DOT must match the rendered view DOT'
+    },
+    {
+      id: 'T19-AC3-1',
+      desc: 'T19-AC3-1: SVG export button enabled when diagram is capped (>400 tokens)',
+      file: 'src/ui/main.ts',
+      find: 'if (exportSvgBtn) exportSvgBtn.disabled = true;\n\n    const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping}',
+      replace: 'if (exportSvgBtn) exportSvgBtn.disabled = false;\n\n    const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping}',
+      testType: 'e2e',
+      expect: '#export-svg-btn must be disabled when diagram is capped'
+    },
+    {
+      id: 'T19-AC3-2',
+      desc: 'T19-AC3-2: DOT export button disabled when diagram is capped (>400 tokens)',
+      file: 'src/ui/main.ts',
+      find: 'if (exportDotBtn) exportDotBtn.disabled = false;\n    if (exportSvgBtn) exportSvgBtn.disabled = true;\n\n    const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping}',
+      replace: 'if (exportDotBtn) exportDotBtn.disabled = true;\n    if (exportSvgBtn) exportSvgBtn.disabled = true;\n\n    const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping}',
+      testType: 'e2e',
+      expect: '#export-dot-btn must be enabled when diagram is capped'
+    },
+    {
+      id: 'T19-AC3-3',
+      desc: 'T19-AC3-3: export buttons not disabled while build is in flight',
+      file: 'src/ui/main.ts',
+      find: 'currentDot = null;\n  if (exportDotBtn) exportDotBtn.disabled = true;\n  if (exportSvgBtn) exportSvgBtn.disabled = true;\n  const gen = ++buildGeneration;',
+      replace: 'currentDot = null;\n  const gen = ++buildGeneration;',
+      testType: 'e2e',
+      expect: 'Export buttons must be disabled during build in flight'
+    },
+    {
+      id: 'T19-AC4-1',
+      desc: 'T19-AC4-1: export buttons not reset in clearResults()',
+      file: 'src/ui/main.ts',
+      find: 'currentDot = null;\n  if (exportDotBtn) exportDotBtn.disabled = true;\n  if (exportSvgBtn) exportSvgBtn.disabled = true;\n  if (layoutNoteEl) {',
+      replace: 'currentDot = null;\n  if (exportDotBtn) exportDotBtn.disabled = false;\n  if (exportSvgBtn) exportSvgBtn.disabled = false;\n  if (layoutNoteEl) {',
+      testType: 'e2e',
+      expect: 'Export buttons must be disabled after'
+    },
+    {
+      id: 'T19-AC4-2',
+      desc: 'T19-AC4-2: exported DOT stale after rebuilding different expression',
+      file: 'src/ui/main.ts',
+      find: '    canvasEl.setAttribute(\'data-current-step\', String(targetStep));\n    if (result.ok) {\n      currentDot = dot;',
+      replace: '    canvasEl.setAttribute(\'data-current-step\', String(targetStep));\n    if (result.ok) {\n      currentDot = "digraph STALE {}";',
+      testType: 'e2e',
+      expect: 'Exported DOT after rebuild must belong to new expression'
     }
   ];
 
