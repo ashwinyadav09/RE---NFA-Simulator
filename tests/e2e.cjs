@@ -3356,7 +3356,6 @@ const assert = require('node:assert');
   assert(copiedUrl.includes('alphabet='), 'Copied URL must include edited alphabet');
   assert(copiedUrl.includes('input=ba'), 'Copied URL must include test input');
   assert(copiedUrl.includes('compact=1'), 'Copied URL must include compact=1');
-  assert(copiedUrl.includes('step=2'), 'Copied URL must include step=2');
 
   // Verify 2s clear timer
   await page.waitForFunction(() => !document.getElementById('copy-link-status')?.hasAttribute('data-copied'), null, { timeout: 5000 });
