@@ -698,8 +698,8 @@ async function main() {
       id: 'T19-AC8-4',
       desc: 'T19-AC8-4: copy link omits step parameter',
       file: 'src/ui/main.ts',
-      find: '      step: currentStep !== null ? currentStep : undefined,',
-      replace: '      step: undefined,',
+      find: "    if (currentStepIndex > 1 && currentView !== 'final') {\n      state.step = currentStepIndex;\n    }",
+      replace: "    // step omitted from copy link",
       testType: 'e2e',
       expect: 'Step counter must reproduce step 2 in fresh page'
     },
