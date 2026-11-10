@@ -3332,12 +3332,12 @@ const assert = require('node:assert');
   await xssRegexPage.close();
 
   // AC8: Copy Link button
-  // Configure page state: custom alphabet, compact labels, step 2
+  // Configure page state: custom alphabet, compact labels, step 2, textbook view
   await page.fill('#regex-input', '(a|b)*a');
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
-  await page.selectOption('#view-toggle', 'flat');
-  await page.waitForFunction(() => document.querySelector('#view-toggle')?.value === 'flat');
+  await page.selectOption('#view-toggle', 'textbook');
+  await page.waitForFunction(() => document.querySelector('#view-toggle')?.value === 'textbook');
   await page.fill('#alphabet-input', 'a, b, x');
   await page.evaluate(() => document.getElementById('alphabet-input')?.dispatchEvent(new Event('change')));
   await page.fill('#test-input', 'ba');
@@ -3373,7 +3373,7 @@ const assert = require('node:assert');
   assert.strictEqual(await freshCopyPage.$eval('#notation-select', (el) => el.value), 'standard', 'Notation must reproduce in fresh page');
   assert.strictEqual(await freshCopyPage.$eval('#concat-select', (el) => el.value), 'epsilon-link', 'Concat mode must reproduce in fresh page');
   assert.strictEqual(await freshCopyPage.$eval('#test-input', (el) => el.value), 'ba', 'Test input must reproduce in fresh page');
-  assert.strictEqual(await freshCopyPage.$eval('#view-toggle', (el) => el.value), 'flat', 'View mode must reproduce in fresh page');
+  assert.strictEqual(await freshCopyPage.$eval('#view-toggle', (el) => el.value), 'textbook', 'View mode must reproduce in fresh page');
   assert.strictEqual(await freshCopyPage.textContent('#step-counter'), 'step 2 / 6', 'Step counter must reproduce step 2 in fresh page');
   assert.strictEqual(await freshCopyPage.$eval('#compact-labels', (el) => el.checked), true, 'Compact labels must reproduce in fresh page');
   await freshCopyPage.close();
