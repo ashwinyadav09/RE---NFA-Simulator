@@ -3370,7 +3370,7 @@ const assert = require('node:assert');
 
   assert.strictEqual(await freshCopyPage.$eval('#regex-input', (el) => el.value), '(a|b)*a', 'Regex must reproduce in fresh page');
   assert.strictEqual(await freshCopyPage.$eval('#notation-select', (el) => el.value), 'standard', 'Notation must reproduce in fresh page');
-  assert.strictEqual(await freshCopyPage.$eval('#concat-select', (el) => el.value), 'epsilon', 'Concat mode must reproduce in fresh page');
+  assert.strictEqual(await freshCopyPage.$eval('#concat-select', (el) => el.value), 'epsilon-link', 'Concat mode must reproduce in fresh page');
   assert.strictEqual(await freshCopyPage.$eval('#test-input', (el) => el.value), 'ba', 'Test input must reproduce in fresh page');
   assert.strictEqual(await freshCopyPage.$eval('#view-toggle', (el) => el.value), 'flat', 'View mode must reproduce in fresh page');
   assert.strictEqual(await freshCopyPage.textContent('#step-counter'), 'step 2 / 6', 'Step counter must reproduce step 2 in fresh page');
