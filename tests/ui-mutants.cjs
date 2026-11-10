@@ -345,7 +345,7 @@ async function main() {
       file: 'src/ui/main.ts',
       find: "  const timer = setTimeout(() => {\n    if (statusEl) {\n      statusEl.textContent = '';\n      statusEl.removeAttribute('data-copied');\n    }\n    setActiveTimer(null);\n  }, durationMs);",
       replace: '  // 2 s clear timer omitted',
-      expect: 'Timeout'
+      expect: 'Timeout 5000ms exceeded'
     },
     {
       id: 'T18-AC7-2',
@@ -674,7 +674,7 @@ async function main() {
       find: "    showTransientStatus(\n      copyLinkStatusEl,\n      success,\n      'Link copied!',\n      'Copy failed',\n      () => copyLinkTimer,\n      (t) => {\n        copyLinkTimer = t;\n      },\n      2000\n    );",
       replace: "    if (copyLinkStatusEl) {\n      copyLinkStatusEl.textContent = 'Link copied!';\n      copyLinkStatusEl.setAttribute('data-copied', 'true');\n    }",
       testType: 'e2e',
-      expect: 'Timeout'
+      expect: 'Timeout 5000ms exceeded'
     },
     {
       id: 'T19-AC8-2',
