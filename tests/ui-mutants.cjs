@@ -752,7 +752,7 @@ async function main() {
       id: 'T19-AC9-6',
       desc: 'T19-AC9-6: canvas shortcuts act while keyboard help dialog is open',
       file: 'src/ui/main.ts',
-      find: "  canvasEl.addEventListener('keydown', (e: KeyboardEvent) => {\n    if (keyboardHelpDialog?.open) {\n      return;\n    }",
+      find: "  canvasEl.addEventListener('keydown', (e: KeyboardEvent) => {\n    if (keyboardHelpDialog?.open) return;",
       replace: "  canvasEl.addEventListener('keydown', (e: KeyboardEvent) => {\n    // open-guard removed",
       testType: 'e2e',
       expect: 'Canvas shortcuts must not act while keyboard help dialog is open'
