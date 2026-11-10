@@ -30,6 +30,8 @@ function runCommand(cmd) {
 const UNIT_TESTED_FILES = new Set([
   'src/ui/viewport.ts',
   'src/ui/csv.ts',
+  'src/ui/export.ts',
+  'src/ui/url.ts',
   'src/diagram/index.ts'
 ]);
 
