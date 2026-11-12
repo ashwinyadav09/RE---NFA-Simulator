@@ -4011,7 +4011,7 @@ const assert = require('node:assert');
 
   assert.strictEqual(cardDetails.length, 3, 'Must render 3 trace cards for 3 lines');
   assert.strictEqual(cardDetails[0].pillText, 'ACCEPT');
-  assert.strictEqual(cardDetails[0].isAccept, true);
+  assert.strictEqual(cardDetails[0].isAccept, true, 'First card must have isAccept=true');
   assert.strictEqual(cardDetails[1].pillText, 'REJECT');
   assert.strictEqual(cardDetails[1].isReject, true);
   assert.strictEqual(cardDetails[2].pillText, 'REJECT');
@@ -4040,7 +4040,6 @@ const assert = require('node:assert');
   await page.focus('#test-input');
   await page.fill('#test-input', 'ba');
   await page.keyboard.press('Control+Enter');
-  await page.waitForFunction(() => document.getElementById('dock-summary')?.textContent === '1 accepted · 0 rejected');
   const ctrlEnterSummary = await page.evaluate(() => document.getElementById('dock-summary')?.textContent?.trim());
   assert.strictEqual(ctrlEnterSummary, '1 accepted · 0 rejected', 'Ctrl+Enter must trigger simulation run');
 

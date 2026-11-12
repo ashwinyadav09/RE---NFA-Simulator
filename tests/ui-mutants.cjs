@@ -1030,7 +1030,7 @@ async function main() {
       find: "    pill.className = `verdict-pill ${res.verdict === 'ACCEPT' ? 'accept' : 'reject'}`;",
       replace: "    pill.className = `verdict-pill ${res.verdict === 'ACCEPT' ? 'reject' : 'accept'}`;",
       testType: 'e2e',
-      expect: 'false !== true'
+      expect: 'First card must have isAccept=true'
     },
     {
       id: 'T26-AC2-1',
