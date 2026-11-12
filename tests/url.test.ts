@@ -84,3 +84,16 @@ test('decodeAppState handles leading ? or empty query string cleanly', () => {
   expect(decodeAppState('?').state).toEqual({});
   expect(decodeAppState('?regex=a%7Cb').state).toEqual({ regex: 'a|b' });
 });
+
+test('decodeAppState strictly parses step with /^[1-9]\\d*$/ and Number.isSafeInteger', () => {
+  const invalidCases = ['3abc', '2.7', ' 5', '1e5', '0', '-1', '99999999999999999999'];
+  for (const val of invalidCases) {
+    const res = decodeAppState(`step=${encodeURIComponent(val)}`);
+    expect(res.ignoredKeys, `step=${val} should be ignored`).toContain('step');
+    expect(res.state.step, `step=${val} should not be set`).toBeUndefined();
+  }
+
+  expect(decodeAppState('step=1').state.step).toBe(1);
+  expect(decodeAppState('step=42').state.step).toBe(42);
+  expect(decodeAppState('step=100').ignoredKeys).toEqual([]);
+});

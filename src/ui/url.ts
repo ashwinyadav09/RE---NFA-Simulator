@@ -122,11 +122,15 @@ export function decodeAppState(queryString: string): DecodeResult {
         ignoredKeys.push('view');
       }
     } else if (key === 'step') {
-      const parsed = parseInt(rawVal, 10);
-      if (isNaN(parsed) || parsed < 1) {
-        ignoredKeys.push('step');
+      if (/^[1-9]\d*$/.test(rawVal)) {
+        const num = Number(rawVal);
+        if (Number.isSafeInteger(num)) {
+          state.step = num;
+        } else {
+          ignoredKeys.push('step');
+        }
       } else {
-        state.step = parsed;
+        ignoredKeys.push('step');
       }
     } else if (key === 'compact') {
       if (rawVal === '1' || rawVal === 'true') {

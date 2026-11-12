@@ -801,6 +801,15 @@ async function main() {
       replace: '      <select id="notation-select" data-testid="notation-select">',
       testType: 'e2e',
       expect: 'Select element #notation-select must have an accessible name'
+    },
+    {
+      id: 'T20-AC5-1',
+      desc: 'T20-AC5-1: revert step parsing in decodeAppState to lenient parseInt',
+      file: 'src/ui/url.ts',
+      find: "    } else if (key === 'step') {\n      if (/^[1-9]\\d*$/.test(rawVal)) {\n        const num = Number(rawVal);\n        if (Number.isSafeInteger(num)) {\n          state.step = num;\n        } else {\n          ignoredKeys.push('step');\n        }\n      } else {\n        ignoredKeys.push('step');\n      }\n    }",
+      replace: "    } else if (key === 'step') {\n      const parsed = parseInt(rawVal, 10);\n      if (isNaN(parsed) || parsed < 1) {\n        ignoredKeys.push('step');\n      } else {\n        state.step = parsed;\n      }\n    }",
+      testType: 'vitest',
+      expect: 'step=3abc should be ignored'
     }
   ];
 
