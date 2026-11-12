@@ -3406,6 +3406,7 @@ const assert = require('node:assert');
   });
   assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), true, 'Clicking #keyboard-help-btn must open dialog');
   await page.click('#keyboard-help-close');
+  await page.waitForFunction(() => !document.getElementById('keyboard-help-dialog')?.open && document.activeElement?.id === 'keyboard-help-btn');
   assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), false, 'Clicking #keyboard-help-close must close dialog');
   assert.strictEqual(await page.evaluate(() => document.activeElement?.id), 'keyboard-help-btn', 'Focus must return to opener button on close');
 
@@ -3435,8 +3436,14 @@ const assert = require('node:assert');
   assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), false, 'Pressing Esc must close keyboard help dialog');
   assert.strictEqual(await page.evaluate(() => document.activeElement?.id), 'build-button', 'Focus must return to opener element on Esc close');
 
+  // Allow queued macrotasks from dialog close to settle before moving focus
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => setTimeout(resolve, 0));
+  }));
+
   // 7. Verify ? is ignored while typing inside input elements
   await page.focus('#regex-input');
+  await page.waitForFunction(() => document.activeElement?.id === 'regex-input');
   await page.keyboard.press('?');
   assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), false, 'Typing ? in input must not open keyboard help');
 
