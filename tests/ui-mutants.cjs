@@ -810,6 +810,15 @@ async function main() {
       replace: "    } else if (key === 'step') {\n      const parsed = parseInt(rawVal, 10);\n      if (isNaN(parsed) || parsed < 1) {\n        ignoredKeys.push('step');\n      } else {\n        state.step = parsed;\n      }\n    }",
       testType: 'vitest',
       expect: 'step=3abc should be ignored'
+    },
+    {
+      id: 'T20-B8-1',
+      desc: 'T20-B8-1: corrupt build stamp in footer with invalid format',
+      file: 'src/ui/main.ts',
+      find: '  buildStampEl.textContent = formatBuildStamp();',
+      replace: "  buildStampEl.textContent = 'invalid-stamp!';",
+      testType: 'e2e',
+      expect: 'Build stamp must be a commit hash (optionally -dirty) or unknown'
     }
   ];
 

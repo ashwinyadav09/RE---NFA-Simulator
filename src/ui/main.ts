@@ -30,6 +30,7 @@ import {
 import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions, renderStressChartSvg, type StressChartPoint } from '../diagram/index';
 import { formatStandaloneSvg, getExportFilename } from './export';
 import { encodeAppState, decodeAppState, type AppUrlState } from './url';
+import { formatBuildStamp } from './stamp';
 import type { StressRow, RegExpVerdict } from './stress-types';
 import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
 import {
@@ -179,6 +180,10 @@ const exportSvgBtn = document.getElementById('export-svg-btn') as HTMLButtonElem
 const copyLinkBtn = document.getElementById('copy-link-btn') as HTMLButtonElement | null;
 const copyLinkStatusEl = document.getElementById('copy-link-status');
 const linkNoticeEl = document.getElementById('link-notice');
+const buildStampEl = document.getElementById('build-stamp');
+if (buildStampEl) {
+  buildStampEl.textContent = formatBuildStamp();
+}
 const keyboardHelpBtn = document.getElementById('keyboard-help-btn') as HTMLButtonElement | null;
 const keyboardHelpDialog = document.getElementById('keyboard-help-dialog') as HTMLDialogElement | null;
 const keyboardHelpClose = document.getElementById('keyboard-help-close') as HTMLButtonElement | null;

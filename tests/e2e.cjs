@@ -3473,6 +3473,15 @@ const assert = require('node:assert');
   await page.keyboard.press('?');
   assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), false, 'Typing ? in input must not open keyboard help');
 
+  // 8. Verify footer build stamp (Ticket 20 B8)
+  const buildStamp = await page.textContent('#build-stamp');
+  assert.ok(buildStamp && buildStamp.trim().length > 0, 'Build stamp in footer must be non-empty');
+  assert.match(
+    buildStamp.trim(),
+    /^([0-9a-f]{7,}(-dirty)?|unknown)$/i,
+    `Build stamp must be a commit hash (optionally -dirty) or unknown, got "${buildStamp}"`
+  );
+
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
