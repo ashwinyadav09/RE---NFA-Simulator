@@ -819,6 +819,43 @@ async function main() {
       replace: "  buildStampEl.textContent = 'invalid-stamp!';",
       testType: 'e2e',
       expect: 'Build stamp must be a commit hash (optionally -dirty) or unknown'
+    },
+    // Ticket 21 Mutants (Foundation: Tokens, Base Styles, Worker Status)
+    {
+      id: 'T21-AC1-1',
+      desc: 'T21-AC1-1: Corrupt primary color token in index.html',
+      file: 'index.html',
+      find: '      --primary:                 #2541b2; /* Primary action \'Build\', active tabs, focus ring (8.5:1) */',
+      replace: '      --primary:                 #00ff00; /* Corrupted token */',
+      testType: 'e2e',
+      expect: 'Computed --primary token must match #2541b2'
+    },
+    {
+      id: 'T21-AC2-1',
+      desc: 'T21-AC2-1: Corrupt UI font stack in index.html',
+      file: 'index.html',
+      find: '      --font-ui:      "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;',
+      replace: '      --font-ui:      "Comic Sans MS", cursive;',
+      testType: 'e2e',
+      expect: 'Body font-family must include IBM Plex Sans or system-ui'
+    },
+    {
+      id: 'T21-AC3-1',
+      desc: 'T21-AC3-1: Remove display:none from #worker-status in index.html',
+      file: 'index.html',
+      find: '    #worker-status {\n      display: none;\n    }',
+      replace: '    #worker-status {\n      display: block;\n    }',
+      testType: 'e2e',
+      expect: '#worker-status must be visually hidden'
+    },
+    {
+      id: 'T21-AC4-1',
+      desc: 'T21-AC4-1: Corrupt build-button background color in index.html',
+      file: 'index.html',
+      find: '    #build-button {\n      background-color: var(--primary);',
+      replace: '    #build-button {\n      background-color: #cccccc;',
+      testType: 'e2e',
+      expect: '#build-button background-color must match primary token'
     }
   ];
 

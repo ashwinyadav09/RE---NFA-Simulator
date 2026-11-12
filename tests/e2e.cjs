@@ -3482,6 +3482,59 @@ const assert = require('node:assert');
     `Build stamp must be a commit hash (optionally -dirty) or unknown, got "${buildStamp}"`
   );
 
+  // 9. Verify Ticket 21: Foundation tokens, base styles, and debug text hiding
+  console.log('Testing Ticket 21: Foundation tokens, base styles, and debug text hiding...');
+  const t21Styles = await page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    const body = getComputedStyle(document.body);
+    const buildBtn = getComputedStyle(document.getElementById('build-button'));
+    const regexInp = getComputedStyle(document.getElementById('regex-input'));
+    const workerStatus = getComputedStyle(document.getElementById('worker-status'));
+    const workerStatusEl = document.getElementById('worker-status');
+
+    // Test dark theme tokens
+    document.documentElement.setAttribute('data-theme', 'dark');
+    const darkRoot = getComputedStyle(document.documentElement);
+    const darkBgPage = darkRoot.getPropertyValue('--bg-page').trim();
+    const darkPrimary = darkRoot.getPropertyValue('--primary').trim();
+    document.documentElement.removeAttribute('data-theme');
+
+    return {
+      bgPage: root.getPropertyValue('--bg-page').trim(),
+      primary: root.getPropertyValue('--primary').trim(),
+      newColor: root.getPropertyValue('--new').trim(),
+      textColor: root.getPropertyValue('--text').trim(),
+      bodyFontFamily: body.fontFamily,
+      bodyBgColor: body.backgroundColor,
+      bodyColor: body.color,
+      buildBtnBg: buildBtn.backgroundColor,
+      buildBtnColor: buildBtn.color,
+      regexInpFont: regexInp.fontFamily,
+      workerStatusDisplay: workerStatus.display,
+      workerStatusText: workerStatusEl ? workerStatusEl.textContent : '',
+      darkBgPage,
+      darkPrimary
+    };
+  });
+
+  assert.strictEqual(t21Styles.bgPage.toLowerCase(), '#f7f5f0', 'Computed --bg-page token must match #f7f5f0');
+  assert.strictEqual(t21Styles.primary.toLowerCase(), '#2541b2', 'Computed --primary token must match #2541b2');
+  assert.strictEqual(t21Styles.newColor.toLowerCase(), '#b8400a', 'Computed --new token must match #b8400a');
+  assert.ok(
+    t21Styles.bodyFontFamily.includes('IBM Plex Sans') || t21Styles.bodyFontFamily.includes('system-ui') || t21Styles.bodyFontFamily.includes('-apple-system'),
+    `Body font-family must include IBM Plex Sans or system-ui, got "${t21Styles.bodyFontFamily}"`
+  );
+  assert.ok(
+    t21Styles.regexInpFont.includes('IBM Plex Mono') || t21Styles.regexInpFont.includes('monospace'),
+    `Regex input font-family must include IBM Plex Mono or monospace, got "${t21Styles.regexInpFont}"`
+  );
+  assert.strictEqual(t21Styles.buildBtnBg, 'rgb(37, 65, 178)', '#build-button background-color must match primary token');
+  assert.strictEqual(t21Styles.buildBtnColor, 'rgb(255, 255, 255)', '#build-button color must match on-primary (white)');
+  assert.strictEqual(t21Styles.workerStatusDisplay, 'none', '#worker-status must be visually hidden');
+  assert.ok(t21Styles.workerStatusText.includes('pong'), '#worker-status must retain worker handshake textContent');
+  assert.strictEqual(t21Styles.darkBgPage.toLowerCase(), '#14130f', 'Dark theme --bg-page must match #14130f');
+  assert.strictEqual(t21Styles.darkPrimary.toLowerCase(), '#9db0ff', 'Dark theme --primary must match #9db0ff');
+
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
