@@ -33,6 +33,13 @@ import { encodeAppState, decodeAppState, type AppUrlState } from './url';
 import { formatBuildStamp } from './stamp';
 import { initTheme } from './theme';
 import { syncScrubberState, wireScrubber } from './scrubber';
+import {
+  renderParseTree,
+  renderPostfixTimeline,
+  updatePostfixTimelineActive,
+  renderRawTokens,
+  formatPostfixText
+} from './parse-view';
 import type { StressRow, RegExpVerdict } from './stress-types';
 import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
 import {
@@ -468,30 +475,11 @@ function renderTransitionTable(container: HTMLElement, analysis: AnalysisSuccess
 }
 
 function renderTokenList(container: HTMLElement, tokens: Token[]): void {
-  container.textContent = '';
-  const spans: string[] = tokens.map((t) => {
-    const label = t.type === 'SYMBOL' ? `SYMBOL(${t.symbol})` : t.type;
-    return `[${label}@${t.position}]`;
-  });
-  container.textContent = spans.join(' ');
+  renderRawTokens(container, tokens);
 }
 
 function renderTreeView(container: HTMLElement, tree: ParseNode): void {
-  container.textContent = '';
-  function nodeToText(node: ParseNode, depth: number): string {
-    const indent = '  '.repeat(depth);
-    switch (node.k) {
-      case 'sym': return `${indent}sym(${node.v})`;
-      case 'eps': return `${indent}eps`;
-      case 'empty': return `${indent}empty`;
-      case 'star': return `${indent}star\n${nodeToText(node.c, depth + 1)}`;
-      case 'plus': return `${indent}plus\n${nodeToText(node.c, depth + 1)}`;
-      case 'opt': return `${indent}opt\n${nodeToText(node.c, depth + 1)}`;
-      case 'union': return `${indent}union\n${nodeToText(node.l, depth + 1)}\n${nodeToText(node.r, depth + 1)}`;
-      case 'cat': return `${indent}cat\n${nodeToText(node.l, depth + 1)}\n${nodeToText(node.r, depth + 1)}`;
-    }
-  }
-  container.textContent = nodeToText(tree, 0);
+  renderParseTree(container, tree);
 }
 
 
@@ -562,6 +550,10 @@ function clearResults(): void {
   if (postfixEl) {
     postfixEl.textContent = '';
   }
+  const postfixWellEl = document.getElementById('postfix-text-well');
+  if (postfixWellEl) {
+    postfixWellEl.textContent = '';
+  }
   if (treeViewEl) {
     treeViewEl.textContent = '';
   }
@@ -613,25 +605,9 @@ function clearResults(): void {
 }
 
 function renderPostfixView(container: HTMLElement, tokens: Token[]): void {
-  container.textContent = '';
-  tokens.forEach((t, i) => {
-    const label = t.type === 'SYMBOL' ? t.symbol ?? 'SYMBOL' : t.type;
-    const span = document.createElement('span');
-    span.className = 'postfix-token';
-    span.setAttribute('data-step-index', String(i + 1));
-    span.textContent = label;
-    span.style.cursor = 'pointer';
-    span.style.marginRight = '6px';
-    span.style.padding = '2px 4px';
-    span.style.borderRadius = '3px';
-    span.addEventListener('click', () => {
-      stopPlayback();
-      navigateToStep(i + 1);
-    });
-    container.appendChild(span);
-    if (i < tokens.length - 1) {
-      container.appendChild(document.createTextNode(' '));
-    }
+  renderPostfixTimeline(container, tokens, currentStepIndex, (step) => {
+    stopPlayback();
+    navigateToStep(step);
   });
 }
 
@@ -736,18 +712,7 @@ async function navigateToStep(stepIndex: number): Promise<void> {
   }
 
   if (postfixEl) {
-    const tokens = postfixEl.querySelectorAll('.postfix-token');
-    tokens.forEach((tok, idx) => {
-      if (idx + 1 === currentStepIndex) {
-        tok.classList.add('active');
-        (tok as HTMLElement).style.backgroundColor = '#007acc';
-        (tok as HTMLElement).style.color = '#fff';
-      } else {
-        tok.classList.remove('active');
-        (tok as HTMLElement).style.backgroundColor = 'transparent';
-        (tok as HTMLElement).style.color = 'inherit';
-      }
-    });
+    updatePostfixTimelineActive(postfixEl, targetStep);
   }
 
   const gen = ++stepGeneration;
@@ -868,12 +833,7 @@ async function renderFinalView(): Promise<void> {
   }
 
   if (postfixEl) {
-    const tokens = postfixEl.querySelectorAll('.postfix-token');
-    tokens.forEach((tok) => {
-      tok.classList.remove('active');
-      (tok as HTMLElement).style.backgroundColor = 'transparent';
-      (tok as HTMLElement).style.color = 'inherit';
-    });
+    updatePostfixTimelineActive(postfixEl, 0);
   }
 
   const gen = ++stepGeneration;
@@ -1123,6 +1083,11 @@ async function handleBuild() {
 
   if (postfixEl) {
     renderPostfixView(postfixEl, analysis.postfix);
+  }
+
+  const postfixWellEl = document.getElementById('postfix-text-well');
+  if (postfixWellEl) {
+    postfixWellEl.textContent = formatPostfixText(analysis.postfix);
   }
 
   if (treeViewEl) {
@@ -1468,9 +1433,14 @@ if (alphabetInputEl) {
 if (presetSelectEl) {
   presetSelectEl.addEventListener('change', () => {
     const selectedId = presetSelectEl.value;
-    if (!selectedId) return;
+    const presetDescEl = document.getElementById('preset-description');
+    if (!selectedId) {
+      if (presetDescEl) presetDescEl.textContent = '';
+      return;
+    }
     const preset = PRESETS.find((p) => p.id === selectedId);
     if (!preset) return;
+    if (presetDescEl) presetDescEl.textContent = preset.description || '';
 
     if (inputEl) inputEl.value = preset.regex;
     if (notationSelectEl) notationSelectEl.value = preset.notation;
@@ -1490,6 +1460,8 @@ if (inputEl) {
       const activePreset = PRESETS.find((p) => p.id === presetSelectEl.value);
       if (activePreset && activePreset.regex !== inputEl.value) {
         presetSelectEl.value = '';
+        const presetDescEl = document.getElementById('preset-description');
+        if (presetDescEl) presetDescEl.textContent = '';
       }
     }
   });
@@ -2453,6 +2425,8 @@ async function initDeepLink(): Promise<void> {
       ignoredKeys.push('preset');
     } else {
       if (presetSelectEl) presetSelectEl.value = state.preset;
+      const presetDescEl = document.getElementById('preset-description');
+      if (presetDescEl) presetDescEl.textContent = preset.description || '';
       if (inputEl) inputEl.value = preset.regex;
       if (notationSelectEl) notationSelectEl.value = preset.notation;
       if (preset.concatenation && concatSelectEl) {
@@ -2470,6 +2444,8 @@ async function initDeepLink(): Promise<void> {
       const activePreset = PRESETS.find((p) => p.id === presetSelectEl.value);
       if (activePreset && activePreset.regex !== inputEl.value) {
         presetSelectEl.value = '';
+        const presetDescEl = document.getElementById('preset-description');
+        if (presetDescEl) presetDescEl.textContent = '';
       }
     }
   }

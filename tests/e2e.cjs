@@ -553,7 +553,10 @@ const assert = require('node:assert');
   // Clicking postfix token jumps to step
   await page.click('#postfix-view .postfix-token[data-step-index="3"]');
   await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 3 / 6'));
-  const activeTokenText = await page.textContent('#postfix-view .postfix-token.active');
+  const activeTokenText = await page.evaluate(() => {
+    const el = document.querySelector('#postfix-view .postfix-token.active');
+    return el ? el.textContent : '';
+  });
   assert.strictEqual(activeTokenText, 'UNION', 'Active postfix token must be UNION');
 
   // Hovering a state shows creator step
@@ -3685,6 +3688,95 @@ const assert = require('node:assert');
   // Restore flat view
   await page.selectOption('#view-toggle', 'flat');
   await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step'));
+
+  // Ticket 24: Input Strip, Postfix Timeline, and Parse Tree
+  console.log('Testing Ticket 24: Input Strip, Postfix Timeline, and Parse Tree...');
+  const t24InputStrip = await page.evaluate(() => {
+    const strip = document.getElementById('input-strip');
+    const regexInput = document.getElementById('regex-input');
+    const buildBtn = document.getElementById('build-button');
+    const epsBtn = document.getElementById('insert-eps');
+    const emptyBtn = document.getElementById('insert-empty');
+    const stats = document.getElementById('stats');
+
+    const stripStyle = strip ? window.getComputedStyle(strip) : null;
+    const regexStyle = regexInput ? window.getComputedStyle(regexInput) : null;
+    const buildStyle = buildBtn ? window.getComputedStyle(buildBtn) : null;
+
+    return {
+      hasStrip: Boolean(strip),
+      stripDisplay: stripStyle ? stripStyle.display : '',
+      regexHeight: regexInput ? regexInput.clientHeight : 0,
+      regexFont: regexStyle ? regexStyle.fontFamily : '',
+      hasEps: Boolean(epsBtn),
+      hasEmpty: Boolean(emptyBtn),
+      buildHeight: buildBtn ? buildBtn.clientHeight : 0,
+      buildBg: buildStyle ? buildStyle.backgroundColor : '',
+      statsText: stats ? (stats.textContent || '') : ''
+    };
+  });
+
+  assert.strictEqual(t24InputStrip.hasStrip, true, '#input-strip must exist');
+  assert.strictEqual(t24InputStrip.stripDisplay, 'grid', '#input-strip must use CSS grid display');
+  assert.ok(t24InputStrip.regexHeight >= 40, '#regex-input height must be >= 40px');
+  assert.strictEqual(t24InputStrip.hasEps, true, '#insert-eps must be present');
+  assert.strictEqual(t24InputStrip.hasEmpty, true, '#insert-empty must be present');
+  assert.ok(t24InputStrip.buildHeight >= 40, '#build-button height must be >= 40px');
+
+  // Verify Postfix Timeline
+  const t24Postfix = await page.evaluate(() => {
+    const postfixView = document.getElementById('postfix-view');
+    const centreCol = document.getElementById('centre-column');
+    const activeTok = postfixView ? postfixView.querySelector('.postfix-token.active') : null;
+    const tokens = postfixView ? Array.from(postfixView.querySelectorAll('.postfix-token')) : [];
+
+    const isInsideCentre = centreCol ? centreCol.contains(postfixView) : false;
+
+    return {
+      hasPostfixView: Boolean(postfixView),
+      isInsideCentre,
+      tokenCount: tokens.length,
+      hasActiveToken: Boolean(activeTok),
+      activeText: activeTok ? (activeTok.textContent || '').trim() : ''
+    };
+  });
+
+  assert.strictEqual(t24Postfix.hasPostfixView, true, '#postfix-view must exist');
+  assert.strictEqual(t24Postfix.isInsideCentre, true, '#postfix-view must be located inside #centre-column above canvas');
+  assert.ok(t24Postfix.tokenCount > 0, '#postfix-view must contain .postfix-token buttons');
+  assert.strictEqual(t24Postfix.hasActiveToken, true, '#postfix-view must have an active .postfix-token');
+
+  // Verify Parse Tree & Code Well
+  const t24ParseTree = await page.evaluate(() => {
+    const treeView = document.getElementById('tree-view');
+    const visualTree = treeView ? treeView.querySelector('.visual-tree') : null;
+    const chips = visualTree ? Array.from(visualTree.querySelectorAll('.tree-chip')) : [];
+    const opChips = visualTree ? Array.from(visualTree.querySelectorAll('.operator-chip')) : [];
+    const leafChips = visualTree ? Array.from(visualTree.querySelectorAll('.leaf-chip')) : [];
+    const srOnly = treeView ? treeView.querySelector('.sr-only') : null;
+    const postfixWell = document.getElementById('postfix-text-well');
+    const disclosure = document.getElementById('token-list-disclosure');
+
+    return {
+      hasVisualTree: Boolean(visualTree),
+      chipCount: chips.length,
+      opChipCount: opChips.length,
+      leafChipCount: leafChips.length,
+      hasSrOnly: Boolean(srOnly),
+      srOnlyText: srOnly ? srOnly.textContent || '' : '',
+      postfixWellText: postfixWell ? postfixWell.textContent || '' : '',
+      hasDisclosure: Boolean(disclosure)
+    };
+  });
+
+  assert.strictEqual(t24ParseTree.hasVisualTree, true, '#tree-view must contain .visual-tree');
+  assert.ok(t24ParseTree.chipCount > 0, '#tree-view must contain visual .tree-chip elements');
+  assert.ok(t24ParseTree.opChipCount > 0, '#tree-view must contain .operator-chip elements');
+  assert.ok(t24ParseTree.leafChipCount > 0, '#tree-view must contain .leaf-chip elements');
+  assert.strictEqual(t24ParseTree.hasSrOnly, true, '#tree-view must retain .sr-only container for accessibility and tests');
+  assert.ok(t24ParseTree.srOnlyText.includes('cat'), '#tree-view .sr-only text must include cat');
+  assert.ok(t24ParseTree.postfixWellText.length > 0, '#postfix-text-well must contain formatted postfix text');
+  assert.strictEqual(t24ParseTree.hasDisclosure, true, '#token-list-disclosure must exist');
 
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);

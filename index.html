@@ -460,12 +460,461 @@
       font-size: var(--text-base);
     }
 
-    .controls, .alphabet-controls, .stepper-controls, .simulation-controls {
+    .stepper-controls, .simulation-controls {
       margin-bottom: 12px;
       display: flex;
       gap: 8px;
       align-items: center;
       flex-wrap: wrap;
+    }
+
+    /* Input Strip (Ticket 24) */
+    .input-strip {
+      display: grid;
+      grid-template-columns: 200px 180px 220px minmax(0, 1fr) auto auto;
+      gap: 12px 16px;
+      align-items: end;
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(31, 29, 24, 0.04);
+      box-sizing: border-box;
+    }
+
+    .grid-item-preset {
+      grid-column: 1;
+      grid-row: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .grid-item-regex {
+      grid-column: 2 / span 3;
+      grid-row: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .grid-item-build {
+      grid-column: 5;
+      grid-row: 1;
+    }
+
+    .grid-item-actions {
+      grid-column: 6;
+      grid-row: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .grid-item-notation {
+      grid-column: 1;
+      grid-row: 2;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .grid-item-concat {
+      grid-column: 2;
+      grid-row: 2;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .grid-item-alphabet {
+      grid-column: 3;
+      grid-row: 2;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .grid-item-stats {
+      grid-column: 4 / span 3;
+      grid-row: 2;
+      justify-self: end;
+      align-self: center;
+    }
+
+    .grid-item-messages {
+      grid-column: 1 / -1;
+      grid-row: 3;
+    }
+
+    .setting-label {
+      display: block;
+      font-family: var(--font-ui);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .regex-field-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+    }
+
+    #regex-input {
+      width: 100%;
+      height: 48px;
+      padding: 0 76px 0 14px;
+      font-family: var(--font-mono);
+      font-size: 18px;
+      line-height: 28px;
+      background-color: var(--bg-surface);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+    }
+
+    #regex-input:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 2px var(--primary-soft);
+    }
+
+    .regex-ghost-buttons {
+      position: absolute;
+      right: 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    #insert-eps, #insert-empty {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color var(--dur-fast), color var(--dur-fast);
+    }
+
+    #insert-eps:hover, #insert-empty:hover {
+      background-color: var(--bg-sunken);
+      color: var(--text);
+    }
+
+    #insert-eps:focus-visible, #insert-empty:focus-visible {
+      outline: 2px solid var(--border-focus);
+      outline-offset: 1px;
+    }
+
+    #build-button {
+      height: 48px;
+      padding: 0 24px;
+      background-color: var(--primary);
+      color: var(--on-primary);
+      font-family: var(--font-ui);
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background-color var(--dur-fast);
+    }
+
+    #build-button:hover:not(:disabled) {
+      background-color: var(--primary-hover);
+    }
+
+    #preset-select, #notation-select, #concat-select, #alphabet-input {
+      height: 36px;
+      padding: 0 10px;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      background-color: var(--bg-surface);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      box-sizing: border-box;
+      width: 100%;
+    }
+
+    #alphabet-message {
+      font-size: 12px;
+      color: var(--fail);
+      margin-top: 4px;
+      min-height: 16px;
+    }
+
+    #stats {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      white-space: nowrap;
+    }
+
+    #stats:not(:empty) {
+      background-color: var(--bg-sunken);
+      border: 1px solid var(--border);
+    }
+
+    #error-message:not(:empty) {
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      line-height: 20px;
+      margin-top: 8px;
+    }
+
+    #error-message.error {
+      background-color: var(--fail-soft);
+      border: 1px solid var(--fail);
+      color: var(--fail);
+    }
+
+    #error-message.hint {
+      background-color: var(--bg-sunken);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    #link-notice:not(:empty) {
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      background-color: var(--warn-soft);
+      border: 1px solid var(--warn);
+      color: var(--warn);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      line-height: 20px;
+      margin-top: 8px;
+    }
+
+    /* Postfix Timeline (Ticket 24) */
+    .postfix-timeline {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 40px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 0 10px;
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 12px;
+      scrollbar-width: thin;
+      box-sizing: border-box;
+    }
+
+    .postfix-timeline:empty {
+      display: none;
+    }
+
+    .postfix-token {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 28px;
+      min-width: 28px;
+      padding: 0 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong);
+      background-color: var(--bg-surface);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+      transition: all var(--dur-fast);
+      box-sizing: border-box;
+    }
+
+    .postfix-token:hover {
+      background-color: var(--bg-sunken);
+    }
+
+    .postfix-token.done {
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
+
+    .postfix-token.active {
+      background-color: var(--primary-soft) !important;
+      border: 2px solid var(--primary) !important;
+      color: var(--primary) !important;
+      font-weight: 700;
+    }
+
+    .postfix-token.upcoming {
+      border-style: dashed;
+      color: var(--text-muted);
+      opacity: 0.75;
+    }
+
+    .postfix-token:focus-visible {
+      outline: 2px solid var(--border-focus);
+      outline-offset: 1px;
+    }
+
+    .postfix-token[data-token-type="UNION"]::before { content: "∪ "; color: var(--primary); }
+    .postfix-token[data-token-type="STAR"]::before { content: "∗ "; color: var(--primary); }
+    .postfix-token[data-token-type="CONCAT"]::before { content: "⋅ "; color: var(--primary); }
+    .postfix-token[data-token-type="PLUS"]::before { content: "+ "; color: var(--primary); }
+    .postfix-token[data-token-type="OPT"]::before { content: "? "; color: var(--primary); }
+
+    /* Parse Tree & Left Rail Components (Ticket 24) */
+    .tree-view {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--text);
+      overflow-y: auto;
+      max-height: 480px;
+      margin-bottom: 16px;
+    }
+
+    .visual-tree {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 4px 0;
+    }
+
+    .tree-node-wrapper {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .tree-chip {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      height: 26px;
+      padding: 0 8px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      border: 1px solid var(--border);
+      cursor: default;
+      transition: background-color var(--dur-fast);
+      user-select: none;
+    }
+
+    .operator-chip {
+      background-color: var(--bg-sunken);
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .leaf-chip {
+      background-color: var(--bg-surface);
+      color: var(--primary);
+      font-weight: 700;
+      border-color: var(--border-strong);
+    }
+
+    .tree-chip:hover {
+      background-color: var(--primary-soft);
+    }
+
+    .tree-children {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-left: 14px;
+      padding-left: 10px;
+      border-left: 1px solid var(--border);
+    }
+
+    .postfix-code-well {
+      margin-top: 12px;
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      background-color: var(--bg-sunken);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .code-well-label {
+      font-family: var(--font-ui);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+    }
+
+    .postfix-code {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text);
+      word-break: break-all;
+    }
+
+    .raw-tokens-disclosure {
+      margin-top: 8px;
+      font-family: var(--font-ui);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .raw-tokens-disclosure summary {
+      cursor: pointer;
+      font-weight: 500;
+      padding: 4px 0;
+    }
+
+    .raw-tokens-disclosure #token-list {
+      margin-top: 6px;
+      padding: 8px;
+      background-color: var(--bg-sunken);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.4;
+      word-break: break-all;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+
+    @media (max-width: 1023px) {
+      .input-strip {
+        grid-template-columns: 1fr 1fr;
+      }
+      .grid-item-preset { grid-column: 1 / -1; grid-row: auto; }
+      .grid-item-regex { grid-column: 1 / -1; grid-row: auto; }
+      .grid-item-build { grid-column: 1; grid-row: auto; }
+      .grid-item-actions { grid-column: 2; grid-row: auto; justify-self: end; }
+      .grid-item-notation { grid-column: 1; grid-row: auto; }
+      .grid-item-concat { grid-column: 2; grid-row: auto; }
+      .grid-item-alphabet { grid-column: 1 / -1; grid-row: auto; }
+      .grid-item-stats { grid-column: 1 / -1; grid-row: auto; justify-self: start; }
+      .grid-item-messages { grid-column: 1 / -1; grid-row: auto; }
     }
 
     /* Workbench 3-Rail Grid Layout (Ticket 23) */
@@ -953,41 +1402,76 @@
       </div>
     </header>
     <div id="live-region" aria-live="polite" aria-atomic="true" class="sr-only" data-testid="live-region"></div>
-    <div class="controls">
-      <select id="preset-select" data-testid="preset-select" aria-label="Presets">
-        <option value="">Presets...</option>
-      </select>
-      <input id="regex-input" type="text" placeholder="Enter regular expression" value="" />
-      <button id="insert-eps" data-testid="insert-eps" type="button" title="Insert ε">ε</button>
-      <button id="insert-empty" data-testid="insert-empty" type="button" title="Insert ∅">∅</button>
-      <select id="notation-select" data-testid="notation-select" aria-label="Notation">
-        <option value="standard">Standard (| is union)</option>
-        <option value="textbook">Textbook (+ is union)</option>
-      </select>
-      <select id="concat-select" data-testid="concat-select" aria-label="Concatenation mode">
-        <option value="epsilon-link">ε-link</option>
-        <option value="merge">Merge</option>
-      </select>
-      <button id="build-button">Build</button>
-      <button id="copy-link-btn" data-testid="copy-link-btn" type="button">Copy Link</button>
-      <span id="copy-link-status" data-testid="copy-link-status" role="status"></span>
-      <button id="keyboard-help-btn" data-testid="keyboard-help-btn" type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
-    </div>
-    <div id="link-notice" data-testid="link-notice" role="status"></div>
-    <div class="alphabet-controls">
-      <label for="alphabet-input">Alphabet:</label>
-      <input id="alphabet-input" data-testid="alphabet-input" type="text" placeholder="Inferred alphabet" />
-      <div id="alphabet-message" data-testid="alphabet-message"></div>
-    </div>
-    <div id="error-message" data-testid="error-message"></div>
-    <div id="stats" data-testid="stats"></div>
+    <section id="input-strip" class="input-strip" aria-label="Expression and settings">
+      <div class="grid-item-preset">
+        <label for="preset-select" class="setting-label">Preset</label>
+        <select id="preset-select" data-testid="preset-select" aria-label="Presets">
+          <option value="">Presets...</option>
+        </select>
+        <div id="preset-description" class="preset-description sr-only" aria-live="polite"></div>
+      </div>
+
+      <div class="grid-item-regex">
+        <label for="regex-input" class="setting-label">Regular expression</label>
+        <div class="regex-field-wrapper">
+          <input id="regex-input" type="text" placeholder="Enter regular expression" value="" spellcheck="false" autocomplete="off" autocapitalize="off" />
+          <div class="regex-ghost-buttons">
+            <button id="insert-eps" data-testid="insert-eps" type="button" title="Insert ε" aria-label="Insert epsilon">ε</button>
+            <button id="insert-empty" data-testid="insert-empty" type="button" title="Insert ∅" aria-label="Insert empty set">∅</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-item-notation">
+        <label for="notation-select" class="setting-label">Notation</label>
+        <select id="notation-select" data-testid="notation-select" aria-label="Notation">
+          <option value="standard">Standard (| is union)</option>
+          <option value="textbook">Textbook (+ is union)</option>
+        </select>
+      </div>
+
+      <div class="grid-item-concat">
+        <label for="concat-select" class="setting-label">Concatenation</label>
+        <select id="concat-select" data-testid="concat-select" aria-label="Concatenation mode">
+          <option value="epsilon-link">ε-link</option>
+          <option value="merge">Merge</option>
+        </select>
+      </div>
+
+      <button id="build-button" class="btn-build grid-item-build" type="button">Build</button>
+
+      <div class="grid-item-actions">
+        <button id="copy-link-btn" data-testid="copy-link-btn" type="button" class="btn-secondary">Copy Link</button>
+        <span id="copy-link-status" data-testid="copy-link-status" role="status"></span>
+        <button id="keyboard-help-btn" data-testid="keyboard-help-btn" type="button" class="btn-icon" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
+      </div>
+
+      <div class="grid-item-alphabet">
+        <label for="alphabet-input" class="setting-label">Alphabet</label>
+        <input id="alphabet-input" data-testid="alphabet-input" type="text" placeholder="Inferred alphabet" />
+        <div id="alphabet-message" data-testid="alphabet-message"></div>
+      </div>
+
+      <div id="stats" data-testid="stats" class="grid-item-stats"></div>
+
+      <div class="grid-item-messages">
+        <div id="link-notice" data-testid="link-notice" role="status"></div>
+        <div id="error-message" data-testid="error-message"></div>
+      </div>
+    </section>
     <main id="workbench" class="workbench-grid" data-testid="workbench">
       <!-- Left Rail: Parse -->
       <aside id="left-rail" class="rail parse-rail" data-testid="left-rail">
         <h2 class="rail-title">Parse</h2>
-        <div id="token-list" data-testid="token-list"></div>
-        <div id="postfix-view" data-testid="postfix-view"></div>
-        <div id="tree-view" data-testid="tree-view"></div>
+        <div id="tree-view" class="tree-view" data-testid="tree-view"></div>
+        <div class="postfix-code-well">
+          <span class="code-well-label">Postfix (text)</span>
+          <code id="postfix-text-well" class="postfix-code"></code>
+        </div>
+        <details id="token-list-disclosure" class="raw-tokens-disclosure">
+          <summary>Raw tokens</summary>
+          <div id="token-list" data-testid="token-list"></div>
+        </details>
       </aside>
 
       <!-- Centre Column: Hero Canvas & Stepper -->
@@ -1019,6 +1503,9 @@
             Compact labels
           </label>
         </div>
+
+        <!-- Postfix Timeline (above canvas per §4.4 and §6.9) -->
+        <div id="postfix-view" class="postfix-timeline" data-testid="postfix-view" role="group" aria-label="Postfix tokens"></div>
 
         <div class="canvas-container" id="canvas-container">
           <div id="canvas-toolbar" data-testid="canvas-toolbar" class="canvas-toolbar">

@@ -930,6 +930,43 @@ async function main() {
       replace: '      /* background-image: radial-gradient(var(--canvas-grid-dot) 1px, transparent 1px); */',
       testType: 'e2e',
       expect: 'Canvas background must contain radial-gradient dot grid'
+    },
+    // Ticket 24 Mutants (Input Strip, Postfix Timeline, and Parse Tree)
+    {
+      id: 'T24-AC1-1',
+      desc: 'T24-AC1-1: Corrupt ghost buttons cursor insertion in src/ui/main.ts',
+      file: 'src/ui/main.ts',
+      find: '  inputEl.value = val.substring(0, start) + char + val.substring(end);',
+      replace: "  inputEl.value = val.substring(0, start) + '' + val.substring(end);",
+      testType: 'e2e',
+      expect: 'Insert ε button must insert ε'
+    },
+    {
+      id: 'T24-AC1-2',
+      desc: 'T24-AC1-2: Corrupt #stats format in src/ui/main.ts',
+      file: 'src/ui/main.ts',
+      find: '    statsEl.textContent = `States: ${analysis.stats.states}, Transitions: ${analysis.stats.transitions}`;',
+      replace: '    statsEl.textContent = `States count: ${analysis.stats.states}`;',
+      testType: 'e2e',
+      expect: 'Stats must report 10 states'
+    },
+    {
+      id: 'T24-AC2-1',
+      desc: 'T24-AC2-1: Corrupt Parse Tree chip rendering in src/ui/parse-view.ts',
+      file: 'src/ui/parse-view.ts',
+      find: '    chip.className = `tree-chip ${isLeaf ? \'leaf-chip\' : \'operator-chip\'}`;',
+      replace: "    chip.className = 'omitted-chip';",
+      testType: 'e2e',
+      expect: '#tree-view must contain visual .tree-chip elements'
+    },
+    {
+      id: 'T24-AC3-1',
+      desc: 'T24-AC3-1: Corrupt Postfix token active class sync in src/ui/parse-view.ts',
+      file: 'src/ui/parse-view.ts',
+      find: "      tok.classList.add('active');\n      if (typeof tok.scrollIntoView === 'function') {",
+      replace: "      // tok.classList.add('active');\n      if (typeof tok.scrollIntoView === 'function') {",
+      testType: 'e2e',
+      expect: 'Active postfix token must be UNION'
     }
   ];
 
