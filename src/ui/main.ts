@@ -40,6 +40,14 @@ import {
   renderRawTokens,
   formatPostfixText
 } from './parse-view';
+import {
+  renderStepLog as renderStepLogModule,
+  updateStepLogActive,
+  renderTransitionTable as renderTransitionTableModule,
+  updateTableActiveStates,
+  exportTableCsv,
+  renderFragmentStack
+} from './step-table-view';
 import type { StressRow, RegExpVerdict } from './stress-types';
 import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
 import {
@@ -373,6 +381,11 @@ if (stepScrubberEl) {
 const stepSpeedSelect = document.getElementById('step-speed') as HTMLSelectElement | null;
 const viewToggleSelect = document.getElementById('view-toggle') as HTMLSelectElement | null;
 const stepLogEl = document.getElementById('step-log');
+const stepLogStatsEl = document.getElementById('step-log-stats');
+const activeFragmentStackEl = document.getElementById('active-fragment-stack');
+const tableStatsEl = document.getElementById('table-stats');
+const copyTableCsvBtn = document.getElementById('copy-table-csv-btn') as HTMLButtonElement | null;
+const copyTableCsvStatus = document.getElementById('copy-table-csv-status');
 const compactLabelsEl = document.getElementById('compact-labels') as HTMLInputElement | null;
 const invI1El = document.getElementById('inv-I1');
 const invI2El = document.getElementById('inv-I2');
@@ -419,59 +432,7 @@ function isCompactLabels(): boolean {
 }
 
 function renderTransitionTable(container: HTMLElement, analysis: AnalysisSuccess): void {
-  const compact = isCompactLabels();
-  const { nfa, transitionTable, compactLabelMap } = analysis;
-  container.textContent = '';
-
-  const table = document.createElement('table');
-  const thead = document.createElement('thead');
-  const trHead = document.createElement('tr');
-  for (const header of ['State', 'Symbol', 'Next State(s)']) {
-    const th = document.createElement('th');
-    th.textContent = header;
-    trHead.appendChild(th);
-  }
-  thead.appendChild(trHead);
-  table.appendChild(thead);
-
-  const tbody = document.createElement('tbody');
-  for (const q of nfa.states) {
-    const isStart = q === nfa.start ? ' (start)' : '';
-    const isAccept = q === nfa.accept ? ' (accept)' : '';
-    const displayId = compact ? compactLabelMap[q] ?? q : q;
-    const stateLabel = `q${displayId}${isStart}${isAccept}`;
-    const transitions = transitionTable[q] || {};
-    const labels = Object.keys(transitions);
-
-    if (labels.length === 0) {
-      const tr = document.createElement('tr');
-      tr.setAttribute('data-state', String(q));
-      tr.setAttribute('data-display-state', String(displayId));
-      for (const val of [stateLabel, '-', '-']) {
-        const td = document.createElement('td');
-        td.textContent = val;
-        tr.appendChild(td);
-      }
-      tbody.appendChild(tr);
-    } else {
-      for (const label of labels) {
-        const targets = transitions[label]
-          .map((dest) => `q${compact ? compactLabelMap[dest] ?? dest : dest}`)
-          .join(', ');
-        const tr = document.createElement('tr');
-        tr.setAttribute('data-state', String(q));
-        tr.setAttribute('data-display-state', String(displayId));
-        for (const val of [stateLabel, label, targets]) {
-          const td = document.createElement('td');
-          td.textContent = val;
-          tr.appendChild(td);
-        }
-        tbody.appendChild(tr);
-      }
-    }
-  }
-  table.appendChild(tbody);
-  container.appendChild(table);
+  renderTransitionTableModule(container, analysis, isCompactLabels());
 }
 
 function renderTokenList(container: HTMLElement, tokens: Token[]): void {
@@ -520,6 +481,9 @@ function clearResults(): void {
   stopPlayback();
   currentStepIndex = 0;
   currentActiveStates = null;
+  if (tableEl) {
+    updateTableActiveStates(tableEl, null);
+  }
   isDeadRun = false;
   lastRunResults = null;
   lastRunLines = null;
@@ -543,6 +507,7 @@ function clearResults(): void {
   }
   if (tableEl) {
     tableEl.innerHTML = '';
+    updateTableActiveStates(tableEl, null);
   }
   if (tokenListEl) {
     tokenListEl.textContent = '';
@@ -559,6 +524,21 @@ function clearResults(): void {
   }
   if (stepLogEl) {
     stepLogEl.textContent = '';
+  }
+  if (stepLogStatsEl) {
+    stepLogStatsEl.textContent = '';
+  }
+  if (activeFragmentStackEl) {
+    activeFragmentStackEl.textContent = '';
+  }
+  if (tableStatsEl) {
+    tableStatsEl.textContent = '';
+  }
+  if (copyTableCsvBtn) {
+    copyTableCsvBtn.disabled = true;
+  }
+  if (copyTableCsvStatus) {
+    copyTableCsvStatus.textContent = '';
   }
   if (stepCounterEl) {
     stepCounterEl.textContent = 'step 0 / 0';
@@ -612,26 +592,10 @@ function renderPostfixView(container: HTMLElement, tokens: Token[]): void {
 }
 
 function renderStepLog(container: HTMLElement, steps: Step[]): void {
-  container.textContent = '';
-  const list = document.createElement('ol');
-  list.className = 'step-list';
-  list.style.paddingLeft = '20px';
-  steps.forEach((step) => {
-    const li = document.createElement('li');
-    li.className = 'step-log-item';
-    li.setAttribute('data-step-index', String(step.index));
-    li.textContent = `Step ${step.index}: ${step.description}`;
-    li.style.cursor = 'pointer';
-    li.style.padding = '2px 4px';
-    li.style.margin = '2px 0';
-    li.style.borderRadius = '3px';
-    li.addEventListener('click', () => {
-      stopPlayback();
-      navigateToStep(step.index);
-    });
-    list.appendChild(li);
+  renderStepLogModule(container, steps, currentStepIndex, (step) => {
+    stopPlayback();
+    navigateToStep(step);
   });
-  container.appendChild(list);
 }
 
 function attachStateHoverListeners(container: HTMLElement): void {
@@ -667,6 +631,9 @@ async function navigateToStep(stepIndex: number): Promise<void> {
     }
   }
   currentActiveStates = null;
+  if (tableEl) {
+    updateTableActiveStates(tableEl, null);
+  }
   isDeadRun = false;
   if (canvasEl) {
     canvasEl.removeAttribute('data-view');
@@ -697,18 +664,10 @@ async function navigateToStep(stepIndex: number): Promise<void> {
   if (stepLastBtn) stepLastBtn.disabled = currentStepIndex === totalSteps;
 
   if (stepLogEl) {
-    const items = stepLogEl.querySelectorAll('.step-log-item');
-    items.forEach((item, idx) => {
-      if (idx + 1 === currentStepIndex) {
-        item.classList.add('active');
-        (item as HTMLElement).style.fontWeight = 'bold';
-        (item as HTMLElement).style.backgroundColor = '#eef';
-      } else {
-        item.classList.remove('active');
-        (item as HTMLElement).style.fontWeight = 'normal';
-        (item as HTMLElement).style.backgroundColor = 'transparent';
-      }
-    });
+    updateStepLogActive(stepLogEl, targetStep);
+  }
+  if (activeFragmentStackEl && stepRecord) {
+    renderFragmentStack(activeFragmentStackEl, stepRecord.stackAfter);
   }
 
   if (postfixEl) {
@@ -824,12 +783,11 @@ async function renderFinalView(): Promise<void> {
   if (stepPlayBtn) stepPlayBtn.disabled = true;
 
   if (stepLogEl) {
-    const items = stepLogEl.querySelectorAll('.step-log-item');
-    items.forEach((item) => {
-      item.classList.remove('active');
-      (item as HTMLElement).style.fontWeight = 'normal';
-      (item as HTMLElement).style.backgroundColor = 'transparent';
-    });
+    updateStepLogActive(stepLogEl, 0);
+  }
+  if (activeFragmentStackEl && currentAnalysis && currentAnalysis.steps.length > 0) {
+    const lastStep = currentAnalysis.steps[currentAnalysis.steps.length - 1];
+    renderFragmentStack(activeFragmentStackEl, lastStep.stackAfter);
   }
 
   if (postfixEl) {
@@ -1002,6 +960,9 @@ async function handleBuild() {
     runStatusEl.className = '';
   }
   currentActiveStates = null;
+  if (tableEl) {
+    updateTableActiveStates(tableEl, null);
+  }
   isDeadRun = false;
   lastRunResults = null;
   lastRunLines = null;
@@ -1097,9 +1058,21 @@ async function handleBuild() {
   if (tableEl) {
     renderTransitionTable(tableEl, analysis);
   }
+  if (tableStatsEl) {
+    tableStatsEl.textContent = `${analysis.stats.states} states · ${analysis.stats.transitions} transitions`;
+  }
+  if (copyTableCsvBtn) {
+    copyTableCsvBtn.disabled = false;
+  }
 
   if (stepLogEl) {
     renderStepLog(stepLogEl, analysis.steps);
+  }
+  if (stepLogStatsEl) {
+    stepLogStatsEl.textContent = `${analysis.stats.states} st · ${analysis.stats.transitions} tr built`;
+  }
+  if (activeFragmentStackEl && analysis.steps.length > 0) {
+    renderFragmentStack(activeFragmentStackEl, analysis.steps[0].stackAfter);
   }
 
   renderValidationChecks(analysis, concatenation);
@@ -1256,6 +1229,9 @@ function renderTrace(
       container.querySelectorAll('.trace-step, .trace-status').forEach((el) => el.classList.remove('active'));
       initialDiv.classList.add('active');
       currentActiveStates = [...res.initialClosure];
+      if (tableEl) {
+        updateTableActiveStates(tableEl, currentActiveStates);
+      }
       isDeadRun = false;
       if (runStatusEl) {
         runStatusEl.textContent = '';
@@ -1280,6 +1256,9 @@ function renderTrace(
         container.querySelectorAll('.trace-step, .trace-status').forEach((el) => el.classList.remove('active'));
         stepDiv.classList.add('active');
         currentActiveStates = [...set];
+        if (tableEl) {
+          updateTableActiveStates(tableEl, currentActiveStates);
+        }
         isDeadRun = set.length === 0;
         if (runStatusEl) {
           if (isDeadRun) {
@@ -1304,6 +1283,9 @@ function renderTrace(
         container.querySelectorAll('.trace-step, .trace-status').forEach((el) => el.classList.remove('active'));
         deadDiv.classList.add('active');
         currentActiveStates = [];
+        if (tableEl) {
+          updateTableActiveStates(tableEl, currentActiveStates);
+        }
         isDeadRun = true;
         if (runStatusEl) {
           runStatusEl.textContent = `Run is dead at position ${res.position}: active set is empty.`;
@@ -1370,6 +1352,9 @@ function handleRun() {
         firstInitial.classList.add('active');
       }
       currentActiveStates = [...results[0].initialClosure];
+      if (tableEl) {
+        updateTableActiveStates(tableEl, currentActiveStates);
+      }
       isDeadRun = false;
       const mode = checkDiagramCap(currentAnalysis.postfix.length);
       if (mode !== 'off') {
@@ -1533,6 +1518,9 @@ if (compactLabelsEl) {
   compactLabelsEl.addEventListener('change', () => {
     if (currentAnalysis) {
       renderTransitionTable(tableEl!, currentAnalysis);
+      if (currentActiveStates && tableEl) {
+        updateTableActiveStates(tableEl, currentActiveStates);
+      }
       if (lastRunResults && lastRunLines && traceEl) {
         renderTrace(traceEl, lastRunResults, lastRunLines);
       }
@@ -1767,7 +1755,20 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
   if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) {
     return;
   }
-  if (e.key === 'ArrowLeft') {
+  if (e.key === 'Escape') {
+    if (currentActiveStates !== null) {
+      currentActiveStates = null;
+      if (tableEl) {
+        updateTableActiveStates(tableEl, null);
+      }
+      if (traceEl) {
+        traceEl.querySelectorAll('.trace-step, .trace-status').forEach((el) => el.classList.remove('active'));
+      }
+      if (currentView === 'final' && currentAnalysis) {
+        renderFinalView();
+      }
+    }
+  } else if (e.key === 'ArrowLeft') {
     e.preventDefault();
     stopPlayback();
     if (currentStepIndex > 1) {
@@ -1810,6 +1811,35 @@ if (stepPlayBtn) stepPlayBtn.disabled = true;
 if (stepNextBtn) stepNextBtn.disabled = true;
 if (stepLastBtn) stepLastBtn.disabled = true;
 updateToolbarButtonStates();
+
+if (copyTableCsvBtn) {
+  copyTableCsvBtn.disabled = true;
+  copyTableCsvBtn.addEventListener('click', async () => {
+    if (!currentAnalysis) return;
+    const csv = exportTableCsv(currentAnalysis, isCompactLabels());
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(csv);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = csv;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      copyTableCsvBtn.textContent = 'Copied!';
+      if (copyTableCsvStatus) {
+        copyTableCsvStatus.textContent = 'Transition table copied to clipboard as CSV';
+      }
+      setTimeout(() => {
+        copyTableCsvBtn.textContent = 'Copy CSV';
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy CSV:', err);
+    }
+  });
+}
 
 if (runSuiteBtn && suiteTableEl) {
   runSuiteBtn.addEventListener('click', () => {

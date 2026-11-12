@@ -3778,6 +3778,162 @@ const assert = require('node:assert');
   assert.ok(t24ParseTree.postfixWellText.length > 0, '#postfix-text-well must contain formatted postfix text');
   assert.strictEqual(t24ParseTree.hasDisclosure, true, '#token-list-disclosure must exist');
 
+  // ==========================================
+  // Ticket 25: Step Log & Transition Table
+  // ==========================================
+  console.log('Testing Ticket 25: Step Log & Transition Table...');
+
+  // 1. Build (a|b)*a and verify rich Step Log items
+  await page.selectOption('#notation-select', 'standard');
+  await page.selectOption('#concat-select', 'epsilon-link');
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.evaluate(() => { window.__buildDone = false; });
+  await page.click('#build-button');
+  await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+
+  const stepLogInfo = await page.evaluate(() => {
+    const items = Array.from(document.querySelectorAll('#step-log .step-log-item'));
+    const firstItem = items[0];
+    const header = firstItem ? firstItem.querySelector('.step-item-header') : null;
+    const badge = firstItem ? firstItem.querySelector('.step-badge') : null;
+    const ruleName = firstItem ? firstItem.querySelector('.step-rule-name') : null;
+    const fragment = firstItem ? firstItem.querySelector('.step-fragment') : null;
+    const deltaChips = firstItem ? Array.from(firstItem.querySelectorAll('.delta-chip')) : [];
+    const desc = firstItem ? firstItem.querySelector('.step-description') : null;
+
+    return {
+      count: items.length,
+      hasHeader: Boolean(header),
+      hasBadge: Boolean(badge),
+      badgeText: badge ? badge.textContent : '',
+      hasRuleName: Boolean(ruleName),
+      ruleNameText: ruleName ? ruleName.textContent : '',
+      hasFragment: Boolean(fragment),
+      fragmentText: fragment ? fragment.textContent : '',
+      deltaChipCount: deltaChips.length,
+      hasDesc: Boolean(desc),
+      descText: desc ? desc.textContent : '',
+      firstIsActive: firstItem ? firstItem.classList.contains('active') : false,
+      firstAriaCurrent: firstItem ? firstItem.getAttribute('aria-current') : null,
+      secondIsFuture: items[1] ? items[1].classList.contains('future') : false
+    };
+  });
+
+  assert.strictEqual(stepLogInfo.count, 6, '#step-log must contain 6 items');
+  assert.strictEqual(stepLogInfo.hasHeader, true, '.step-log-item must contain .step-item-header');
+  assert.strictEqual(stepLogInfo.hasBadge, true, '.step-log-item must contain .step-badge');
+  assert.strictEqual(stepLogInfo.badgeText, '1', 'First step badge must be 1');
+  assert.strictEqual(stepLogInfo.hasRuleName, true, '.step-log-item must contain .step-rule-name');
+  assert.ok(stepLogInfo.ruleNameText.includes('SYMBOL'), 'First step rule name must be SYMBOL');
+  assert.strictEqual(stepLogInfo.hasFragment, true, '.step-log-item must contain .step-fragment');
+  assert.strictEqual(stepLogInfo.fragmentText, '0→1', 'First step fragment must be 0→1');
+  assert.strictEqual(stepLogInfo.deltaChipCount, 2, '.step-log-item must contain 2 delta chips');
+  assert.strictEqual(stepLogInfo.hasDesc, true, '.step-log-item must contain .step-description');
+  assert.ok(stepLogInfo.descText.startsWith('Step 1:'), '.step-description must start with "Step 1:"');
+  assert.strictEqual(stepLogInfo.firstIsActive, true, 'First step item must be active at step 1');
+  assert.strictEqual(stepLogInfo.firstAriaCurrent, 'step', 'Active step item must have aria-current="step"');
+  assert.strictEqual(stepLogInfo.secondIsFuture, true, 'Subsequent step items must have class "future"');
+
+  // 2. Step navigation updates active/past/future classes
+  await page.click('#step-next'); // to step 2
+  await page.click('#step-next'); // to step 3
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 3 / 6'));
+
+  const step3State = await page.evaluate(() => {
+    const items = Array.from(document.querySelectorAll('#step-log .step-log-item'));
+    return {
+      step1Past: items[0]?.classList.contains('past'),
+      step2Past: items[1]?.classList.contains('past'),
+      step3Active: items[2]?.classList.contains('active'),
+      step3AriaCurrent: items[2]?.getAttribute('aria-current'),
+      step4Future: items[3]?.classList.contains('future')
+    };
+  });
+
+  assert.strictEqual(step3State.step1Past, true, 'Step 1 must have class "past" when at step 3');
+  assert.strictEqual(step3State.step2Past, true, 'Step 2 must have class "past" when at step 3');
+  assert.strictEqual(step3State.step3Active, true, 'Step 3 must have class "active" when at step 3');
+  assert.strictEqual(step3State.step3AriaCurrent, 'step', 'Step 3 must have aria-current="step" when at step 3');
+  assert.strictEqual(step3State.step4Future, true, 'Step 4 must have class "future" when at step 3');
+
+  // 3. Click step log item jumps to step
+  await page.click('#step-log .step-log-item[data-step-index="4"]');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 4 / 6'));
+  const step4Active = await page.evaluate(() => {
+    const item = document.querySelector('#step-log .step-log-item[data-step-index="4"]');
+    return item ? item.classList.contains('active') : false;
+  });
+  assert.strictEqual(step4Active, true, 'Clicking step 4 item must navigate to step 4');
+
+  // 4. Active fragment stack mini-strip
+  const fragStackText = await page.evaluate(() => document.getElementById('active-fragment-stack')?.textContent || '');
+  assert.ok(fragStackText.includes('6 → 7'), '#active-fragment-stack must show active fragment [ 6 → 7 ] at step 4');
+
+  // 5. Semantic Transition Table with sticky header and data attributes
+  const tableInfo = await page.evaluate(() => {
+    const table = document.querySelector('#transition-table table.transition-data-table');
+    const ths = table ? Array.from(table.querySelectorAll('thead th')).map((th) => th.textContent) : [];
+    const rows = table ? Array.from(table.querySelectorAll('tbody tr')) : [];
+    const firstRow = rows[0];
+    const tableStats = document.getElementById('table-stats')?.textContent || '';
+    const stepStats = document.getElementById('step-log-stats')?.textContent || '';
+
+    return {
+      hasTable: Boolean(table),
+      headers: ths,
+      rowCount: rows.length,
+      firstRowState: firstRow?.getAttribute('data-state'),
+      firstRowDisplayState: firstRow?.getAttribute('data-display-state'),
+      tableStats,
+      stepStats
+    };
+  });
+
+  assert.strictEqual(tableInfo.hasTable, true, '#transition-table must contain table.transition-data-table');
+  assert.deepStrictEqual(tableInfo.headers, ['State', 'Symbol', 'Next State(s)'], 'Table must have 3 semantic column headers');
+  assert.ok(tableInfo.rowCount >= 10, 'Table must contain rows for all states');
+  assert.strictEqual(tableInfo.firstRowState, '0', 'First row data-state must be 0');
+  assert.strictEqual(tableInfo.firstRowDisplayState, '0', 'First row data-display-state must be 0');
+  assert.ok(tableInfo.tableStats.includes('10 states'), '#table-stats must report states');
+  assert.ok(tableInfo.stepStats.includes('10 st'), '#step-log-stats must report states built');
+
+  // 6. Active state row highlighting and Escape clearing (Amendment A9)
+  await page.fill('#test-input', 'ba');
+  await page.click('#run-button');
+  await page.waitForFunction(() => document.getElementById('live-region')?.textContent?.includes('ACCEPT'));
+
+  // After run, initial closure states {0, 2, 4, 6, 7, 8} are active
+  const activeRowsAfterRun = await page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('#transition-table tbody tr.active-state-row'));
+    return rows.map((r) => r.getAttribute('data-state'));
+  });
+  assert.ok(activeRowsAfterRun.length > 0, 'Active state rows must be highlighted after simulation run');
+  assert.ok(activeRowsAfterRun.includes('0'), 'State 0 must be in active state rows');
+
+  // Press Escape to clear active state row highlighting
+  await page.evaluate(() => document.body.focus());
+  await page.keyboard.press('Escape');
+
+  const activeRowsAfterEsc = await page.evaluate(() => {
+    return document.querySelectorAll('#transition-table tbody tr.active-state-row').length;
+  });
+  assert.strictEqual(activeRowsAfterEsc, 0, 'Pressing Escape must clear active state row highlighting');
+
+  // 7. Copy CSV button
+  const copyCsvBtnEnabled = await page.evaluate(() => {
+    const btn = document.getElementById('copy-table-csv-btn');
+    return btn && !btn.disabled;
+  });
+  assert.strictEqual(copyCsvBtnEnabled, true, '#copy-table-csv-btn must be enabled after build');
+
+  await page.click('#copy-table-csv-btn');
+  const tableCopiedCsv = await page.evaluate(() => navigator.clipboard.readText());
+  assert.ok(tableCopiedCsv.includes('State,Symbol,Next State(s)'), 'Copied CSV must contain table header');
+  assert.ok(tableCopiedCsv.includes('q0'), 'Copied CSV must contain state q0');
+
+  const copyCsvStatusText = await page.evaluate(() => document.getElementById('copy-table-csv-status')?.textContent || '');
+  assert.ok(copyCsvStatusText.includes('copied to clipboard'), '#copy-table-csv-status must announce to live region');
+
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);

@@ -967,6 +967,52 @@ async function main() {
       replace: "      // tok.classList.add('active');\n      if (typeof tok.scrollIntoView === 'function') {",
       testType: 'e2e',
       expect: 'Active postfix token must be UNION'
+    },
+    // Ticket 25 Mutants (Step Log & Transition Table)
+    {
+      id: 'T25-AC1-1',
+      desc: 'T25-AC1-1: Corrupt step log item class in src/ui/step-table-view.ts',
+      file: 'src/ui/step-table-view.ts',
+      find: "    li.className = 'step-log-item';",
+      replace: "    li.className = 'corrupt-log-item';",
+      testType: 'e2e',
+      expect: 'Step log must list all 6 steps'
+    },
+    {
+      id: 'T25-AC1-2',
+      desc: 'T25-AC1-2: Omit active step log class in updateStepLogActive in src/ui/step-table-view.ts',
+      file: 'src/ui/step-table-view.ts',
+      find: "      item.classList.add('active');\n      item.setAttribute('aria-current', 'step');",
+      replace: "      // item.classList.add('active');\n      item.setAttribute('aria-current', 'step');",
+      testType: 'e2e',
+      expect: 'First step item must be active at step 1'
+    },
+    {
+      id: 'T25-AC2-1',
+      desc: 'T25-AC2-1: Corrupt transition table row data-state attribute in src/ui/step-table-view.ts',
+      file: 'src/ui/step-table-view.ts',
+      find: "      tr.setAttribute('data-state', String(q));",
+      replace: "      // tr.setAttribute('data-state', String(q));",
+      testType: 'e2e',
+      expect: 'Before compact toggle, state 9 row must start with q9'
+    },
+    {
+      id: 'T25-AC2-2',
+      desc: 'T25-AC2-2: Omit active-state-row class in updateTableActiveStates in src/ui/step-table-view.ts',
+      file: 'src/ui/step-table-view.ts',
+      find: "      row.classList.add('active-state-row');",
+      replace: "      // row.classList.add('active-state-row');",
+      testType: 'e2e',
+      expect: 'Active state rows must be highlighted after simulation run'
+    },
+    {
+      id: 'T25-AC2-3',
+      desc: 'T25-AC2-3: Omit Escape key active states clearing in src/ui/main.ts',
+      file: 'src/ui/main.ts',
+      find: "      currentActiveStates = null;\n      if (tableEl) {\n        updateTableActiveStates(tableEl, null);\n      }\n      if (traceEl) {",
+      replace: "      currentActiveStates = null;\n      // if (tableEl) updateTableActiveStates(tableEl, null);\n      if (traceEl) {",
+      testType: 'e2e',
+      expect: 'Pressing Escape must clear active state row highlighting'
     }
   ];
 
