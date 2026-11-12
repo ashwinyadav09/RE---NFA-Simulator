@@ -114,11 +114,11 @@
       <input id="regex-input" type="text" placeholder="Enter regular expression" value="" />
       <button id="insert-eps" data-testid="insert-eps" type="button" title="Insert ε">ε</button>
       <button id="insert-empty" data-testid="insert-empty" type="button" title="Insert ∅">∅</button>
-      <select id="notation-select" data-testid="notation-select">
+      <select id="notation-select" data-testid="notation-select" aria-label="Notation">
         <option value="standard">Standard (| is union)</option>
         <option value="textbook">Textbook (+ is union)</option>
       </select>
-      <select id="concat-select" data-testid="concat-select">
+      <select id="concat-select" data-testid="concat-select" aria-label="Concatenation mode">
         <option value="epsilon-link">ε-link</option>
         <option value="merge">Merge</option>
       </select>
@@ -146,13 +146,13 @@
       <button id="step-last" data-testid="step-last" title="Last step">▶|</button>
       <span id="step-counter" data-testid="step-counter">step 0 / 0</span>
       <label for="step-speed">Speed:</label>
-      <select id="step-speed" data-testid="step-speed">
+      <select id="step-speed" data-testid="step-speed" aria-label="Speed">
         <option value="1500">0.5x</option>
         <option value="750" selected>1x</option>
         <option value="300">2x</option>
       </select>
       <label for="view-toggle">View:</label>
-      <select id="view-toggle" data-testid="view-toggle">
+      <select id="view-toggle" data-testid="view-toggle" aria-label="View mode">
         <option value="flat">Flat</option>
         <option value="textbook">Textbook</option>
         <option value="final">Final NFA</option>
@@ -229,7 +229,7 @@
         <h3>Stress Test: Backtracking RegExp vs Thompson NFA</h3>
         <div class="controls stress-controls">
           <label for="stress-family">Family:</label>
-          <select id="stress-family" data-testid="stress-family">
+          <select id="stress-family" data-testid="stress-family" aria-label="Family">
             <option value="star-star-b">(a*)*b on aⁿ</option>
             <option value="plus-plus">(a+)+ on aⁿb</option>
           </select>

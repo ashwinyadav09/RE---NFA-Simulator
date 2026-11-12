@@ -2144,6 +2144,32 @@ const assert = require('node:assert');
   assert.strictEqual(focusableIds[5], 'concat-select', 'Sixth focusable should be concat-select');
   assert.strictEqual(focusableIds[6], 'build-button', 'Seventh focusable should be build-button');
 
+  // Accessibility check: every select element must have an accessible name
+  const selectAccessibleNames = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll('select')).map((sel) => {
+      const ariaLabel = sel.getAttribute('aria-label');
+      const ariaLabelledBy = sel.getAttribute('aria-labelledby');
+      let labelledByName = '';
+      if (ariaLabelledBy) {
+        const target = document.getElementById(ariaLabelledBy);
+        if (target) labelledByName = target.textContent?.trim() || '';
+      }
+      let labelForText = '';
+      if (sel.labels && sel.labels.length > 0) {
+        labelForText = Array.from(sel.labels).map((l) => l.textContent?.trim() || '').join(' ').trim();
+      } else if (sel.id) {
+        const l = document.querySelector(`label[for="${sel.id}"]`);
+        if (l) labelForText = l.textContent?.trim() || '';
+      }
+      const title = sel.getAttribute('title') || '';
+      const name = ariaLabel || labelledByName || labelForText || title;
+      return { id: sel.id, hasName: Boolean(name && name.length > 0), name };
+    });
+  });
+  for (const s of selectAccessibleNames) {
+    assert(s.hasName, `Select element #${s.id} must have an accessible name`);
+  }
+
   // 3. Live region announces verdict after Run, step and rule after Next
   const liveRegionBeforeRun = await page.textContent('#live-region');
   await page.fill('#test-input', 'ba');

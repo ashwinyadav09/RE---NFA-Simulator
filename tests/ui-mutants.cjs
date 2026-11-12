@@ -791,6 +791,16 @@ async function main() {
       replace: "  canvasEl.addEventListener('keydown', (e: KeyboardEvent) => {\n    // open-guard removed",
       testType: 'e2e',
       expect: 'Canvas shortcuts must not act while keyboard help dialog is open'
+    },
+    // Ticket 20 Mutants
+    {
+      id: 'T20-AC4-1',
+      desc: 'T20-AC4-1: aria-label omitted from notation-select',
+      file: 'index.html',
+      find: '      <select id="notation-select" data-testid="notation-select" aria-label="Notation">',
+      replace: '      <select id="notation-select" data-testid="notation-select">',
+      testType: 'e2e',
+      expect: 'Select element #notation-select must have an accessible name'
     }
   ];
 
