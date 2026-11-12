@@ -11,7 +11,7 @@ docs/adr/                         architectural decision records
 docs/BROWSER-CHECK.md             browser scope and verification record (Chromium only)
 docs/research/REPORT.md           research findings and prototype evidence
 .agents/skills/thompson-rules/    canonical rules, fixtures (JSON), mutation checklist
-.scratch/re-nfa-simulator/issues/ the 15 project tickets
+.scratch/re-nfa-simulator/issues/ the 20 project tickets
 ```
 
 ## Quick Start & Verification Gate
@@ -110,7 +110,7 @@ In standard URL query strings, the `+` character decodes to a whitespace charact
 When sharing expressions in **textbook mode** where `+` represents the union operator:
 - **Always encode `+` as `%2B`** in query parameters (e.g., `?regex=(a%2Bb)*a&notation=textbook`).
 - The **Copy Link** button (`#copy-link-btn`) automatically handles all URI encoding correctly using `encodeURIComponent`.
-- If a raw `+` is entered in a hand-typed URL, it will decode as a space and trigger a syntax error diagnostic.
+- If a raw `+` is entered in a hand-typed URL, it decodes to a space (`' '`), which the lexer treats as whitespace between symbols, parsing as implicit concatenation (`a . b`) rather than textbook union. Always use `%2B` for `+` in hand-typed links.
 
 ### Safety, Validation, and Diagnostics
 - **Limits & Sanitization**: URLs are capped at 4,096 characters total (regex $\le$ 2,000, input $\le$ 1,000). All parameters are treated as untrusted input and set safely via DOM `.value` and `.textContent` properties (preventing XSS).
@@ -133,7 +133,7 @@ The simulator provides a comprehensive suite of accessible keyboard shortcuts:
 | `?` | Global (outside text inputs) | Open keyboard shortcuts help modal |
 | `Esc` | Modal open | Close keyboard shortcuts help modal and return focus to opener |
 
-The modal dialog can also be toggled at any time by clicking the **⌨ Shortcuts** button (`#keyboard-help-btn`) in the controls toolbar. While the modal is open, canvas navigation and arrow stepping shortcuts are suspended to prevent accidental background actions.
+The modal dialog can also be toggled at any time by clicking the **Keyboard shortcuts** button (`#keyboard-help-btn`) in the controls toolbar. While the modal is open, canvas navigation and arrow stepping shortcuts are suspended to prevent accidental background actions.
 
 ## Canvas Navigation & Zoom/Pan Controls
 
@@ -175,7 +175,6 @@ No build scripts, server-side containers, or deployment dependencies are require
 
 ## Browser Support
 
-See [`docs/BROWSER-CHECK.md`](docs/BROWSER-CHECK.md) for full browser verification status:
-- **Chromium / Chrome**: Tested in Chromium over `file://` (automated smoke and headed walkthrough pass).
-- **Firefox**: Not checked; other browsers are not verified (owner decision: Chromium only).
-- **Safari**: best effort, not verified.
+Per [ADR 0002](docs/adr/0002-offline-single-file-build-inline-workers.md), the application targets modern **Chromium-based desktop browsers** (Google Chrome, Microsoft Edge):
+- **Chromium / Chrome**: Primary target. Automated E2E test suite runs headlessly against Chromium over `file://`, and manual walkthroughs are verified in Chrome.
+- **Other Browsers (Firefox, Safari)**: Untested and unverified per project scope (owner decision: Chromium desktop only; see [`docs/BROWSER-CHECK.md`](docs/BROWSER-CHECK.md)).

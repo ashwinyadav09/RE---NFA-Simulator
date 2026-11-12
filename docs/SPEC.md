@@ -136,6 +136,6 @@ Backreferences, lookarounds, capture groups, lazy and possessive quantifiers, an
 - D14 Differential cap of 50,000 strings with automatic k.
 - D15 Thirteen-mutant gate (04).
 
-**Open questions:** (1) which union notation and concatenation convention the course notes use (M1 next step 3); the defaults stay until you check. (2) Resolved (8 Nov 2026): tested in Chromium over file://; other browsers are not verified (owner decision: Chromium only; Firefox not checked). (3) Where the page is hosted, if anywhere.
+**Open questions:** (1) which union notation and concatenation convention the course notes use (M1 next step 3); the defaults stay until you check. (2) Resolved per ADR 0002 (8 Nov 2026): tested in Chromium over file://; other browsers are not verified (owner decision: Chromium only; Firefox not checked). (3) Where the page is hosted, if anywhere.
 
 **Building with Antigravity.** The repository seed is arranged for it: `AGENTS.md` for always-on rules, `.agents/skills/` for on-demand knowledge, `.agents/workflows/` for the `/next-ticket` command. See the README for what was and was not verified about Antigravity's behaviour.

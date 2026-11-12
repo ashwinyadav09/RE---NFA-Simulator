@@ -1,5 +1,5 @@
 # Later
-Parked ideas from tickets 08-15, ranked. Nothing here is in scope unless a ticket names it. Items 1-2 of the original ranking are Ticket 16. Delivered: Ticket 17 zoom/pan, Ticket 18 stress panel, Ticket 19 NFA export, deep links and shortcut help.
+Parked ideas from tickets 08-20, ranked. Nothing here is in scope unless a ticket names it. Items 1-2 of the original ranking are Ticket 16. Delivered: Ticket 17 zoom/pan, Ticket 18 stress panel, Ticket 19 NFA export, deep links and shortcut help, Ticket 20 release-candidate audit.
 
 | # | Item | From |
 |---|------|------|
