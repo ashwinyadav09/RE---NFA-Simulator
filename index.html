@@ -468,47 +468,197 @@
       flex-wrap: wrap;
     }
 
-    .canvas-toolbar {
-      margin-bottom: 8px;
+    /* Workbench 3-Rail Grid Layout (Ticket 23) */
+    .workbench-grid {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr) 340px;
+      gap: 16px;
+      margin-top: 16px;
+      align-items: start;
+    }
+
+    @media (max-width: 1279px) {
+      .workbench-grid {
+        grid-template-columns: minmax(0, 1fr) 340px;
+      }
+      .parse-rail {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .workbench-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .rail {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      box-sizing: border-box;
+      max-height: calc(100vh - 120px);
+      overflow-y: auto;
+    }
+
+    .rail-title {
+      margin: 0 0 12px 0;
+      font-family: var(--font-ui);
+      font-size: var(--text-sm);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+    }
+
+    .centre-column {
       display: flex;
-      gap: 8px;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .right-rail {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .right-panel {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      box-sizing: border-box;
+      max-height: 480px;
+      overflow-y: auto;
+    }
+
+    /* Stepper Controls & Scrubber (Ticket 23) */
+    .stepper-controls {
+      display: flex;
+      gap: 10px;
       align-items: center;
       flex-wrap: wrap;
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      box-sizing: border-box;
     }
 
-    .canvas-toolbar button {
-      padding: 4px 8px;
-      min-width: 32px;
+    .stepper-btn-group {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
     }
 
-    .zoom-level {
+    #step-scrubber {
+      flex: 1 1 120px;
+      min-width: 80px;
+      height: 6px;
+      padding: 0;
+      border: none;
+      background: var(--bg-sunken);
+      border-radius: var(--radius-full);
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+    #step-scrubber:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    #step-counter {
       font-family: var(--font-mono);
       font-size: var(--text-sm);
-      min-width: 48px;
+      font-weight: 500;
+      color: var(--text);
+      white-space: nowrap;
+      min-width: 80px;
     }
 
-    .canvas-hint {
-      font-size: var(--text-xs);
-      color: var(--text-muted);
-      margin-left: 4px;
+    /* Hero Canvas Container & Toolbar (Ticket 23) */
+    .canvas-container {
+      position: relative;
+      margin-bottom: 16px;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background-color: var(--bg-canvas);
     }
 
     #canvas {
       position: relative;
       overflow: hidden;
-      height: var(--canvas-height);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      background: var(--bg-canvas);
+      height: clamp(380px, 50vh, 600px);
+      background-color: var(--bg-canvas);
+      background-image: radial-gradient(var(--canvas-grid-dot) 1px, transparent 1px);
+      background-size: 24px 24px;
       user-select: none;
       touch-action: none;
       outline: none;
       cursor: grab;
+      border: none;
     }
 
     #canvas:focus-visible {
-      outline: 2px solid var(--focus-ring);
-      outline-offset: 1px;
+      outline: 2px solid var(--border-focus);
+      outline-offset: -2px;
+    }
+
+    .canvas-toolbar {
+      position: absolute;
+      inset: 8px;
+      pointer-events: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      z-index: 10;
+      margin-bottom: 0;
+    }
+
+    .canvas-toolbar-group {
+      pointer-events: auto;
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      background-color: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 4px 6px;
+      box-shadow: 0 1px 4px rgba(31, 29, 24, 0.08);
+    }
+    :root[data-theme="dark"] .canvas-toolbar-group {
+      background-color: rgba(29, 27, 22, 0.92);
+      border-color: var(--border);
+    }
+
+    .canvas-hint {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+      pointer-events: none;
+      background-color: rgba(255, 255, 255, 0.85);
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+      white-space: nowrap;
+      margin-left: 0;
+    }
+    :root[data-theme="dark"] .canvas-hint {
+      background-color: rgba(29, 27, 22, 0.85);
+    }
+
+    .test-dock {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      box-sizing: border-box;
     }
 
     #canvas-viewport {
@@ -831,55 +981,88 @@
     </div>
     <div id="error-message" data-testid="error-message"></div>
     <div id="stats" data-testid="stats"></div>
-    <div id="token-list" data-testid="token-list"></div>
-    <div id="postfix-view" data-testid="postfix-view"></div>
-    <div id="tree-view" data-testid="tree-view"></div>
-    <div class="stepper-controls" id="stepper-controls" data-testid="stepper-controls">
-      <button id="step-first" data-testid="step-first" title="First step">|◀</button>
-      <button id="step-prev" data-testid="step-prev" title="Previous step">◀</button>
-      <button id="step-play" data-testid="step-play" title="Play">Play</button>
-      <button id="step-next" data-testid="step-next" title="Next step">▶</button>
-      <button id="step-last" data-testid="step-last" title="Last step">▶|</button>
-      <span id="step-counter" data-testid="step-counter">step 0 / 0</span>
-      <label for="step-speed">Speed:</label>
-      <select id="step-speed" data-testid="step-speed" aria-label="Speed">
-        <option value="1500">0.5x</option>
-        <option value="750" selected>1x</option>
-        <option value="300">2x</option>
-      </select>
-      <label for="view-toggle">View:</label>
-      <select id="view-toggle" data-testid="view-toggle" aria-label="View mode">
-        <option value="flat">Flat</option>
-        <option value="textbook">Textbook</option>
-        <option value="final">Final NFA</option>
-      </select>
-      <label for="compact-labels">
-        <input type="checkbox" id="compact-labels" data-testid="compact-labels" />
-        Compact labels
-      </label>
-    </div>
-    <div id="step-log" data-testid="step-log"></div>
-    <div id="layout-note" data-testid="layout-note"></div>
-    <div id="canvas-toolbar" data-testid="canvas-toolbar" class="canvas-toolbar">
-      <button id="zoom-in-btn" data-testid="zoom-in-btn" type="button" aria-label="Zoom in">+</button>
-      <button id="zoom-out-btn" data-testid="zoom-out-btn" type="button" aria-label="Zoom out">−</button>
-      <button id="zoom-fit-btn" data-testid="zoom-fit-btn" type="button" aria-label="Fit diagram to canvas">Fit</button>
-      <button id="zoom-reset-btn" data-testid="zoom-reset-btn" type="button" aria-label="Reset zoom to 100%">100%</button>
-      <span id="zoom-level" data-testid="zoom-level" class="zoom-level">100%</span>
-      <button id="export-dot-btn" data-testid="export-dot-btn" type="button" aria-label="Export diagram as DOT" disabled>Export DOT</button>
-      <button id="export-svg-btn" data-testid="export-svg-btn" type="button" aria-label="Export diagram as SVG" disabled>Export SVG</button>
-      <span class="canvas-hint" id="canvas-hint">Ctrl+scroll to zoom, drag or Shift+scroll to pan, Shift+arrows pan</span>
-    </div>
-    <div id="canvas" data-testid="canvas" tabindex="0" role="region" aria-label="NFA diagram canvas"><div id="canvas-viewport" data-testid="canvas-viewport"></div></div>
-    <div id="transition-table" data-testid="transition-table"></div>
-    <div class="simulation-controls">
-      <textarea id="test-input" data-testid="test-input" placeholder="Enter test strings, one per line"></textarea>
-      <button id="run-button" data-testid="run-button">Run</button>
-    </div>
-    <div id="run-status" data-testid="run-status"></div>
-    <pre id="verdict" data-testid="verdict"></pre>
-    <div id="trace" data-testid="trace"></div>
-    <div id="worker-status" data-testid="worker-status"></div>
+    <main id="workbench" class="workbench-grid" data-testid="workbench">
+      <!-- Left Rail: Parse -->
+      <aside id="left-rail" class="rail parse-rail" data-testid="left-rail">
+        <h2 class="rail-title">Parse</h2>
+        <div id="token-list" data-testid="token-list"></div>
+        <div id="postfix-view" data-testid="postfix-view"></div>
+        <div id="tree-view" data-testid="tree-view"></div>
+      </aside>
+
+      <!-- Centre Column: Hero Canvas & Stepper -->
+      <section id="centre-column" class="centre-column" data-testid="centre-column">
+        <div class="stepper-controls" id="stepper-controls" data-testid="stepper-controls">
+          <div class="stepper-btn-group">
+            <button id="step-first" data-testid="step-first" title="First step">|◀</button>
+            <button id="step-prev" data-testid="step-prev" title="Previous step">◀</button>
+            <button id="step-play" data-testid="step-play" title="Play">Play</button>
+            <button id="step-next" data-testid="step-next" title="Next step">▶</button>
+            <button id="step-last" data-testid="step-last" title="Last step">▶|</button>
+          </div>
+          <input type="range" id="step-scrubber" data-testid="step-scrubber" min="1" max="1" value="1" step="1" aria-label="Step scrubber" disabled />
+          <span id="step-counter" data-testid="step-counter">step 0 / 0</span>
+          <label for="step-speed">Speed:</label>
+          <select id="step-speed" data-testid="step-speed" aria-label="Speed">
+            <option value="1500">0.5x</option>
+            <option value="750" selected>1x</option>
+            <option value="300">2x</option>
+          </select>
+          <label for="view-toggle">View:</label>
+          <select id="view-toggle" data-testid="view-toggle" aria-label="View mode">
+            <option value="flat">Flat</option>
+            <option value="textbook">Textbook</option>
+            <option value="final">Final NFA</option>
+          </select>
+          <label for="compact-labels">
+            <input type="checkbox" id="compact-labels" data-testid="compact-labels" />
+            Compact labels
+          </label>
+        </div>
+
+        <div class="canvas-container" id="canvas-container">
+          <div id="canvas-toolbar" data-testid="canvas-toolbar" class="canvas-toolbar">
+            <div class="canvas-toolbar-group">
+              <button id="zoom-in-btn" data-testid="zoom-in-btn" type="button" aria-label="Zoom in">+</button>
+              <button id="zoom-out-btn" data-testid="zoom-out-btn" type="button" aria-label="Zoom out">−</button>
+              <button id="zoom-fit-btn" data-testid="zoom-fit-btn" type="button" aria-label="Fit diagram to canvas">Fit</button>
+              <button id="zoom-reset-btn" data-testid="zoom-reset-btn" type="button" aria-label="Reset zoom to 100%">100%</button>
+              <span id="zoom-level" data-testid="zoom-level" class="zoom-level">100%</span>
+            </div>
+            <div class="canvas-toolbar-group">
+              <button id="export-dot-btn" data-testid="export-dot-btn" type="button" aria-label="Export diagram as DOT" disabled>Export DOT</button>
+              <button id="export-svg-btn" data-testid="export-svg-btn" type="button" aria-label="Export diagram as SVG" disabled>Export SVG</button>
+            </div>
+            <span class="canvas-hint" id="canvas-hint">Ctrl+scroll to zoom, drag or Shift+scroll to pan, Shift+arrows pan</span>
+          </div>
+          <div id="canvas" data-testid="canvas" tabindex="0" role="region" aria-label="NFA diagram canvas"><div id="canvas-viewport" data-testid="canvas-viewport"></div></div>
+        </div>
+
+        <div class="test-dock" id="test-dock" data-testid="test-dock">
+          <div class="simulation-controls">
+            <textarea id="test-input" data-testid="test-input" placeholder="Enter test strings, one per line"></textarea>
+            <button id="run-button" data-testid="run-button">Run</button>
+          </div>
+          <div id="run-status" data-testid="run-status"></div>
+          <pre id="verdict" data-testid="verdict"></pre>
+          <div id="trace" data-testid="trace"></div>
+          <div id="worker-status" data-testid="worker-status"></div>
+        </div>
+      </section>
+
+      <!-- Right Rail: Steps & Transition Table -->
+      <aside id="right-rail" class="rail right-rail" data-testid="right-rail">
+        <div class="right-panel steps-panel">
+          <h2 class="rail-title">Steps</h2>
+          <div id="step-log" data-testid="step-log"></div>
+          <div id="layout-note" data-testid="layout-note"></div>
+        </div>
+        <div class="right-panel table-panel">
+          <h2 class="rail-title">Transition Table</h2>
+          <div id="transition-table" data-testid="transition-table"></div>
+        </div>
+      </aside>
+    </main>
 
     <div class="validation-panel" id="validation-panel" data-testid="validation-panel">
       <h2>Validation & Oracles</h2>

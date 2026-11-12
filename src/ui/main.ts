@@ -32,6 +32,7 @@ import { formatStandaloneSvg, getExportFilename } from './export';
 import { encodeAppState, decodeAppState, type AppUrlState } from './url';
 import { formatBuildStamp } from './stamp';
 import { initTheme } from './theme';
+import { syncScrubberState, wireScrubber } from './scrubber';
 import type { StressRow, RegExpVerdict } from './stress-types';
 import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
 import {
@@ -350,6 +351,18 @@ const stepPlayBtn = document.getElementById('step-play') as HTMLButtonElement | 
 const stepNextBtn = document.getElementById('step-next') as HTMLButtonElement | null;
 const stepLastBtn = document.getElementById('step-last') as HTMLButtonElement | null;
 const stepCounterEl = document.getElementById('step-counter');
+const stepScrubberEl = document.getElementById('step-scrubber') as HTMLInputElement | null;
+function updateScrubberDisplay(): void {
+  if (!stepScrubberEl) return;
+  const totalSteps = currentAnalysis ? currentAnalysis.steps.length : 0;
+  const isFinal = currentView === 'final';
+  syncScrubberState(stepScrubberEl, currentStepIndex, totalSteps, isFinal);
+}
+if (stepScrubberEl) {
+  wireScrubber(stepScrubberEl, (step) => {
+    navigateToStep(step);
+  });
+}
 const stepSpeedSelect = document.getElementById('step-speed') as HTMLSelectElement | null;
 const viewToggleSelect = document.getElementById('view-toggle') as HTMLSelectElement | null;
 const stepLogEl = document.getElementById('step-log');
@@ -558,6 +571,7 @@ function clearResults(): void {
   if (stepCounterEl) {
     stepCounterEl.textContent = 'step 0 / 0';
   }
+  updateScrubberDisplay();
 
   if (stepFirstBtn) stepFirstBtn.disabled = true;
   if (stepPrevBtn) stepPrevBtn.disabled = true;
@@ -694,6 +708,7 @@ async function navigateToStep(stepIndex: number): Promise<void> {
   if (stepCounterEl) {
     stepCounterEl.textContent = `step ${currentStepIndex} / ${totalSteps}`;
   }
+  updateScrubberDisplay();
 
   const stepRecord = currentAnalysis.steps[targetStep - 1];
   if (stepRecord) {
@@ -835,6 +850,7 @@ async function renderFinalView(): Promise<void> {
   if (stepCounterEl) {
     stepCounterEl.textContent = `Final NFA (${currentAnalysis.stats.states} states, ${currentAnalysis.stats.transitions} transitions)`;
   }
+  updateScrubberDisplay();
 
   if (stepFirstBtn) stepFirstBtn.disabled = false;
   if (stepPrevBtn) stepPrevBtn.disabled = false;

@@ -387,6 +387,7 @@ const assert = require('node:assert');
 
   // 1. Check page readiness
   await page.waitForFunction('window.__ready === true', null, { timeout: 15000 });
+  assert.strictEqual(await page.$eval('#workbench', (el) => window.getComputedStyle(el).display), 'grid', '#workbench must use CSS grid display');
   assert.strictEqual(await page.$eval('#export-dot-btn', (el) => el.disabled), true, '#export-dot-btn must initially be disabled');
   assert.strictEqual(await page.$eval('#export-svg-btn', (el) => el.disabled), true, '#export-svg-btn must initially be disabled');
 
@@ -2885,13 +2886,14 @@ const assert = require('node:assert');
 
   // AC10: Resets on rebuild
   console.log('Testing AC10: Resets on rebuild...');
+  const defaultZoom = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
   await page.click('#zoom-in-btn');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'manual');
   await page.click('#build-button');
   await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'fit', 'Rebuild must reset viewport to fit mode');
   const zoomAfterRebuild = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
-  assert.strictEqual(zoomAfterRebuild, '1.0000', 'New build must reset zoom to default');
+  assert.strictEqual(zoomAfterRebuild, defaultZoom, 'New build must reset zoom to default');
 
   await page.fill('#regex-input', '');
   await page.click('#build-button');
@@ -3602,6 +3604,87 @@ const assert = require('node:assert');
   }));
   assert.strictEqual(systemState.themeAttr, null, 'data-theme attribute must be removed for system mode');
   assert.strictEqual(systemState.storageVal, 'system', 'localStorage theme key \'re-nfa:theme\' must be saved as system');
+
+  // Testing Ticket 23: Workbench Layout: 3 Rails, Canvas Hero & Scrubber
+  console.log('Testing Ticket 23: Workbench Layout: 3 Rails, Canvas Hero & Scrubber...');
+  const t23Layout = await page.evaluate(() => {
+    const wb = document.getElementById('workbench');
+    const leftRail = document.getElementById('left-rail');
+    const centreCol = document.getElementById('centre-column');
+    const rightRail = document.getElementById('right-rail');
+    const canvas = document.getElementById('canvas');
+    const toolbar = document.getElementById('canvas-toolbar');
+    const scrubber = document.getElementById('step-scrubber');
+
+    const wbStyle = wb ? window.getComputedStyle(wb) : null;
+    const canvasStyle = canvas ? window.getComputedStyle(canvas) : null;
+    const toolbarStyle = toolbar ? window.getComputedStyle(toolbar) : null;
+
+    return {
+      wbDisplay: wbStyle ? wbStyle.display : '',
+      hasLeftRail: Boolean(leftRail),
+      hasCentreCol: Boolean(centreCol),
+      hasRightRail: Boolean(rightRail),
+      canvasHeight: canvas ? canvas.clientHeight : 0,
+      canvasBgImage: canvasStyle ? canvasStyle.backgroundImage : '',
+      toolbarPosition: toolbarStyle ? toolbarStyle.position : '',
+      scrubberType: scrubber ? scrubber.getAttribute('type') : '',
+      scrubberDisabled: scrubber ? scrubber.disabled : true,
+      scrubberMin: scrubber ? scrubber.min : '',
+      scrubberMax: scrubber ? scrubber.max : '',
+      scrubberValue: scrubber ? scrubber.value : ''
+    };
+  });
+
+  assert.strictEqual(t23Layout.wbDisplay, 'grid', '#workbench must use CSS grid display');
+  assert.ok(t23Layout.hasLeftRail, '#left-rail must be present');
+  assert.ok(t23Layout.hasCentreCol, '#centre-column must be present');
+  assert.ok(t23Layout.hasRightRail, '#right-rail must be present');
+  assert.ok(t23Layout.canvasHeight >= 380, `Canvas height (${t23Layout.canvasHeight}px) must be at least 380px`);
+  assert.ok(t23Layout.canvasBgImage.includes('radial-gradient'), 'Canvas background must contain radial-gradient dot grid');
+  assert.strictEqual(t23Layout.toolbarPosition, 'absolute', 'Canvas toolbar must be positioned as an absolute overlay');
+  assert.strictEqual(t23Layout.scrubberType, 'range', '#step-scrubber must be an input of type range');
+
+  // Verify scrubber synchronization with build and navigation
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
+
+  const scrubberAfterBuild = await page.evaluate(() => {
+    const s = document.getElementById('step-scrubber');
+    return { disabled: s.disabled, min: s.min, max: s.max, value: s.value };
+  });
+  assert.strictEqual(scrubberAfterBuild.disabled, false, 'Scrubber must be enabled after build');
+  assert.strictEqual(scrubberAfterBuild.min, '1', 'Scrubber min must be 1');
+  assert.strictEqual(scrubberAfterBuild.max, '6', 'Scrubber max must be total steps (6)');
+  assert.strictEqual(scrubberAfterBuild.value, '1', 'Scrubber value must match step 1');
+
+  // Next button syncs scrubber
+  await page.click('#step-next');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 2 / 6'));
+  const scrubberStep2Val = await page.$eval('#step-scrubber', (el) => el.value);
+  assert.strictEqual(scrubberStep2Val, '2', 'Scrubber value must update to 2 when stepping via Next button');
+
+  // Scrubber drag / input drives step navigation
+  await page.evaluate(() => {
+    const s = document.getElementById('step-scrubber');
+    s.value = '4';
+    s.dispatchEvent(new Event('input', { bubbles: true }));
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 4 / 6'));
+  const counterTextAfterScrubber = await page.textContent('#step-counter');
+  assert.ok(counterTextAfterScrubber.includes('step 4 / 6'), 'Scrubber input must drive navigation to step 4');
+
+  // Final view disables scrubber
+  await page.selectOption('#view-toggle', 'final');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('Final NFA'));
+  const scrubberInFinal = await page.$eval('#step-scrubber', (el) => el.disabled);
+  assert.strictEqual(scrubberInFinal, true, 'Scrubber must be disabled in Final NFA view');
+
+  // Restore flat view
+  await page.selectOption('#view-toggle', 'flat');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step'));
 
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);

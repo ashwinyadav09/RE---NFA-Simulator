@@ -893,6 +893,43 @@ async function main() {
       replace: '    #app-header {\n      position: relative;',
       testType: 'e2e',
       expect: '#app-header position must be sticky'
+    },
+    // Ticket 23 Mutants (Workbench Layout: 3 Rails, Canvas Hero & Scrubber)
+    {
+      id: 'T23-AC1-1',
+      desc: 'T23-AC1-1: Corrupt scrubber value sync in src/ui/scrubber.ts',
+      file: 'src/ui/scrubber.ts',
+      find: '    target.value = String(clamped);',
+      replace: "    target.value = '1';",
+      testType: 'e2e',
+      expect: 'Scrubber value must update to 2 when stepping via Next button'
+    },
+    {
+      id: 'T23-AC1-2',
+      desc: 'T23-AC1-2: Do not disable scrubber in final view in src/ui/scrubber.ts',
+      file: 'src/ui/scrubber.ts',
+      find: '  if (totalSteps <= 0 || isFinalView) {',
+      replace: '  if (totalSteps <= 0) {',
+      testType: 'e2e',
+      expect: 'Scrubber must be disabled in Final NFA view'
+    },
+    {
+      id: 'T23-AC2-1',
+      desc: 'T23-AC2-1: Corrupt #workbench CSS grid display in index.html',
+      file: 'index.html',
+      find: '    .workbench-grid {\n      display: grid;',
+      replace: '    .workbench-grid {\n      display: block;',
+      testType: 'e2e',
+      expect: '#workbench must use CSS grid display'
+    },
+    {
+      id: 'T23-AC3-1',
+      desc: 'T23-AC3-1: Remove canvas dot grid radial gradient in index.html',
+      file: 'index.html',
+      find: '      background-image: radial-gradient(var(--canvas-grid-dot) 1px, transparent 1px);',
+      replace: '      /* background-image: radial-gradient(var(--canvas-grid-dot) 1px, transparent 1px); */',
+      testType: 'e2e',
+      expect: 'Canvas background must contain radial-gradient dot grid'
     }
   ];
 
