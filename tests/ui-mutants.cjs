@@ -4,11 +4,24 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 function getGitStatus() {
+  try {
+    execSync('git update-index --refresh', { stdio: 'ignore' });
+  } catch {}
   const raw = execSync('git status --porcelain', { encoding: 'utf8' }).trim();
   if (!raw) return '';
   return raw
     .split('\n')
-    .filter((l) => l.trim() && !l.includes('tests/ui-mutants.cjs') && !l.includes('.scratch/'))
+    .filter((l) => {
+      const line = l.trim();
+      if (!line) return false;
+      if (line.includes('tests/ui-mutants.cjs') || line.includes('.scratch/')) return false;
+      const file = line.slice(3).trim();
+      try {
+        const diff = execSync(`git diff -- "${file}"`, { encoding: 'utf8' }).trim();
+        if (!diff) return false;
+      } catch {}
+      return true;
+    })
     .join('\n')
     .trim();
 }
@@ -32,6 +45,7 @@ const UNIT_TESTED_FILES = new Set([
   'src/ui/csv.ts',
   'src/ui/export.ts',
   'src/ui/url.ts',
+  'src/ui/canvas-touch.ts',
   'src/diagram/index.ts'
 ]);
 
@@ -1121,6 +1135,42 @@ async function main() {
       replace: '',
       testType: 'e2e',
       expect: '#canvas-legend must contain 6 items'
+    },
+    {
+      id: 'T29-AC1-1',
+      desc: 'T29-AC1-1: Mutate onPan dx, dy to 0 in src/ui/canvas-touch.ts',
+      file: 'src/ui/canvas-touch.ts',
+      find: '      callbacks.onPan(dx, dy);',
+      replace: '      callbacks.onPan(0, 0);',
+      testType: 'e2e',
+      expect: 'Touch drag must pan canvas viewport'
+    },
+    {
+      id: 'T29-AC1-2',
+      desc: 'T29-AC1-2: Mutate onDoubleTap invocation in src/ui/canvas-touch.ts',
+      file: 'src/ui/canvas-touch.ts',
+      find: '        callbacks.onDoubleTap?.();',
+      replace: '        /* no double tap */',
+      testType: 'e2e',
+      expect: 'Double tap on canvas must trigger fit'
+    },
+    {
+      id: 'T29-AC2-1',
+      desc: 'T29-AC2-1: Mutate pinch scaleFactor in src/ui/canvas-touch.ts',
+      file: 'src/ui/canvas-touch.ts',
+      find: '        callbacks.onPinch(focalPoint, scaleFactor);',
+      replace: '        callbacks.onPinch(focalPoint, 1);',
+      testType: 'vitest',
+      expect: 'expected 1 to be close to 2'
+    },
+    {
+      id: 'T29-AC2-2',
+      desc: 'T29-AC2-2: Mutate touch pointerType check to ignore touch in src/ui/canvas-touch.ts',
+      file: 'src/ui/canvas-touch.ts',
+      find: "  const onPointerDown = (e: PointerEvent) => {\n    if (e.pointerType !== 'touch') return;",
+      replace: "  const onPointerDown = (e: PointerEvent) => {\n    return;",
+      testType: 'e2e',
+      expect: 'Touch drag must pan canvas viewport'
     }
   ];
 

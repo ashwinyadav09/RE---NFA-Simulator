@@ -56,6 +56,7 @@ import {
   closeLegend,
   formatPresetDescription
 } from './overlays';
+import { attachTouchGestures } from './canvas-touch';
 import type { StressRow, RegExpVerdict } from './stress-types';
 import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
 import {
@@ -1734,6 +1735,32 @@ if (canvasEl) {
       currentViewport = panBy(currentViewport, { dx, dy });
       applyViewport();
     }
+  });
+
+  attachTouchGestures(canvasEl, {
+    onPan: (dx, dy) => {
+      if (!currentContentRect) return;
+      currentViewportMode = 'manual';
+      currentViewport = panBy(currentViewport, { dx, dy });
+      applyViewport();
+    },
+    onPinch: (focalPoint, scaleFactor) => {
+      if (!currentContentRect) return;
+      currentViewportMode = 'manual';
+      const rect = canvasEl.getBoundingClientRect();
+      const focalInCanvas = {
+        x: focalPoint.x - rect.left,
+        y: focalPoint.y - rect.top,
+      };
+      const limits = getEffectiveLimits(currentFitZoom ?? undefined);
+      currentViewport = zoomAt(currentViewport, scaleFactor, focalInCanvas, limits);
+      applyViewport();
+    },
+    onDoubleTap: () => {
+      if (zoomFitBtn && !zoomFitBtn.disabled) {
+        zoomFitBtn.click();
+      }
+    },
   });
 }
 

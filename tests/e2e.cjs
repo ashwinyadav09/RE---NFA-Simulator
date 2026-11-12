@@ -4157,6 +4157,105 @@ const assert = require('node:assert');
   const copyLinkCopiedAttr = await page.$eval('#copy-link-status', (el) => el.getAttribute('data-copied'));
   assert.strictEqual(copyLinkCopiedAttr, 'true', '#copy-link-status must have data-copied="true"');
 
+  // ---------------------------------------------------------
+  // Ticket 29: Responsive Mobile & Touch
+  console.log('Testing Ticket 29: Responsive Mobile & Touch...');
+
+  // 1. Mobile viewport 390x844 (0 horizontal overflow)
+  await page.setViewportSize({ width: 390, height: 844 });
+  const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+  assert(scrollWidth <= 390, `Page scrollWidth (${scrollWidth}) must not exceed mobile viewport width (390)`);
+
+  // 2. Touch pan
+  const initialTransform = await page.$eval('#canvas-viewport', (el) => el.style.transform);
+
+  await page.evaluate(() => {
+    const canvas = document.getElementById('canvas');
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const startX = rect.left + 150;
+    const startY = rect.top + 150;
+
+    canvas.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 101,
+      pointerType: 'touch',
+      clientX: startX,
+      clientY: startY
+    }));
+
+    canvas.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 101,
+      pointerType: 'touch',
+      clientX: startX + 60,
+      clientY: startY + 40
+    }));
+
+    canvas.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 101,
+      pointerType: 'touch',
+      clientX: startX + 60,
+      clientY: startY + 40
+    }));
+  });
+
+  const pannedTransform = await page.$eval('#canvas-viewport', (el) => el.style.transform);
+  assert.notStrictEqual(pannedTransform, initialTransform, 'Touch drag must pan canvas viewport');
+
+  // 3. Touch double tap to fit
+  await page.evaluate(() => {
+    const canvas = document.getElementById('canvas');
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = rect.left + 150;
+    const y = rect.top + 150;
+
+    canvas.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 102,
+      pointerType: 'touch',
+      clientX: x,
+      clientY: y
+    }));
+    canvas.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 102,
+      pointerType: 'touch',
+      clientX: x,
+      clientY: y
+    }));
+
+    canvas.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 102,
+      pointerType: 'touch',
+      clientX: x,
+      clientY: y
+    }));
+    canvas.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 102,
+      pointerType: 'touch',
+      clientX: x,
+      clientY: y
+    }));
+  });
+
+  const fitTransform = await page.$eval('#canvas-viewport', (el) => el.style.transform);
+  assert.notStrictEqual(fitTransform, pannedTransform, 'Double tap on canvas must trigger fit');
+
+  // Restore desktop viewport
+  await page.setViewportSize({ width: 1440, height: 900 });
+
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
