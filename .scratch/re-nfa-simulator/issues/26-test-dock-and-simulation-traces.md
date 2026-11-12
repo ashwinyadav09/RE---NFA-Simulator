@@ -66,3 +66,4 @@ Test Files  13 passed (13)
 - **Window/Self Globals**: `dist/index.html` matches only `[ 'self.onmessage=', 'window.VizRenderer=' ]` (ADR 0004 compliance).
 - **No Fixed Sleeps**: `waitForTimeout` occurrences in `tests/e2e.cjs` remains strictly 2 (lines 1718 and 2242).
 - **Dist Size**: `dist/index.html` is 1,507.73 kB (gzip: 528.05 kB).
+

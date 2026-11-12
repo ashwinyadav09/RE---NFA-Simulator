@@ -993,7 +993,11 @@ async function handleBuild() {
   isDeadRun = false;
   lastRunResults = null;
   lastRunLines = null;
-  const source = inputEl.value;
+  let source = inputEl.value;
+  if (source.includes('^')) {
+    source = source.replace(/\^\*/g, '*').replace(/\^/g, '*');
+    inputEl.value = source;
+  }
 
   const notation = notationSelectEl?.value === 'textbook' ? 'textbook' : 'standard';
   const concatenation = concatSelectEl?.value === 'merge' ? 'merge' : 'epsilon-link';
@@ -1397,6 +1401,19 @@ if (presetSelectEl) {
 
 if (inputEl) {
   inputEl.addEventListener('input', () => {
+    if (inputEl.value.includes('^')) {
+      const start = inputEl.selectionStart;
+      const original = inputEl.value;
+      const normalized = original.replace(/\^\*/g, '*').replace(/\^/g, '*');
+      if (normalized !== original) {
+        inputEl.value = normalized;
+        if (start !== null) {
+          const diff = original.length - normalized.length;
+          const newPos = Math.max(0, start - diff);
+          inputEl.setSelectionRange(newPos, newPos);
+        }
+      }
+    }
     if (presetSelectEl && presetSelectEl.value) {
       const activePreset = PRESETS.find((p) => p.id === presetSelectEl.value);
       if (activePreset && activePreset.regex !== inputEl.value) {
@@ -1407,6 +1424,12 @@ if (inputEl) {
     }
   });
   inputEl.addEventListener('keydown', (e) => {
+    if (e.key === '^') {
+      e.preventDefault();
+      insertAtCursor('*');
+      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
     if (e.key === 'Enter') {
       handleBuild();
     }

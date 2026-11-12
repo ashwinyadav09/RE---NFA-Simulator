@@ -4043,6 +4043,14 @@ const assert = require('node:assert');
   const ctrlEnterSummary = await page.evaluate(() => document.getElementById('dock-summary')?.textContent?.trim());
   assert.strictEqual(ctrlEnterSummary, '1 accepted · 0 rejected', 'Ctrl+Enter must trigger simulation run');
 
+  // 5. Kleene star ^ / ^* ergonomics test
+  await page.fill('#regex-input', 'a^*');
+  await page.click('#build-button');
+  const alphabetWithStar = await page.$eval('#alphabet-input', (el) => el.value);
+  assert.ok(!alphabetWithStar.includes('^'), 'Typing a^* must treat star as Kleene star and NOT add ^ to alphabet');
+  const statsStar = await page.textContent('#stats');
+  assert(statsStar.includes('States: 4'), 'a^* must build a* with 4 states');
+
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);
