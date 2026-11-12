@@ -353,6 +353,8 @@ for (const m of mutants) {
 const baseTempDir = path.resolve(projectRoot, 'node_modules/.tmp-mutation-gate');
 fs.mkdirSync(baseTempDir, { recursive: true });
 const tempDir = fs.mkdtempSync(path.join(baseTempDir, 'run-'));
+const engineDir = path.resolve(projectRoot, 'src/engine');
+fs.cpSync(engineDir, tempDir, { recursive: true });
 
 function cleanupTempDir() {
   try {
