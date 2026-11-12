@@ -4,7 +4,7 @@
 
 **Blocked by:** 19: NFA export, URL deep links, keyboard-shortcut help
 
-**Status:** in-progress
+**Status:** done
 
 - [x] AC1 Clean clone: reproducible bit-for-bit single-file production build (`dist/index.html` sha256 and byte sizes match), clean `npm run check`, 5 consecutive clean `npm run e2e` runs, and mutation gate passes 13/13.
 - [x] AC2 Offline proof: zero non-file network requests and zero console errors over full app walkthrough in Playwright with `context.setOffline(true)`.
@@ -15,3 +15,4 @@
 - [x] AC7 Edge matrix: clean handling with zero console errors or uncaught exceptions across all edge expressions.
 - [x] AC8 Evaluator walkthrough: verified step-by-step evaluator guide with screen-verified numbers.
 - [x] AC9 Engine integrity: `src/engine` remains 100% byte-identical to commit `b87339c`.
+

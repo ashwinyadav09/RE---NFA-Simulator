@@ -4,7 +4,7 @@
 
 **Blocked by:** 18: Stress panel upgrades
 
-**Status:** in-review
+**Status:** done
 
 - [x] AC1 SVG export (flat step 2, textbook step, final view): filename, DOMParser 0 parsererror, exactly one XML declaration, xmlns/xlink, explicit width/height, white background rect, and the viewBox equals the on-screen SVG's (no zoom transform leaks, even after zooming). Mutants: declaration omitted; declaration duplicated; rect omitted; export taken from the DOM after a zoom.
 - [x] AC2 DOT export equals the DOT the render recorder saw (rendered views); for a >400-token build the node count equals the #stats state count. Mutants: wrong filename; exports the wrong view's DOT.
