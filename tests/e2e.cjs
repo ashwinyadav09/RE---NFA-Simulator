@@ -2082,6 +2082,62 @@ const assert = require('node:assert');
   const timeoutMarkerExists = await page.evaluate(() => !!document.querySelector('#stress-chart-container #panelA-timeout'));
   assert.strictEqual(timeoutMarkerExists, false, 'Chart must not contain a timeout marker when cancelled');
 
+  // ----------------------------------------------------
+  // Testing Ticket 27: Validation and Stress Panels
+  // ----------------------------------------------------
+  console.log('Testing Ticket 27: Validation and Stress Panels...');
+  const valSummary = await page.evaluate(() => {
+    const strip = document.getElementById('validation-summary-strip');
+    const invPill = document.getElementById('strip-invariants-pill')?.textContent?.trim();
+    const invVal = document.getElementById('strip-invariants-val')?.textContent?.trim();
+    const suitePill = document.getElementById('strip-suite-pill')?.textContent?.trim();
+    const suiteVal = document.getElementById('strip-suite-val')?.textContent?.trim();
+    const diffPill = document.getElementById('strip-diff-pill')?.textContent?.trim();
+    const diffVal = document.getElementById('strip-diff-val')?.textContent?.trim();
+    const stressPill = document.getElementById('strip-stress-pill')?.textContent?.trim();
+    const stressVal = document.getElementById('strip-stress-val')?.textContent?.trim();
+    const suiteChip = document.getElementById('suite-summary')?.textContent?.trim();
+
+    const inv1Code = document.querySelector('#inv-I1 .check-code')?.textContent?.trim();
+    const inv1Pill = document.querySelector('#inv-I1 .verdict-pill')?.textContent?.trim();
+    const inv1Name = document.querySelector('#inv-I1 .check-name')?.textContent?.trim();
+
+    const cardInvHref = document.getElementById('strip-card-invariants')?.getAttribute('href');
+    const cardStressHref = document.getElementById('strip-card-stress')?.getAttribute('href');
+
+    return {
+      hasStrip: !!strip,
+      invPill,
+      invVal,
+      suitePill,
+      suiteVal,
+      diffPill,
+      diffVal,
+      stressPill,
+      stressVal,
+      suiteChip,
+      inv1Code,
+      inv1Pill,
+      inv1Name,
+      cardInvHref,
+      cardStressHref
+    };
+  });
+
+  assert.strictEqual(valSummary.hasStrip, true, '#validation-summary-strip must exist');
+  assert.strictEqual(valSummary.cardInvHref, '#invariants-section', '#strip-card-invariants must link to #invariants-section');
+  assert.strictEqual(valSummary.cardStressHref, '#stress-section', '#strip-card-stress must link to #stress-section');
+  assert.strictEqual(valSummary.invPill, 'PASS', 'Invariants summary card pill must be PASS');
+  assert.strictEqual(valSummary.invVal, '6 / 6 pass', 'Invariants summary card val must be 6 / 6 pass');
+  assert.strictEqual(valSummary.suitePill, 'PASS', 'Suite summary card pill must be PASS');
+  assert.strictEqual(valSummary.suiteVal, '24 / 24 pass', 'Suite summary card val must be 24 / 24 pass');
+  assert.strictEqual(valSummary.suiteChip, '24 / 24 pass', '#suite-summary chip must be 24 / 24 pass');
+  assert.strictEqual(valSummary.diffPill, 'PASS', 'Diff summary card pill must be PASS');
+  assert.strictEqual(valSummary.stressPill, 'PASS', 'Stress summary card pill must be PASS');
+  assert.strictEqual(valSummary.inv1Code, 'I1', '#inv-I1 .check-code must be I1');
+  assert.strictEqual(valSummary.inv1Pill, 'PASS', '#inv-I1 .verdict-pill must be PASS');
+  assert.strictEqual(valSummary.inv1Name, 'Distinct Start & Accept', '#inv-I1 .check-name must be Distinct Start & Accept');
+
   // Ticket 15: Packaging and Polish
   console.log('Testing Ticket 15: Presets...');
   const presetOptions = await page.$$eval('#preset-select option', (opts) =>

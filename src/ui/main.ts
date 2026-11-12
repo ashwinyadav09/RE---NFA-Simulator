@@ -49,6 +49,7 @@ import {
   renderFragmentStack
 } from './step-table-view';
 import { formatDockSummary, renderTraceCards } from './test-dock';
+import { renderInvariantRow, updateSummaryStrip, formatSuiteSummary } from './validation-view';
 import type { StressRow, RegExpVerdict } from './stress-types';
 import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
 import {
@@ -605,6 +606,14 @@ function clearResults(): void {
       el.className = 'check-item';
     }
   }
+  const summaryStripEl = document.getElementById('validation-summary-strip');
+  if (summaryStripEl) {
+    updateSummaryStrip(summaryStripEl, {});
+  }
+  const suiteSummaryEl = document.getElementById('suite-summary');
+  if (suiteSummaryEl) {
+    suiteSummaryEl.textContent = 'Not run';
+  }
   if (diffStatusEl) diffStatusEl.textContent = '';
   if (diffResultsEl) diffResultsEl.innerHTML = '';
 
@@ -962,10 +971,17 @@ function renderValidationChecks(analysis: AnalysisSuccess, concatenation: 'epsil
 
   for (const item of items) {
     if (item.el) {
-      item.el.setAttribute('data-pass', String(item.check.pass));
-      item.el.className = `check-item ${item.check.pass ? 'pass' : 'fail'}`;
-      item.el.textContent = `${item.check.pass ? 'PASS' : 'FAIL'} - ${item.label}: ${item.check.explanation}`;
+      renderInvariantRow(item.el, item.label, item.check);
     }
+  }
+
+  const summaryStripEl = document.getElementById('validation-summary-strip');
+  if (summaryStripEl) {
+    const passCount = items.filter((it) => it.check.pass).length;
+    updateSummaryStrip(summaryStripEl, {
+      invariantsPass: passCount,
+      invariantsTotal: items.length
+    });
   }
 }
 
@@ -1823,6 +1839,19 @@ if (copyTableCsvBtn) {
 if (runSuiteBtn && suiteTableEl) {
   runSuiteBtn.addEventListener('click', () => {
     const results = runBuiltinSuite();
+    const summaryStripEl = document.getElementById('validation-summary-strip');
+    if (summaryStripEl) {
+      const passCount = results.filter((r) => r.pass).length;
+      updateSummaryStrip(summaryStripEl, {
+        suitePass: passCount,
+        suiteTotal: results.length
+      });
+    }
+    const suiteSummaryEl = document.getElementById('suite-summary');
+    if (suiteSummaryEl) {
+      suiteSummaryEl.textContent = formatSuiteSummary(results.map((r) => ({ verdict: r.pass ? 'PASS' : 'FAIL' })));
+      suiteSummaryEl.className = `suite-summary-chip font-code-sm ${results.every((r) => r.pass) ? 'chip-pass' : 'chip-fail'}`;
+    }
     const tbody = suiteTableEl.querySelector('tbody');
     if (tbody) {
       tbody.innerHTML = '';
@@ -1927,6 +1956,14 @@ if (diffRunBtn) {
 
       if (diffStatusEl) {
         diffStatusEl.textContent = `Differential test completed for k = ${k} (${diffResult.totalStrings.toLocaleString()} strings tested): ${statusSummary}`;
+      }
+
+      const summaryStripEl = document.getElementById('validation-summary-strip');
+      if (summaryStripEl) {
+        updateSummaryStrip(summaryStripEl, {
+          diffStatus: statusSummary,
+          diffStrings: diffResult.totalStrings
+        });
       }
 
       if (diffResultsEl) {
@@ -2352,6 +2389,16 @@ if (stressRunBtn) {
         stressStatusEl.textContent = stressCancelled
           ? 'Stress test cancelled.'
           : 'Stress test complete: NFA completed all inputs up to n = 1,000 in linear time.';
+        if (currentStressRows.length > 0) {
+          const maxN = Math.max(...currentStressRows.map((r) => r.n));
+          const summaryStripEl = document.getElementById('validation-summary-strip');
+          if (summaryStripEl) {
+            updateSummaryStrip(summaryStripEl, {
+              stressMaxN: maxN,
+              stressIsLinear: true
+            });
+          }
+        }
       }
     } finally {
       stressIsActive = false;

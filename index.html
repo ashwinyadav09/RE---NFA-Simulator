@@ -1705,63 +1705,270 @@
       font-weight: 600;
     }
 
+    /* Validation Panel & Summary Strip (Ticket 27) */
     .validation-panel {
-      margin-top: 30px;
+      margin-top: 40px;
       border-top: 2px solid var(--border);
-      padding-top: 16px;
+      padding-top: 24px;
     }
 
-    .invariants-section, .suite-section, .differential-section {
-      margin-bottom: 24px;
+    .section-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    .section-subtitle {
+      font-size: var(--text-sm);
+      margin: 4px 0 0 0;
+    }
+
+    .validation-summary-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    @media (max-width: 900px) {
+      .validation-summary-strip {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 500px) {
+      .validation-summary-strip {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .summary-strip-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .summary-strip-card:hover {
+      border-color: var(--primary);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .strip-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .strip-card-label {
+      font-size: var(--text-xs);
+      font-weight: 600;
+      color: var(--text-heading);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .strip-card-val {
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .strip-card-pill {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      letter-spacing: 0.04em;
+    }
+
+    .pill-pass {
+      background-color: var(--pass-soft);
+      color: var(--pass);
+      border: 1px solid var(--pass);
+    }
+
+    .pill-fail {
+      background-color: var(--fail-soft);
+      color: var(--fail);
+      border: 1px solid var(--fail);
+    }
+
+    .pill-neutral {
+      background-color: var(--bg-sunken);
+      color: var(--text-muted);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .invariants-section, .suite-section, .differential-section, .stress-section {
+      margin-bottom: 32px;
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+    }
+
+    .panel-header-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .panel-title-with-summary {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .suite-summary-chip {
+      font-size: var(--text-xs);
+      padding: 2px 10px;
+      border-radius: 9999px;
+      background-color: var(--bg-sunken);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .suite-summary-chip.chip-pass {
+      background-color: var(--pass-soft);
+      color: var(--pass);
+      border-color: var(--pass);
+    }
+
+    .suite-summary-chip.chip-fail {
+      background-color: var(--fail-soft);
+      color: var(--fail);
+      border-color: var(--fail);
     }
 
     .check-item {
-      padding: 6px 10px;
-      margin: 4px 0;
-      border-radius: var(--radius-sm);
+      padding: 8px 14px;
+      margin: 6px 0;
+      border-radius: var(--radius-md);
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background-color: var(--bg-page);
+      border: 1px solid var(--border-subtle);
+      border-left: 4px solid var(--border);
+      transition: background-color 0.15s ease;
+    }
+
+    .check-item.pass {
+      border-left-color: var(--pass);
+    }
+
+    .check-item.fail {
+      border-left-color: var(--fail);
+      background-color: var(--fail-soft);
+    }
+
+    .check-code {
+      font-weight: 700;
+      font-size: var(--text-xs);
+      color: var(--text-heading);
+    }
+
+    .check-name {
+      font-weight: 600;
+      color: var(--text-body);
+    }
+
+    .check-explanation {
+      color: var(--text-muted);
+      font-size: var(--text-xs);
+    }
+
+    .diff-oracle-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      margin: 6px 0;
+      background-color: var(--bg-page);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
       font-family: var(--font-mono);
       font-size: var(--text-sm);
     }
 
-    .check-item.pass {
-      background: var(--success-soft);
-      color: var(--success);
-      border-left: 4px solid var(--success-stroke);
+    .diff-mismatches-summary {
+      margin-top: 10px;
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
     }
 
-    .check-item.fail {
-      background: var(--fail-soft);
-      color: var(--fail);
-      border-left: 4px solid var(--fail-stroke);
-    }
-
-    .stress-section {
-      margin-top: 24px;
-      margin-bottom: 24px;
-    }
-
-    .badge-pass {
-      color: var(--success);
-      font-weight: bold;
-    }
-
-    .badge-fail {
-      color: var(--fail);
-      font-weight: bold;
-    }
-
-    .badge-skipped {
-      color: var(--warn);
-      font-weight: bold;
-    }
-
-    #diff-status {
-      margin-top: 8px;
+    .mismatches-none {
+      color: var(--pass);
       font-weight: 500;
     }
 
-    #diff-results {
-      margin-top: 8px;
+    .mismatches-found {
+      color: var(--fail);
+      background-color: var(--fail-soft);
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+    }
+
+    /* Data Tables inside panels */
+    .table-wrapper {
+      max-height: 360px;
+      overflow-y: auto;
+      margin-top: 12px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: var(--bg-page);
+    }
+
+    #suite-table, #stress-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--text-sm);
+      font-family: var(--font-mono);
+    }
+
+    #suite-table th, #stress-table th {
+      background: var(--bg-sunken);
+      color: var(--text-heading);
+      position: sticky;
+      top: 0;
+      font-weight: 600;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      z-index: 2;
+    }
+
+    #suite-table td, #stress-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    #suite-table tbody tr:hover, #stress-table tbody tr:hover {
+      background-color: var(--bg-sunken);
+    }
+
+    #suite-table tbody tr.row-fail {
+      background-color: var(--fail-soft);
+    }
+
+    #stress-chart-container {
+      background: var(--bg-page);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      overflow: hidden;
     }
 
     .diff-oracle-row {
@@ -2135,10 +2342,48 @@
     </main>
 
     <div class="validation-panel" id="validation-panel" data-testid="validation-panel">
-      <h2>Validation & Oracles</h2>
+      <div class="section-header-row">
+        <div>
+          <h2>Validation &amp; Oracles</h2>
+          <p class="section-subtitle text-muted">Independent verification that the constructed ε-NFA graph is mathematically correct.</p>
+        </div>
+      </div>
+
+      <div class="validation-summary-strip" id="validation-summary-strip">
+        <a href="#invariants-section" class="summary-strip-card" id="strip-card-invariants">
+          <div class="strip-card-header">
+            <span class="strip-card-label font-code-sm">Invariants</span>
+            <span class="strip-card-pill pill-neutral" id="strip-invariants-pill">6 / 6</span>
+          </div>
+          <span class="strip-card-val" id="strip-invariants-val">Not run</span>
+        </a>
+        <a href="#suite-section" class="summary-strip-card" id="strip-card-suite">
+          <div class="strip-card-header">
+            <span class="strip-card-label font-code-sm">Built-in Suite</span>
+            <span class="strip-card-pill pill-neutral" id="strip-suite-pill">Suite</span>
+          </div>
+          <span class="strip-card-val" id="strip-suite-val">Not run</span>
+        </a>
+        <a href="#differential-section" class="summary-strip-card" id="strip-card-diff">
+          <div class="strip-card-header">
+            <span class="strip-card-label font-code-sm">3 Oracles</span>
+            <span class="strip-card-pill pill-neutral" id="strip-diff-pill">Diff</span>
+          </div>
+          <span class="strip-card-val" id="strip-diff-val">Not run</span>
+        </a>
+        <a href="#stress-section" class="summary-strip-card" id="strip-card-stress">
+          <div class="strip-card-header">
+            <span class="strip-card-label font-code-sm">Linear Scaling</span>
+            <span class="strip-card-pill pill-neutral" id="strip-stress-pill">Stress</span>
+          </div>
+          <span class="strip-card-val" id="strip-stress-val">Not run</span>
+        </a>
+      </div>
 
       <div class="invariants-section" id="invariants-section" data-testid="invariants-section">
-        <h3>Structural Invariants & Consistency</h3>
+        <div class="panel-header-toolbar">
+          <h3>Structural Invariants &amp; Consistency</h3>
+        </div>
         <div class="check-item" id="inv-I1" data-testid="inv-I1"></div>
         <div class="check-item" id="inv-I2" data-testid="inv-I2"></div>
         <div class="check-item" id="inv-I3" data-testid="inv-I3"></div>
@@ -2148,8 +2393,13 @@
       </div>
 
       <div class="suite-section" id="suite-section" data-testid="suite-section">
-        <h3>Built-in Suite (24 Cases)</h3>
-        <button id="run-suite" data-testid="run-suite" type="button">Run Suite</button>
+        <div class="panel-header-toolbar">
+          <div class="panel-title-with-summary">
+            <h3>Built-in Suite (24 Cases)</h3>
+            <span id="suite-summary" class="suite-summary-chip font-code-sm text-muted">Not run</span>
+          </div>
+          <button id="run-suite" class="btn btn-secondary" data-testid="run-suite" type="button">Run Suite</button>
+        </div>
         <div class="table-wrapper">
           <table id="suite-table" data-testid="suite-table">
             <thead>
@@ -2168,25 +2418,32 @@
       </div>
 
       <div class="differential-section" id="differential-section" data-testid="differential-section">
-        <h3>Differential Testing Against 3 Oracles</h3>
-        <button id="diff-run" data-testid="diff-run" type="button">Run Differential Test</button>
+        <div class="panel-header-toolbar">
+          <h3>Differential Testing Against 3 Oracles</h3>
+          <button id="diff-run" class="btn btn-secondary" data-testid="diff-run" type="button">Run Differential Test</button>
+        </div>
         <div id="diff-status" data-testid="diff-status"></div>
         <div id="diff-results" data-testid="diff-results"></div>
       </div>
 
       <div class="stress-section" id="stress-section" data-testid="stress-section">
-        <h3>Stress Test: Backtracking RegExp vs Thompson NFA</h3>
+        <div class="section-header-row">
+          <div>
+            <h3>Stress Test: Backtracking RegExp vs Thompson NFA</h3>
+            <p class="section-subtitle text-muted">Backtracking matchers take exponential time on pathological patterns; Thompson NFA stays strictly linear.</p>
+          </div>
+        </div>
         <div class="controls stress-controls">
           <label for="stress-family">Family:</label>
           <select id="stress-family" data-testid="stress-family" aria-label="Family">
             <option value="star-star-b">(a*)*b on aⁿ</option>
             <option value="plus-plus">(a+)+ on aⁿb</option>
           </select>
-          <button id="stress-run" data-testid="stress-run" type="button">Run Stress Test</button>
-          <button id="stress-cancel" data-testid="stress-cancel" type="button" style="display: none;">Cancel</button>
+          <button id="stress-run" class="btn btn-primary" data-testid="stress-run" type="button">Run Stress Test</button>
+          <button id="stress-cancel" class="btn btn-secondary" data-testid="stress-cancel" type="button" style="display: none;">Cancel</button>
         </div>
-        <div id="stress-browser-info" data-testid="stress-browser-info" class="hint"></div>
-        <div id="stress-status" data-testid="stress-status" style="margin-top: 6px; font-weight: 500;"></div>
+        <div id="stress-browser-info" data-testid="stress-browser-info" class="hint font-code-sm text-muted"></div>
+        <div id="stress-status" data-testid="stress-status" class="stress-status-msg font-code-sm" style="margin-top: 6px; font-weight: 500;"></div>
         <div class="table-wrapper">
           <table id="stress-table" data-testid="stress-table">
             <thead>
@@ -2203,12 +2460,12 @@
           </table>
         </div>
         <div class="stress-table-actions" style="margin-top: 8px; display: flex; gap: 8px; align-items: center;">
-          <button id="stress-copy-csv" data-testid="stress-copy-csv" type="button" disabled>Copy CSV</button>
-          <span id="stress-copy-status" data-testid="stress-copy-status" role="status" style="font-size: 13px; color: #1e8e3e; min-width: 60px;"></span>
+          <button id="stress-copy-csv" class="btn btn-secondary btn-sm" data-testid="stress-copy-csv" type="button" disabled>Copy CSV</button>
+          <span id="stress-copy-status" data-testid="stress-copy-status" role="status" style="font-size: 13px; color: var(--pass); min-width: 60px;"></span>
         </div>
         <div class="stress-chart-controls" style="margin-top: 14px; display: flex; gap: 8px; align-items: center;">
-          <button id="stress-scale-toggle" data-testid="stress-scale-toggle" type="button" aria-pressed="false">Log scale</button>
-          <button id="stress-export-svg" data-testid="stress-export-svg" type="button" disabled>Export SVG</button>
+          <button id="stress-scale-toggle" class="btn btn-secondary btn-sm" data-testid="stress-scale-toggle" type="button" aria-pressed="false">Log scale</button>
+          <button id="stress-export-svg" class="btn btn-secondary btn-sm" data-testid="stress-export-svg" type="button" disabled>Export SVG</button>
         </div>
         <div id="stress-chart-container" data-testid="stress-chart-container" data-scale="linear" style="margin-top: 8px;"></div>
       </div>

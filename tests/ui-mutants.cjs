@@ -1049,6 +1049,42 @@ async function main() {
       replace: "    const isCollapsed = false;\n    testDockToggleBtn.setAttribute('aria-expanded', String(!isCollapsed));",
       testType: 'e2e',
       expect: 'Clicking toggle must add .collapsed to #test-dock'
+    },
+    {
+      id: 'T27-AC1-1',
+      desc: 'T27-AC1-1: Mutate formatSuiteSummary return in src/ui/validation-view.ts',
+      file: 'src/ui/validation-view.ts',
+      find: '    return `${passCount} / ${total} pass`;',
+      replace: '    return `${passCount} of ${total} pass`;',
+      testType: 'e2e',
+      expect: '#suite-summary chip must be 24 / 24 pass'
+    },
+    {
+      id: 'T27-AC1-2',
+      desc: 'T27-AC1-2: Mutate extractCodeBadge return code in src/ui/validation-view.ts',
+      file: 'src/ui/validation-view.ts',
+      find: '    return { code: match[1], name: match[2] };',
+      replace: "    return { code: 'BAD', name: match[2] };",
+      testType: 'e2e',
+      expect: '#inv-I1 .check-code must be I1'
+    },
+    {
+      id: 'T27-AC2-1',
+      desc: 'T27-AC2-1: Mutate renderInvariantRow pill text in src/ui/validation-view.ts',
+      file: 'src/ui/validation-view.ts',
+      find: "  pill.textContent = pass ? 'PASS' : 'FAIL';",
+      replace: "  pill.textContent = pass ? 'OK' : 'FAIL';",
+      testType: 'e2e',
+      expect: '#inv-I1 must display PASS'
+    },
+    {
+      id: 'T27-AC2-2',
+      desc: 'T27-AC2-2: Mutate updateSummaryStrip invariant value in src/ui/validation-view.ts',
+      file: 'src/ui/validation-view.ts',
+      find: '      invVal.textContent = `${data.invariantsPass} / ${data.invariantsTotal} pass`;',
+      replace: "      invVal.textContent = 'Invariants passed';",
+      testType: 'e2e',
+      expect: 'Invariants summary card val must be 6 / 6 pass'
     }
   ];
 
