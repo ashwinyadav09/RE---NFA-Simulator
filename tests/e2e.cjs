@@ -4107,6 +4107,56 @@ const assert = require('node:assert');
   const statsStar = await page.textContent('#stats');
   assert(statsStar.includes('States: 4'), 'a^* must build a* with 4 states');
 
+  // ---------------------------------------------------------
+  // Ticket 28: Overlays, Presets & Help Dialog
+  console.log('Testing Ticket 28: Overlays, Presets & Help Dialog...');
+
+  // 1. Preset descriptions
+  await page.selectOption('#preset-select', 'worked-example');
+  const presetDescText = await page.$eval('#preset-description', (el) => el.textContent.trim());
+  assert.strictEqual(presetDescText, 'The M1 hand-solved example: 10 states, 12 transitions', '#preset-description text must match preset description');
+  const optionTitle = await page.$eval('#preset-select option[value="worked-example"]', (el) => el.getAttribute('title'));
+  assert.strictEqual(optionTitle, 'The M1 hand-solved example: 10 states, 12 transitions', 'Preset option must have title attribute with description');
+
+  // 2. Legend popover toggling and items
+  const legendInitialHidden = await page.$eval('#canvas-legend', (el) => el.classList.contains('hidden'));
+  assert.strictEqual(legendInitialHidden, true, '#canvas-legend must initially have .hidden class');
+  const legendBtnInitialExpanded = await page.$eval('#legend-btn', (el) => el.getAttribute('aria-expanded'));
+  assert.strictEqual(legendBtnInitialExpanded, 'false', '#legend-btn must initially have aria-expanded="false"');
+
+  // Click legend button opens
+  await page.click('#legend-btn');
+  const legendOpen = await page.$eval('#canvas-legend', (el) => !el.classList.contains('hidden'));
+  assert.strictEqual(legendOpen, true, '#canvas-legend must be visible when opened');
+  const legendBtnOpenExpanded = await page.$eval('#legend-btn', (el) => el.getAttribute('aria-expanded'));
+  assert.strictEqual(legendBtnOpenExpanded, 'true', '#legend-btn must have aria-expanded="true" when open');
+
+  // Check 6 items in legend
+  const legendItemCount = await page.$$eval('#canvas-legend .legend-item', (items) => items.length);
+  assert.strictEqual(legendItemCount, 6, '#canvas-legend must contain 6 items');
+
+  // Click legend close button closes
+  await page.click('#legend-close');
+  const legendClosedAfterCloseBtn = await page.$eval('#canvas-legend', (el) => el.classList.contains('hidden'));
+  assert.strictEqual(legendClosedAfterCloseBtn, true, '#canvas-legend must be hidden when closed');
+
+  // Open again and press Escape
+  await page.click('#legend-btn');
+  await page.keyboard.press('Escape');
+  const legendClosedAfterEsc = await page.$eval('#canvas-legend', (el) => el.classList.contains('hidden'));
+  assert.strictEqual(legendClosedAfterEsc, true, '#canvas-legend must be hidden after Escape');
+
+  // 3. Keyboard help dialog subtitle & structure
+  const helpDesc = await page.$eval('#keyboard-help-desc', (el) => el.textContent.trim());
+  assert.ok(helpDesc.includes('Quick keys for navigation'), '#keyboard-help-desc must contain help description');
+
+  // 4. Copy Link status
+  await page.click('#copy-link-btn');
+  const copyLinkStatus = await page.$eval('#copy-link-status', (el) => el.textContent.trim());
+  assert.strictEqual(copyLinkStatus, 'Link copied!', '#copy-link-status must display Link copied!');
+  const copyLinkCopiedAttr = await page.$eval('#copy-link-status', (el) => el.getAttribute('data-copied'));
+  assert.strictEqual(copyLinkCopiedAttr, 'true', '#copy-link-status must have data-copied="true"');
+
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);

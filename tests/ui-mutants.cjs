@@ -1085,6 +1085,42 @@ async function main() {
       replace: "      invVal.textContent = 'Invariants passed';",
       testType: 'e2e',
       expect: 'Invariants summary card val must be 6 / 6 pass'
+    },
+    {
+      id: 'T28-AC1-1',
+      desc: 'T28-AC1-1: Mutate openLegend remove hidden in src/ui/overlays.ts',
+      file: 'src/ui/overlays.ts',
+      find: "  legendEl.classList.remove('hidden');",
+      replace: "  legendEl.classList.add('visible');",
+      testType: 'e2e',
+      expect: '#canvas-legend must be visible when opened'
+    },
+    {
+      id: 'T28-AC1-2',
+      desc: 'T28-AC1-2: Mutate closeLegend add hidden in src/ui/overlays.ts',
+      file: 'src/ui/overlays.ts',
+      find: "  legendEl.classList.add('hidden');",
+      replace: "  legendEl.classList.remove('visible');",
+      testType: 'e2e',
+      expect: '#canvas-legend must be hidden when closed'
+    },
+    {
+      id: 'T28-AC2-1',
+      desc: 'T28-AC2-1: Mutate formatPresetDescription return in src/ui/overlays.ts',
+      file: 'src/ui/overlays.ts',
+      find: "  return preset?.description || '';",
+      replace: "  return 'No description';",
+      testType: 'e2e',
+      expect: '#preset-description text must match preset description'
+    },
+    {
+      id: 'T28-AC2-2',
+      desc: 'T28-AC2-2: Mutate LEGEND_ITEMS count in src/ui/overlays.ts',
+      file: 'src/ui/overlays.ts',
+      find: "  { id: 'active-sim', title: 'Active in simulation', desc: 'States reachable after current input trace prefix' },",
+      replace: '',
+      testType: 'e2e',
+      expect: '#canvas-legend must contain 6 items'
     }
   ];
 

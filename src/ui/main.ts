@@ -50,6 +50,12 @@ import {
 } from './step-table-view';
 import { formatDockSummary, renderTraceCards } from './test-dock';
 import { renderInvariantRow, updateSummaryStrip, formatSuiteSummary } from './validation-view';
+import {
+  initLegend,
+  isLegendOpen,
+  closeLegend,
+  formatPresetDescription
+} from './overlays';
 import type { StressRow, RegExpVerdict } from './stress-types';
 import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
 import {
@@ -204,6 +210,12 @@ if (buildStampEl) {
   buildStampEl.textContent = formatBuildStamp();
 }
 initTheme();
+const legendBtn = document.getElementById('legend-btn') as HTMLButtonElement | null;
+const legendEl = document.getElementById('canvas-legend');
+const legendCloseBtn = document.getElementById('legend-close') as HTMLButtonElement | null;
+if (legendBtn && legendEl) {
+  initLegend(legendBtn, legendEl, legendCloseBtn);
+}
 const keyboardHelpBtn = document.getElementById('keyboard-help-btn') as HTMLButtonElement | null;
 const keyboardHelpDialog = document.getElementById('keyboard-help-dialog') as HTMLDialogElement | null;
 const keyboardHelpClose = document.getElementById('keyboard-help-close') as HTMLButtonElement | null;
@@ -445,6 +457,9 @@ if (presetSelectEl) {
     const opt = document.createElement('option');
     opt.value = preset.id;
     opt.textContent = `${preset.name} [${preset.notation}]`;
+    if (preset.description) {
+      opt.title = preset.description;
+    }
     presetSelectEl.appendChild(opt);
   }
 }
@@ -1401,7 +1416,7 @@ if (presetSelectEl) {
     }
     const preset = PRESETS.find((p) => p.id === selectedId);
     if (!preset) return;
-    if (presetDescEl) presetDescEl.textContent = preset.description || '';
+    if (presetDescEl) presetDescEl.textContent = formatPresetDescription(selectedId, PRESETS);
 
     if (inputEl) inputEl.value = preset.regex;
     if (notationSelectEl) notationSelectEl.value = preset.notation;
@@ -1751,6 +1766,9 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     return;
   }
   if (e.key === 'Escape') {
+    if (legendEl && isLegendOpen(legendEl)) {
+      closeLegend(legendEl, legendBtn);
+    }
     if (currentActiveStates !== null) {
       currentActiveStates = null;
       if (tableEl) {
@@ -2482,7 +2500,7 @@ async function initDeepLink(): Promise<void> {
     } else {
       if (presetSelectEl) presetSelectEl.value = state.preset;
       const presetDescEl = document.getElementById('preset-description');
-      if (presetDescEl) presetDescEl.textContent = preset.description || '';
+      if (presetDescEl) presetDescEl.textContent = formatPresetDescription(state.preset, PRESETS);
       if (inputEl) inputEl.value = preset.regex;
       if (notationSelectEl) notationSelectEl.value = preset.notation;
       if (preset.concatenation && concatSelectEl) {
