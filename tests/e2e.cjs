@@ -3934,6 +3934,116 @@ const assert = require('node:assert');
   const copyCsvStatusText = await page.evaluate(() => document.getElementById('copy-table-csv-status')?.textContent || '');
   assert.ok(copyCsvStatusText.includes('copied to clipboard'), '#copy-table-csv-status must announce to live region');
 
+  // Testing Ticket 26: Test Dock and Simulation Traces
+  console.log('Testing Ticket 26: Test Dock & Simulation Traces...');
+
+  // 1. Initial dock structure & collapse toggle
+  const dockInit = await page.evaluate(() => {
+    const dock = document.getElementById('test-dock');
+    const header = dock?.querySelector('.test-dock-header');
+    const summary = document.getElementById('dock-summary')?.textContent?.trim();
+    const toggle = document.getElementById('test-dock-toggle');
+    const emptyHint = document.getElementById('trace-empty-hint');
+    return {
+      hasDock: Boolean(dock),
+      hasHeader: Boolean(header),
+      summary,
+      isExpanded: toggle?.getAttribute('aria-expanded'),
+      hintHidden: emptyHint ? emptyHint.hidden : false
+    };
+  });
+  assert.strictEqual(dockInit.hasDock, true, '#test-dock must exist');
+  assert.strictEqual(dockInit.hasHeader, true, '#test-dock must have .test-dock-header');
+  assert.strictEqual(dockInit.summary, '1 accepted · 0 rejected', 'Summary must reflect current run results');
+
+  // Toggle collapse
+  await page.click('#test-dock-toggle');
+  const isCollapsed = await page.evaluate(() => {
+    const dock = document.getElementById('test-dock');
+    const toggle = document.getElementById('test-dock-toggle');
+    return {
+      hasClass: dock?.classList.contains('collapsed'),
+      expanded: toggle?.getAttribute('aria-expanded')
+    };
+  });
+  assert.strictEqual(isCollapsed.hasClass, true, 'Clicking toggle must add .collapsed to #test-dock');
+  assert.strictEqual(isCollapsed.expanded, 'false', 'Toggle aria-expanded must be false when collapsed');
+
+  // Re-expand
+  await page.click('#test-dock-toggle');
+  const isExpandedAgain = await page.evaluate(() => {
+    const dock = document.getElementById('test-dock');
+    const toggle = document.getElementById('test-dock-toggle');
+    return {
+      hasClass: dock?.classList.contains('collapsed'),
+      expanded: toggle?.getAttribute('aria-expanded')
+    };
+  });
+  assert.strictEqual(isExpandedAgain.hasClass, false, 'Clicking toggle again must remove .collapsed');
+  assert.strictEqual(isExpandedAgain.expanded, 'true', 'Toggle aria-expanded must be true when re-expanded');
+
+  // 2. Multi-string run with ACCEPT, REJECT, and empty string
+  await page.fill('#test-input', 'ba\nab\n');
+  await page.click('#run-button');
+  await page.waitForFunction(() => document.getElementById('dock-summary')?.textContent?.includes('rejected'));
+
+  const multiRunSummary = await page.evaluate(() => document.getElementById('dock-summary')?.textContent?.trim());
+  assert.strictEqual(multiRunSummary, '1 accepted · 2 rejected', '#dock-summary must show 1 accepted · 2 rejected');
+
+  const cardDetails = await page.evaluate(() => {
+    const cards = Array.from(document.querySelectorAll('#trace .trace-card'));
+    return cards.map((card) => {
+      const line = card.getAttribute('data-line');
+      const title = card.querySelector('.trace-card-title')?.textContent?.trim();
+      const pill = card.querySelector('.verdict-pill');
+      const pillText = pill?.textContent?.trim();
+      const isAccept = pill?.classList.contains('accept');
+      const isReject = pill?.classList.contains('reject');
+      const steps = Array.from(card.querySelectorAll('.trace-step')).map((s) => ({
+        step: s.getAttribute('data-step'),
+        states: s.getAttribute('data-states'),
+        active: s.classList.contains('active'),
+        pressed: s.getAttribute('aria-pressed')
+      }));
+      return { line, title, pillText, isAccept, isReject, steps };
+    });
+  });
+
+  assert.strictEqual(cardDetails.length, 3, 'Must render 3 trace cards for 3 lines');
+  assert.strictEqual(cardDetails[0].pillText, 'ACCEPT');
+  assert.strictEqual(cardDetails[0].isAccept, true);
+  assert.strictEqual(cardDetails[1].pillText, 'REJECT');
+  assert.strictEqual(cardDetails[1].isReject, true);
+  assert.strictEqual(cardDetails[2].pillText, 'REJECT');
+  assert.ok(cardDetails[2].title.includes('ε (empty string)'), 'Empty string card title must contain ε (empty string)');
+
+  // First step of first card is initially active
+  assert.strictEqual(cardDetails[0].steps[0].active, true, 'First step of first card must be active');
+  assert.strictEqual(cardDetails[0].steps[0].pressed, 'true', 'First step of first card must have aria-pressed="true"');
+
+  // 3. Trace step selection and active state sync
+  await page.click('#trace .trace-card[data-line="0"] .trace-step[data-step="2"]');
+  const step2Active = await page.evaluate(() => {
+    const s2 = document.querySelector('#trace .trace-card[data-line="0"] .trace-step[data-step="2"]');
+    const tableActive = Array.from(document.querySelectorAll('#transition-table tbody tr.active-state-row')).map((r) => r.getAttribute('data-state'));
+    return {
+      active: s2?.classList.contains('active'),
+      pressed: s2?.getAttribute('aria-pressed'),
+      tableActive
+    };
+  });
+  assert.strictEqual(step2Active.active, true, 'Step 2 must become active on click');
+  assert.strictEqual(step2Active.pressed, 'true', 'Step 2 must have aria-pressed="true"');
+  assert.ok(step2Active.tableActive.includes('9'), 'Accept state 9 must be highlighted in transition table');
+
+  // 4. Ctrl+Enter keyboard shortcut
+  await page.focus('#test-input');
+  await page.fill('#test-input', 'ba');
+  await page.keyboard.press('Control+Enter');
+  await page.waitForFunction(() => document.getElementById('dock-summary')?.textContent === '1 accepted · 0 rejected');
+  const ctrlEnterSummary = await page.evaluate(() => document.getElementById('dock-summary')?.textContent?.trim());
+  assert.strictEqual(ctrlEnterSummary, '1 accepted · 0 rejected', 'Ctrl+Enter must trigger simulation run');
+
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);

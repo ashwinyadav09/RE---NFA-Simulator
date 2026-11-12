@@ -1013,6 +1013,42 @@ async function main() {
       replace: "      currentActiveStates = null;\n      // if (tableEl) updateTableActiveStates(tableEl, null);\n      if (traceEl) {",
       testType: 'e2e',
       expect: 'Pressing Escape must clear active state row highlighting'
+    },
+    {
+      id: 'T26-AC1-1',
+      desc: 'T26-AC1-1: Mutate formatDockSummary return text in src/ui/test-dock.ts',
+      file: 'src/ui/test-dock.ts',
+      find: '  return `${accepted} accepted · ${rejected} rejected`;',
+      replace: '  return `${accepted} accepted, ${rejected} rejected`;',
+      testType: 'e2e',
+      expect: 'Summary must reflect current run results'
+    },
+    {
+      id: 'T26-AC1-2',
+      desc: 'T26-AC1-2: Invert verdict pill class in src/ui/test-dock.ts',
+      file: 'src/ui/test-dock.ts',
+      find: "    pill.className = `verdict-pill ${res.verdict === 'ACCEPT' ? 'accept' : 'reject'}`;",
+      replace: "    pill.className = `verdict-pill ${res.verdict === 'ACCEPT' ? 'reject' : 'accept'}`;",
+      testType: 'e2e',
+      expect: 'false !== true'
+    },
+    {
+      id: 'T26-AC2-1',
+      desc: 'T26-AC2-1: Omit Ctrl+Enter run shortcut in src/ui/main.ts',
+      file: 'src/ui/main.ts',
+      find: "    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {\n      e.preventDefault();\n      if (runButtonEl) {\n        runButtonEl.click();\n      }\n    }",
+      replace: "    if (false && (e.ctrlKey || e.metaKey) && e.key === 'Enter') {\n      e.preventDefault();\n      if (runButtonEl) {\n        runButtonEl.click();\n      }\n    }",
+      testType: 'e2e',
+      expect: 'Ctrl+Enter must trigger simulation run'
+    },
+    {
+      id: 'T26-AC2-2',
+      desc: 'T26-AC2-2: Omit test-dock collapse toggle in src/ui/main.ts',
+      file: 'src/ui/main.ts',
+      find: "    const isCollapsed = testDockEl.classList.toggle('collapsed');\n    testDockToggleBtn.setAttribute('aria-expanded', String(!isCollapsed));",
+      replace: "    const isCollapsed = false;\n    testDockToggleBtn.setAttribute('aria-expanded', String(!isCollapsed));",
+      testType: 'e2e',
+      expect: 'Clicking toggle must add .collapsed to #test-dock'
     }
   ];
 

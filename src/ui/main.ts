@@ -48,6 +48,7 @@ import {
   exportTableCsv,
   renderFragmentStack
 } from './step-table-view';
+import { formatDockSummary, renderTraceCards } from './test-dock';
 import type { StressRow, RegExpVerdict } from './stress-types';
 import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
 import {
@@ -357,6 +358,26 @@ const testInputEl = document.getElementById('test-input') as HTMLTextAreaElement
 const runButtonEl = document.getElementById('run-button') as HTMLButtonElement | null;
 const verdictEl = document.getElementById('verdict');
 const traceEl = document.getElementById('trace');
+const dockSummaryEl = document.getElementById('dock-summary');
+const testDockToggleBtn = document.getElementById('test-dock-toggle') as HTMLButtonElement | null;
+const testDockEl = document.getElementById('test-dock');
+const traceEmptyHintEl = document.getElementById('trace-empty-hint');
+if (testDockToggleBtn && testDockEl) {
+  testDockToggleBtn.addEventListener('click', () => {
+    const isCollapsed = testDockEl.classList.toggle('collapsed');
+    testDockToggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
+  });
+}
+if (testInputEl) {
+  testInputEl.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      if (runButtonEl) {
+        runButtonEl.click();
+      }
+    }
+  });
+}
 const errorEl = document.getElementById('error-message');
 const layoutNoteEl = document.getElementById('layout-note');
 const runStatusEl = document.getElementById('run-status');
@@ -501,6 +522,12 @@ function clearResults(): void {
   }
   if (traceEl) {
     traceEl.innerHTML = '';
+  }
+  if (dockSummaryEl) {
+    dockSummaryEl.textContent = 'Not run';
+  }
+  if (traceEmptyHintEl) {
+    traceEmptyHintEl.hidden = false;
   }
   if (verdictEl) {
     verdictEl.textContent = '';
@@ -1197,112 +1224,27 @@ function renderTrace(
   results: RunResult[],
   lines: string[]
 ): void {
-  const compact = isCompactLabels();
-  container.textContent = '';
-  const mapState = (q: number) =>
-    currentAnalysis && compact ? currentAnalysis.compactLabelMap[q] ?? q : q;
-
-  for (let lineIdx = 0; lineIdx < results.length; lineIdx++) {
-    const res = results[lineIdx];
-    const line = lines[lineIdx];
-    const codePoints = Array.from(line);
-
-    const lineEl = document.createElement('div');
-    lineEl.className = 'trace-line';
-    lineEl.setAttribute('data-line', String(lineIdx));
-
-    const stringDiv = document.createElement('div');
-    const strong = document.createElement('strong');
-    strong.textContent = `String: "${line}"`;
-    stringDiv.appendChild(strong);
-    lineEl.appendChild(stringDiv);
-
-    const initialDiv = document.createElement('div');
-    initialDiv.className = 'trace-step';
-    initialDiv.setAttribute('data-step', '0');
-    initialDiv.setAttribute('data-states', res.initialClosure.join(','));
-    initialDiv.style.cursor = 'pointer';
-    const initMapped = res.initialClosure.map(mapState).sort((a, b) => a - b);
-    initialDiv.textContent = `Initial: {${initMapped.join(', ')}}`;
-
-    initialDiv.addEventListener('click', () => {
-      container.querySelectorAll('.trace-step, .trace-status').forEach((el) => el.classList.remove('active'));
-      initialDiv.classList.add('active');
-      currentActiveStates = [...res.initialClosure];
+  renderTraceCards(container, results, lines, {
+    isCompact: isCompactLabels(),
+    compactLabelMap: currentAnalysis?.compactLabelMap,
+    onStepSelect: (states, isDead, position) => {
+      currentActiveStates = [...states];
       if (tableEl) {
         updateTableActiveStates(tableEl, currentActiveStates);
       }
-      isDeadRun = false;
+      isDeadRun = isDead;
       if (runStatusEl) {
-        runStatusEl.textContent = '';
-        runStatusEl.className = '';
+        if (isDeadRun && position !== undefined) {
+          runStatusEl.textContent = `Run is dead at position ${position}: active set is empty.`;
+          runStatusEl.className = 'warning';
+        } else {
+          runStatusEl.textContent = '';
+          runStatusEl.className = '';
+        }
       }
       renderFinalView();
-    });
-    lineEl.appendChild(initialDiv);
-
-    for (let idx = 0; idx < res.afterEachSymbol.length; idx++) {
-      const set = res.afterEachSymbol[idx];
-      const char = codePoints[idx] ?? '';
-      const stepDiv = document.createElement('div');
-      stepDiv.className = 'trace-step';
-      stepDiv.setAttribute('data-step', String(idx + 1));
-      stepDiv.setAttribute('data-states', set.join(','));
-      stepDiv.style.cursor = 'pointer';
-      const mapped = set.map(mapState).sort((a, b) => a - b);
-      stepDiv.textContent = `After '${char}': {${mapped.join(', ')}}`;
-
-      stepDiv.addEventListener('click', () => {
-        container.querySelectorAll('.trace-step, .trace-status').forEach((el) => el.classList.remove('active'));
-        stepDiv.classList.add('active');
-        currentActiveStates = [...set];
-        if (tableEl) {
-          updateTableActiveStates(tableEl, currentActiveStates);
-        }
-        isDeadRun = set.length === 0;
-        if (runStatusEl) {
-          if (isDeadRun) {
-            runStatusEl.textContent = `Run is dead at position ${idx}: active set is empty.`;
-            runStatusEl.className = 'warning';
-          } else {
-            runStatusEl.textContent = '';
-            runStatusEl.className = '';
-          }
-        }
-        renderFinalView();
-      });
-      lineEl.appendChild(stepDiv);
     }
-
-    if (res.status === 'dead') {
-      const deadDiv = document.createElement('div');
-      deadDiv.className = 'trace-status dead';
-      deadDiv.style.cursor = 'pointer';
-      deadDiv.textContent = `Dead at position ${res.position}`;
-      deadDiv.addEventListener('click', () => {
-        container.querySelectorAll('.trace-step, .trace-status').forEach((el) => el.classList.remove('active'));
-        deadDiv.classList.add('active');
-        currentActiveStates = [];
-        if (tableEl) {
-          updateTableActiveStates(tableEl, currentActiveStates);
-        }
-        isDeadRun = true;
-        if (runStatusEl) {
-          runStatusEl.textContent = `Run is dead at position ${res.position}: active set is empty.`;
-          runStatusEl.className = 'warning';
-        }
-        renderFinalView();
-      });
-      lineEl.appendChild(deadDiv);
-    } else if (res.status === 'out_of_alphabet') {
-      const errDiv = document.createElement('div');
-      errDiv.className = 'trace-status error';
-      errDiv.textContent = `Symbol '${res.symbol}' at position ${res.position} outside alphabet`;
-      lineEl.appendChild(errDiv);
-    }
-
-    container.appendChild(lineEl);
-  }
+  });
 }
 
 function handleRun() {
@@ -1312,6 +1254,12 @@ function handleRun() {
     }
     if (traceEl) {
       traceEl.innerHTML = '';
+    }
+    if (dockSummaryEl) {
+      dockSummaryEl.textContent = 'Not run';
+    }
+    if (traceEmptyHintEl) {
+      traceEmptyHintEl.hidden = false;
     }
     if (runStatusEl) {
       runStatusEl.textContent = '';
@@ -1339,6 +1287,13 @@ function handleRun() {
     announceLive(`Verdict: ${verdictLines.join(', ')}`);
   }
 
+  if (dockSummaryEl) {
+    dockSummaryEl.textContent = formatDockSummary(results);
+  }
+  if (traceEmptyHintEl) {
+    traceEmptyHintEl.hidden = true;
+  }
+
   if (runStatusEl) {
     runStatusEl.textContent = '';
     runStatusEl.className = '';
@@ -1350,6 +1305,7 @@ function handleRun() {
       const firstInitial = traceEl.querySelector('.trace-step[data-step="0"]') as HTMLElement | null;
       if (firstInitial) {
         firstInitial.classList.add('active');
+        firstInitial.setAttribute('aria-pressed', 'true');
       }
       currentActiveStates = [...results[0].initialClosure];
       if (tableEl) {
