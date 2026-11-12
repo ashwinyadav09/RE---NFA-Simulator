@@ -31,6 +31,7 @@ import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramO
 import { formatStandaloneSvg, getExportFilename } from './export';
 import { encodeAppState, decodeAppState, type AppUrlState } from './url';
 import { formatBuildStamp } from './stamp';
+import { initTheme } from './theme';
 import type { StressRow, RegExpVerdict } from './stress-types';
 import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
 import {
@@ -184,6 +185,7 @@ const buildStampEl = document.getElementById('build-stamp');
 if (buildStampEl) {
   buildStampEl.textContent = formatBuildStamp();
 }
+initTheme();
 const keyboardHelpBtn = document.getElementById('keyboard-help-btn') as HTMLButtonElement | null;
 const keyboardHelpDialog = document.getElementById('keyboard-help-dialog') as HTMLDialogElement | null;
 const keyboardHelpClose = document.getElementById('keyboard-help-close') as HTMLButtonElement | null;

@@ -856,6 +856,43 @@ async function main() {
       replace: '    #build-button {\n      background-color: #cccccc;',
       testType: 'e2e',
       expect: '#build-button background-color must match primary token'
+    },
+    // Ticket 22 Mutants (Shell, Header & Build Stamp Footer)
+    {
+      id: 'T22-AC1-1',
+      desc: 'T22-AC1-1: Corrupt theme storage key in src/ui/theme.ts',
+      file: 'src/ui/theme.ts',
+      find: "export const THEME_STORAGE_KEY = 're-nfa:theme';",
+      replace: "export const THEME_STORAGE_KEY = 'corrupted-theme-key';",
+      testType: 'e2e',
+      expect: "localStorage theme key 're-nfa:theme' must be saved"
+    },
+    {
+      id: 'T22-AC1-2',
+      desc: 'T22-AC1-2: Omit data-theme attribute set in src/ui/theme.ts',
+      file: 'src/ui/theme.ts',
+      find: "    el.setAttribute('data-theme', theme);",
+      replace: "    // el.setAttribute('data-theme', theme);",
+      testType: 'e2e',
+      expect: 'data-theme attribute must be set to dark'
+    },
+    {
+      id: 'T22-AC2-1',
+      desc: 'T22-AC2-1: Corrupt validation nav link href in index.html',
+      file: 'index.html',
+      find: '        <a href="#validation-panel" class="nav-link">Validation</a>',
+      replace: '        <a href="#wrong-validation" class="nav-link">Validation</a>',
+      testType: 'e2e',
+      expect: 'Validation nav link must point to #validation-panel'
+    },
+    {
+      id: 'T22-AC3-1',
+      desc: 'T22-AC3-1: Corrupt #app-header sticky position in index.html',
+      file: 'index.html',
+      find: '    #app-header {\n      position: sticky;',
+      replace: '    #app-header {\n      position: relative;',
+      testType: 'e2e',
+      expect: '#app-header position must be sticky'
     }
   ];
 

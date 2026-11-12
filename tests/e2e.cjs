@@ -2135,14 +2135,15 @@ const assert = require('node:assert');
       })
       .map((el) => el.id || el.getAttribute('data-testid') || el.tagName.toLowerCase());
   });
-  console.log('Focusable controls initial order:', focusableIds.slice(0, 8));
-  assert.strictEqual(focusableIds[0], 'preset-select', 'First focusable should be preset-select');
-  assert.strictEqual(focusableIds[1], 'regex-input', 'Second focusable should be regex-input');
-  assert.strictEqual(focusableIds[2], 'insert-eps', 'Third focusable should be insert-eps');
-  assert.strictEqual(focusableIds[3], 'insert-empty', 'Fourth focusable should be insert-empty');
-  assert.strictEqual(focusableIds[4], 'notation-select', 'Fifth focusable should be notation-select');
-  assert.strictEqual(focusableIds[5], 'concat-select', 'Sixth focusable should be concat-select');
-  assert.strictEqual(focusableIds[6], 'build-button', 'Seventh focusable should be build-button');
+  console.log('Focusable controls initial order:', focusableIds.slice(0, 9));
+  assert.strictEqual(focusableIds[0], 'theme-select', 'First focusable should be theme-select (header app bar per Ticket 22 / A12)');
+  assert.strictEqual(focusableIds[1], 'preset-select', 'Second focusable should be preset-select');
+  assert.strictEqual(focusableIds[2], 'regex-input', 'Third focusable should be regex-input');
+  assert.strictEqual(focusableIds[3], 'insert-eps', 'Fourth focusable should be insert-eps');
+  assert.strictEqual(focusableIds[4], 'insert-empty', 'Fifth focusable should be insert-empty');
+  assert.strictEqual(focusableIds[5], 'notation-select', 'Sixth focusable should be notation-select');
+  assert.strictEqual(focusableIds[6], 'concat-select', 'Seventh focusable should be concat-select');
+  assert.strictEqual(focusableIds[7], 'build-button', 'Eighth focusable should be build-button');
 
   // Accessibility check: every select element must have an accessible name
   const selectAccessibleNames = await page.evaluate(() => {
@@ -3534,6 +3535,73 @@ const assert = require('node:assert');
   assert.ok(t21Styles.workerStatusText.includes('pong'), '#worker-status must retain worker handshake textContent');
   assert.strictEqual(t21Styles.darkBgPage.toLowerCase(), '#14130f', 'Dark theme --bg-page must match #14130f');
   assert.strictEqual(t21Styles.darkPrimary.toLowerCase(), '#9db0ff', 'Dark theme --primary must match #9db0ff');
+
+  // Testing Ticket 22: Shell, Header & Build Stamp Footer
+  console.log('Testing Ticket 22: Shell, Header & Build Stamp Footer...');
+  const headerInfo = await page.evaluate(() => {
+    const hdr = document.getElementById('app-header');
+    if (!hdr) return null;
+    const style = window.getComputedStyle(hdr);
+    const title = hdr.querySelector('h1')?.textContent?.trim() || '';
+    const logoSvg = hdr.querySelector('.logo-mark');
+    const navLinks = Array.from(hdr.querySelectorAll('.app-nav a')).map((a) => ({
+      text: a.textContent?.trim() || '',
+      href: a.getAttribute('href') || ''
+    }));
+    const footer = document.getElementById('app-footer');
+    const footerStyle = footer ? window.getComputedStyle(footer) : null;
+    const footerText = footer ? footer.textContent || '' : '';
+
+    return {
+      position: style.position,
+      top: style.top,
+      display: style.display,
+      title,
+      hasLogo: Boolean(logoSvg && logoSvg.querySelector('circle') && logoSvg.querySelector('line')),
+      navLinks,
+      footerBg: footerStyle ? footerStyle.backgroundColor : '',
+      footerText
+    };
+  });
+
+  assert.ok(headerInfo, '#app-header element must exist');
+  assert.strictEqual(headerInfo.position, 'sticky', '#app-header position must be sticky');
+  assert.strictEqual(headerInfo.top, '0px', '#app-header top must be 0px');
+  assert.strictEqual(headerInfo.display, 'flex', '#app-header display must be flex');
+  assert.strictEqual(headerInfo.title, 'RE → NFA (Thompson) Simulator', '#app-header h1 title must match expected');
+  assert.ok(headerInfo.hasLogo, '#app-header must contain logo SVG with circle and arrow');
+  assert.strictEqual(headerInfo.navLinks.length, 3, 'Must have 3 section nav links');
+  assert.strictEqual(headerInfo.navLinks[0].href, '#app', 'Workbench nav link must point to #app');
+  assert.strictEqual(headerInfo.navLinks[1].href, '#validation-panel', 'Validation nav link must point to #validation-panel');
+  assert.strictEqual(headerInfo.navLinks[2].href, '#stress-section', 'Stress test nav link must point to #stress-section');
+
+  assert.ok(headerInfo.footerText.includes('RE → NFA (Thompson) Simulator · Automata Theory and Computability'), 'Footer must contain course text');
+  assert.strictEqual(headerInfo.footerBg, 'rgb(240, 237, 230)', 'Footer background must match --bg-sunken (#f0ede6)');
+
+  // Test Theme Selector switching and persistence
+  await page.selectOption('#theme-select', 'dark');
+  const darkState = await page.evaluate(() => ({
+    themeAttr: document.documentElement.getAttribute('data-theme'),
+    storageVal: localStorage.getItem('re-nfa:theme')
+  }));
+  assert.strictEqual(darkState.themeAttr, 'dark', 'data-theme attribute must be set to dark');
+  assert.strictEqual(darkState.storageVal, 'dark', 'localStorage theme key \'re-nfa:theme\' must be saved as dark');
+
+  await page.selectOption('#theme-select', 'light');
+  const lightState = await page.evaluate(() => ({
+    themeAttr: document.documentElement.getAttribute('data-theme'),
+    storageVal: localStorage.getItem('re-nfa:theme')
+  }));
+  assert.strictEqual(lightState.themeAttr, 'light', 'data-theme attribute must be set to light');
+  assert.strictEqual(lightState.storageVal, 'light', 'localStorage theme key \'re-nfa:theme\' must be saved as light');
+
+  await page.selectOption('#theme-select', 'system');
+  const systemState = await page.evaluate(() => ({
+    themeAttr: document.documentElement.getAttribute('data-theme'),
+    storageVal: localStorage.getItem('re-nfa:theme')
+  }));
+  assert.strictEqual(systemState.themeAttr, null, 'data-theme attribute must be removed for system mode');
+  assert.strictEqual(systemState.storageVal, 'system', 'localStorage theme key \'re-nfa:theme\' must be saved as system');
 
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
