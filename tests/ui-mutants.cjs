@@ -71,8 +71,12 @@ function parseFirstFailure(rawOutput) {
     const line = lines[i];
     if (line.includes('E2E test failed:') || line.includes('AssertionError') || line.includes('ERR_ASSERTION')) {
       firstMsg = line.trim();
-      for (let j = i + 1; j < Math.min(i + 15, lines.length); j++) {
+      const maxScan = Math.min(i + 200, lines.length);
+      for (let j = i + 1; j < maxScan; j++) {
         const stackLine = lines[j].trim();
+        if (j > i + 1 && (stackLine.includes('E2E test failed:') || stackLine.startsWith('FAIL ') || stackLine.startsWith('Error:'))) {
+          break;
+        }
         const m = stackLine.match(/(?:at\s+.*?\s+\()?([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+:\d+(?::\d+)?)\)?/);
         if (m) {
           firstLocation = m[1].replace(/\\/g, '/');
@@ -89,8 +93,12 @@ function parseFirstFailure(rawOutput) {
       const l = lines[i].trim();
       if ((l.includes('Error:') || l.includes('FAIL')) && !l.includes('Layout note') && !l.includes('ORACLE ERROR')) {
         firstMsg = l;
-        for (let j = i + 1; j < Math.min(i + 15, lines.length); j++) {
+        const maxScan = Math.min(i + 200, lines.length);
+        for (let j = i + 1; j < maxScan; j++) {
           const stackLine = lines[j].trim();
+          if (j > i + 1 && (stackLine.includes('E2E test failed:') || stackLine.startsWith('FAIL ') || stackLine.startsWith('Error:'))) {
+            break;
+          }
           const m = stackLine.match(/(?:at\s+.*?\s+\()?([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+:\d+(?::\d+)?)\)?/);
           if (m) {
             firstLocation = m[1].replace(/\\/g, '/');
@@ -105,7 +113,35 @@ function parseFirstFailure(rawOutput) {
   return { message: firstMsg || 'Unknown failure', location: firstLocation || 'unknown' };
 }
 
+function runSelfTest() {
+  const diffLines = Array.from({ length: 35 }, (_, idx) => `-   line ${idx + 1}`).join('\n');
+  const fixture = `E2E test failed: AssertionError [ERR_ASSERTION]: Exported DOT must match the rendered view DOT
++ actual - expected
+
++ 'digraph WRONG_FINAL {}'
+${diffLines}
+    at D:/Projects/Automata/tests/e2e.cjs:3208:10 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION'
+}`;
+
+  const res = parseFirstFailure(fixture);
+  if (!res.location.includes('tests/e2e.cjs:3208:10')) {
+    throw new Error(`Self-test failed: expected location to contain "tests/e2e.cjs:3208:10", got "${res.location}"`);
+  }
+  if (!res.message.includes('Exported DOT must match the rendered view DOT')) {
+    throw new Error(`Self-test failed: unexpected message "${res.message}"`);
+  }
+  console.log('parseFirstFailure self-test passed (35-line diff fixture verified).');
+}
+
+if (process.argv.includes('--self-test')) {
+  runSelfTest();
+  process.exit(0);
+}
+
 async function main() {
+  runSelfTest();
   const initialStatus = getGitStatus();
   if (initialStatus) {
     console.error('ERROR: git status --porcelain must be clean before running mutants.');
@@ -170,9 +206,8 @@ async function main() {
       id: 'T17-M5',
       desc: 'T17 AC10 skip reset on rebuild',
       file: 'src/ui/main.ts',
-      find: '  currentViewBox = null;\r\n  const gen = ++buildGeneration;',
-      altFind: '  currentViewBox = null;\n  const gen = ++buildGeneration;',
-      replace: '  const gen = ++buildGeneration;',
+      find: '  stopPlayback();\n  currentViewBox = null;',
+      replace: '  stopPlayback();',
       expect: 'Rebuild must reset viewport to fit mode'
     },
     {
@@ -385,8 +420,8 @@ async function main() {
       id: 'T18-AC8-2',
       desc: 'AC8: a.click omitted on export',
       file: 'src/ui/main.ts',
-      find: '    a.click();',
-      replace: '    // a.click();',
+      find: '    a.download = `stress-chart-${familyId}-${currentStressScale}.svg`;\n    document.body.appendChild(a);\n    a.click();',
+      replace: '    a.download = `stress-chart-${familyId}-${currentStressScale}.svg`;\n    document.body.appendChild(a);\n    // a.click();',
       expect: 'Timeout 30000ms exceeded while waiting for event "download"'
     },
     {
