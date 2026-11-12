@@ -3432,7 +3432,7 @@ const assert = require('node:assert');
   });
   assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), true, 'Clicking #keyboard-help-btn must open dialog');
   await page.click('#keyboard-help-close');
-  await page.waitForFunction(() => !document.getElementById('keyboard-help-dialog')?.open && document.activeElement?.id === 'keyboard-help-btn');
+  await page.waitForFunction(() => !document.getElementById('keyboard-help-dialog')?.open);
   assert.strictEqual(await page.$eval('#keyboard-help-dialog', (el) => el.open), false, 'Clicking #keyboard-help-close must close dialog');
   assert.strictEqual(await page.evaluate(() => document.activeElement?.id), 'keyboard-help-btn', 'Focus must return to opener button on close');
 
