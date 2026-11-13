@@ -3,6 +3,7 @@ import type { RunResult } from '../engine/index.js';
 export interface TraceCardOptions {
   isCompact?: boolean;
   compactLabelMap?: Record<number, number>;
+  labelMap?: Map<number, string>;
   onStepSelect?: (states: number[], isDead: boolean, position?: number) => void;
 }
 
@@ -32,10 +33,22 @@ export function renderTraceCards(
   lines: string[],
   options: TraceCardOptions = {}
 ): void {
-  const { isCompact, compactLabelMap, onStepSelect } = options;
+  const { isCompact, compactLabelMap, labelMap, onStepSelect } = options;
   container.textContent = '';
-  const mapState = (q: number) =>
-    isCompact && compactLabelMap ? compactLabelMap[q] ?? q : q;
+  const mapState = (q: number): string | number => {
+    if (labelMap) {
+      return labelMap.get(q) ?? `q${q}`;
+    }
+    return isCompact && compactLabelMap ? compactLabelMap[q] ?? q : q;
+  };
+
+  const sortMapped = (items: Array<string | number>): Array<string | number> => {
+    return [...items].sort((a, b) => {
+      const na = typeof a === 'number' ? a : parseInt(String(a).replace(/\D/g, ''), 10);
+      const nb = typeof b === 'number' ? b : parseInt(String(b).replace(/\D/g, ''), 10);
+      return isNaN(na) || isNaN(nb) ? String(a).localeCompare(String(b)) : na - nb;
+    });
+  };
 
   for (let lineIdx = 0; lineIdx < results.length; lineIdx++) {
     const res = results[lineIdx];
@@ -96,7 +109,7 @@ export function renderTraceCards(
     initMarker.textContent = '○';
     initialDiv.appendChild(initMarker);
 
-    const initMapped = res.initialClosure.map(mapState).sort((a, b) => a - b);
+    const initMapped = sortMapped(res.initialClosure.map(mapState));
     const initText = document.createTextNode(`Initial: {${initMapped.join(', ')}}`);
     initialDiv.appendChild(initText);
 
@@ -137,7 +150,7 @@ export function renderTraceCards(
       stepMarker.textContent = '●';
       stepDiv.appendChild(stepMarker);
 
-      const mapped = set.map(mapState).sort((a, b) => a - b);
+      const mapped = sortMapped(set.map(mapState));
       const stepText = document.createTextNode(`After '${char}': {${mapped.join(', ')}}`);
       stepDiv.appendChild(stepText);
 

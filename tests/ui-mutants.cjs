@@ -47,7 +47,8 @@ const UNIT_TESTED_FILES = new Set([
   'src/ui/url.ts',
   'src/ui/canvas-touch.ts',
   'src/diagram/index.ts',
-  'src/ui/router.ts'
+  'src/ui/router.ts',
+  'src/ui/state-labels.ts'
 ]);
 
 function stripAnsi(str) {
@@ -974,7 +975,7 @@ async function main() {
       find: "      tr.setAttribute('data-state', String(q));",
       replace: "      // tr.setAttribute('data-state', String(q));",
       testType: 'e2e',
-      expect: 'Before compact toggle, state 9 row must start with q9'
+      expect: 'Start state 6 row must start with q0 in Final NFA'
     },
     {
       id: 'T25-AC2-2',
@@ -1256,6 +1257,32 @@ async function main() {
       replace: "    .grid-item-alphabet-message {\n      grid-column: 1;",
       testType: 'e2e',
       expect: "#alphabet-message must span full grid width"
+    },
+    // Ticket 34 Mutants (T34-M*)
+    {
+      id: 'T34-M1',
+      desc: 'T34-M1: Start state label not q0 (starts at q1)',
+      file: 'src/ui/state-labels.ts',
+      find: "  result.set(start, `q${nextIndex++}`);",
+      replace: "  result.set(start, `q${++nextIndex}`);",
+      expect: "AssertionError"
+    },
+    {
+      id: 'T34-M2',
+      desc: 'T34-M2: Accept state not deferred to last q(n-1)',
+      file: 'src/ui/state-labels.ts',
+      find: "        // Defer accept state to the end\n        if (next !== accept) {\n          result.set(next, `q${nextIndex++}`);\n          queue.push(next);\n        }",
+      replace: "        result.set(next, `q${nextIndex++}`);\n        queue.push(next);",
+      expect: "AssertionError"
+    },
+    {
+      id: 'T34-M3',
+      desc: 'T34-M3: Final NFA diagram options does not pass labelMap',
+      file: 'src/ui/main.ts',
+      find: "    compactLabels: compact,\n    labelMap,\n    stateCreators,",
+      replace: "    compactLabels: compact,",
+      testType: 'e2e',
+      expect: "Node n6 text must be q0 in Final NFA"
     }
   ];
 

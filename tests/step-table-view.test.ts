@@ -218,4 +218,42 @@ describe('step-table-view (src/ui/step-table-view.ts)', () => {
     expect(csv).toContain('"q0 (start)","a","q1"');
     expect(csv).toContain('"q1 (accept)","-","-"');
   });
+
+  it('renderTransitionTable and exportTableCsv use normalized labels and built-as titles when labelMap provided', () => {
+    const container = new MockElement() as unknown as HTMLElement;
+    const analysis = {
+      nfa: {
+        states: [6, 9],
+        start: 6,
+        accept: 9,
+        transitions: [{ from: 6, to: 9, label: 'a' }]
+      },
+      transitionTable: {
+        6: { a: [9] },
+        9: {}
+      },
+      compactLabelMap: { 6: 0, 9: 1 }
+    } as unknown as AnalysisSuccess;
+
+    const labelMap = new Map<number, string>([
+      [6, 'q0'],
+      [9, 'q1']
+    ]);
+
+    renderTransitionTable(container, analysis, false, labelMap);
+    const mockC = container as unknown as MockElement;
+    const rows = mockC.querySelectorAll('tbody tr');
+    expect(rows.length).toBe(2);
+    // Row retains engine id in data-state
+    expect(rows[0].getAttribute('data-state')).toBe('6');
+    expect(rows[0].getAttribute('data-display-state')).toBe('q0');
+    expect(rows[0].attributes['title']).toBe('State q0 (built as 6)');
+    expect(rows[0].children[0].textContent).toBe('q0 (start)');
+    expect(rows[0].children[0].attributes['title']).toBe('built as 6');
+    expect(rows[0].children[2].textContent).toBe('q1');
+
+    const csv = exportTableCsv(analysis, false, labelMap);
+    expect(csv).toContain('"q0 (start)","a","q1"');
+    expect(csv).toContain('"q1 (accept)","-","-"');
+  });
 });

@@ -160,6 +160,7 @@ export interface DiagramOptions {
   highlightStates?: number[] | Set<number>;
   compactLabels?: boolean;
   labelMap?: Map<number, string | number> | Record<number, string | number>;
+  stateCreators?: Record<number, { step: number; rule: string }>;
 }
 
 export type DiagramCapMode = 'flat' | 'off';
@@ -200,7 +201,7 @@ export function toDot(input: NFA | StepSnapshot, options?: DiagramOptions): stri
   const newStates = new Set(isSnapshot ? input.newStates ?? [] : []);
   const newTransitions = isSnapshot ? input.newTransitions ?? [] : [];
   const mergedPair = isSnapshot ? input.mergedPair : undefined;
-  const stateCreators = isSnapshot ? input.stateCreators : undefined;
+  const stateCreators = isSnapshot ? input.stateCreators : options?.stateCreators;
   let displayLabelMap: Record<number, string | number> | Map<number, string | number> | undefined = undefined;
   if (!isSnapshot) {
     if (options?.labelMap) {
@@ -341,7 +342,14 @@ export function toDot(input: NFA | StepSnapshot, options?: DiagramOptions): stri
 
 
 
-    if (stateCreators && stateCreators[q]) {
+    const isFinalMode = !isSnapshot && options?.labelMap !== undefined;
+    if (isFinalMode) {
+      const creatorInfo =
+        stateCreators && stateCreators[q]
+          ? ` - Created by step ${stateCreators[q].step}: ${escapeLabel(stateCreators[q].rule)}`
+          : '';
+      attrs.push(`tooltip="State ${displayId} (built as ${q})${creatorInfo}"`);
+    } else if (stateCreators && stateCreators[q]) {
       const info = stateCreators[q];
       attrs.push(`tooltip="Created by step ${info.step}: ${escapeLabel(info.rule)}"`);
     }

@@ -73,6 +73,7 @@ import {
   type ViewportMode,
   type Rect
 } from './viewport';
+import { normalizeStateLabels, computeStateCreators } from './state-labels';
 import InlineWorker from './worker.ts?worker&inline';
 
 const renderer = new VizRenderer();
@@ -559,6 +560,7 @@ const diffRunBtn = document.getElementById('diff-run') as HTMLButtonElement | nu
 const diffStatusEl = document.getElementById('diff-status');
 const diffResultsEl = document.getElementById('diff-results');
 const stressRunBtn = document.getElementById('stress-run') as HTMLButtonElement | null;
+const numberingBadgeEl = document.getElementById('numbering-badge');
 let diffIsActive = false;
 let stressIsActive = false;
 let liveRegionTimer: ReturnType<typeof setTimeout> | null = null;
@@ -595,7 +597,11 @@ function isCompactLabels(): boolean {
 }
 
 function renderTransitionTable(container: HTMLElement, analysis: AnalysisSuccess): void {
-  renderTransitionTableModule(container, analysis, isCompactLabels());
+  const labelMap = currentView === 'final' ? normalizeStateLabels(analysis.nfa) : undefined;
+  renderTransitionTableModule(container, analysis, isCompactLabels(), labelMap);
+  if (currentActiveStates) {
+    updateTableActiveStates(container, currentActiveStates);
+  }
 }
 
 function renderTokenList(container: HTMLElement, tokens: Token[]): void {
@@ -782,6 +788,7 @@ function attachStateHoverListeners(container: HTMLElement): void {
     const tooltip = aEl?.getAttribute('xlink:title') || aEl?.getAttribute('title') || '';
     if (tooltip) {
       node.setAttribute('title', tooltip);
+      node.setAttribute('aria-label', tooltip);
       const titleEl = node.querySelector('title') as Element | null;
       if (titleEl) {
         titleEl.textContent = tooltip;
@@ -815,6 +822,12 @@ async function navigateToStep(stepIndex: number): Promise<void> {
   if (canvasEl) {
     canvasEl.removeAttribute('data-view');
     canvasEl.removeAttribute('data-run-status');
+  }
+  if (numberingBadgeEl) {
+    numberingBadgeEl.style.display = 'inline-flex';
+  }
+  if (tableEl && currentAnalysis) {
+    renderTransitionTable(tableEl, currentAnalysis);
   }
   if (runStatusEl) {
     runStatusEl.textContent = '';
@@ -953,6 +966,12 @@ async function renderFinalView(): Promise<void> {
   if (viewToggleSelect) {
     viewToggleSelect.value = 'final';
   }
+  if (numberingBadgeEl) {
+    numberingBadgeEl.style.display = 'none';
+  }
+  if (tableEl && currentAnalysis) {
+    renderTransitionTable(tableEl, currentAnalysis);
+  }
 
   const mode = checkDiagramCap(currentAnalysis.postfix.length);
   if (mode === 'off') {
@@ -1034,8 +1053,12 @@ async function renderFinalView(): Promise<void> {
   const activeStr = currentActiveStates ? currentActiveStates.join(',') : 'none';
   const cacheKey = `final-${compact}-${activeStr}`;
 
+  const labelMap = normalizeStateLabels(currentAnalysis.nfa);
+  const stateCreators = computeStateCreators(currentAnalysis.steps);
   const options: DiagramOptions = {
     compactLabels: compact,
+    labelMap,
+    stateCreators,
     ...(currentActiveStates ? { activeStates: currentActiveStates } : {})
   };
 
@@ -1076,6 +1099,8 @@ async function renderFinalView(): Promise<void> {
     stepSvgCache.clear();
     const fallbackDot = toDot(currentAnalysis.nfa, {
       compactLabels: compact,
+      labelMap,
+      stateCreators,
       ...(currentActiveStates ? { activeStates: currentActiveStates } : {})
     });
     result = await renderer.render(fallbackDot);
@@ -1424,6 +1449,7 @@ function renderTrace(
   renderTraceCards(container, results, lines, {
     isCompact: isCompactLabels(),
     compactLabelMap: currentAnalysis?.compactLabelMap,
+    labelMap: currentAnalysis ? normalizeStateLabels(currentAnalysis.nfa) : undefined,
     onStepSelect: (states, isDead, position) => {
       currentActiveStates = [...states];
       if (tableEl) {
@@ -1468,6 +1494,12 @@ function handleRun() {
   currentView = 'final';
   if (viewToggleSelect) {
     viewToggleSelect.value = 'final';
+  }
+  if (numberingBadgeEl) {
+    numberingBadgeEl.style.display = 'none';
+  }
+  if (tableEl && currentAnalysis) {
+    renderTransitionTable(tableEl, currentAnalysis);
   }
 
   const text = testInputEl ? testInputEl.value : '';

@@ -1161,6 +1161,48 @@ test('[T18-AC2-2] Diagram seam: renderStressChartSvg standalone SVG export', () 
   expect(svgStandalone).not.toMatch(/url\(/i);
 });
 
+test('toDot supports labelMap for Final NFA renumbering with built-as tooltips', () => {
+  const analysis = analyze('(a|b)*a', { notation: 'standard', concatenation: 'epsilon-link' });
+  expect(analysis.ok).toBe(true);
+  if (!analysis.ok) return;
+
+  const labelMap = new Map<number, string>([
+    [6, 'q0'],
+    [4, 'q1'],
+    [7, 'q2'],
+    [0, 'q3'],
+    [2, 'q4'],
+    [8, 'q5'],
+    [1, 'q6'],
+    [3, 'q7'],
+    [5, 'q8'],
+    [9, 'q9']
+  ]);
+
+  const stateCreators: Record<number, { step: number; rule: string }> = {};
+  for (const s of analysis.steps) {
+    for (const q of s.newStates) {
+      if (!stateCreators[q]) stateCreators[q] = { step: s.index, rule: s.rule };
+    }
+  }
+
+  const dot = toDot(analysis.nfa, {
+    labelMap,
+    stateCreators
+  });
+
+  // Start arrow points to engine start state q6
+  expect(dot).toContain('__start -> q6 [id="start-edge"]');
+  // State 6 has label "q0" and tooltip containing "built as 6"
+  expect(dot).toMatch(/q6\s*\[[^\]]*label="q0"[^\]]*tooltip="State q0 \(built as 6\)/);
+  // State 9 has label "q9" and doublecircle
+  expect(dot).toMatch(/q9\s*\[[^\]]*label="q9"[^\]]*shape=doublecircle/);
+  // Unchanged engine node IDs
+  expect(dot).toContain('id="n6"');
+  expect(dot).toContain('id="n9"');
+});
+
+
 
 
 

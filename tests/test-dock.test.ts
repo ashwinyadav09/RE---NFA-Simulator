@@ -163,4 +163,39 @@ describe('test-dock (src/ui/test-dock.ts)', () => {
     expect(deadRows.length).toBe(1);
     expect(deadRows[0].textContent).toContain('Dead at position 0');
   });
+
+  it('renderTraceCards maps state labels using labelMap and sorts them cleanly', () => {
+    const container = new MockElement() as unknown as HTMLElement;
+    const results: RunResult[] = [
+      {
+        accepted: true,
+        verdict: 'ACCEPT',
+        initialClosure: [6, 4, 7, 0],
+        afterEachSymbol: [[2, 8, 9]],
+        trace: [[6, 4, 7, 0], [2, 8, 9]],
+        status: 'ok'
+      }
+    ];
+
+    const labelMap = new Map<number, string>([
+      [6, 'q0'],
+      [4, 'q1'],
+      [7, 'q2'],
+      [0, 'q3'],
+      [2, 'q4'],
+      [8, 'q5'],
+      [9, 'q9']
+    ]);
+
+    renderTraceCards(container, results, ['a'], { labelMap });
+
+    const mockC = container as unknown as MockElement;
+    const cards = mockC.querySelectorAll('.trace-line');
+    const steps = cards[0].querySelectorAll('.trace-step');
+
+    // Initial closure states {6, 4, 7, 0} mapped to {q0, q1, q2, q3}
+    expect(steps[0].textContent).toContain('Initial: {q0, q1, q2, q3}');
+    // After 'a' {2, 8, 9} mapped to {q4, q5, q9}
+    expect(steps[1].textContent).toContain("After 'a': {q4, q5, q9}");
+  });
 });

@@ -178,7 +178,8 @@ export function updateStepLogActive(container: HTMLElement, currentStep: number)
 export function renderTransitionTable(
   container: HTMLElement,
   analysis: AnalysisSuccess,
-  isCompact: boolean
+  isCompact: boolean,
+  labelMap?: Map<number, string>
 ): void {
   const { nfa, transitionTable, compactLabelMap } = analysis;
   container.textContent = '';
@@ -200,8 +201,12 @@ export function renderTransitionTable(
   for (const q of nfa.states) {
     const isStart = q === nfa.start ? ' (start)' : '';
     const isAccept = q === nfa.accept ? ' (accept)' : '';
-    const displayId = isCompact ? compactLabelMap[q] ?? q : q;
-    const stateLabel = `q${displayId}${isStart}${isAccept}`;
+    const displayId = labelMap
+      ? (labelMap.get(q) ?? `q${q}`)
+      : (isCompact ? compactLabelMap[q] ?? q : q);
+    const stateLabel = labelMap
+      ? `${displayId}${isStart}${isAccept}`
+      : `q${displayId}${isStart}${isAccept}`;
     const transitions = transitionTable[q] || {};
     const labels = Object.keys(transitions);
 
@@ -209,9 +214,18 @@ export function renderTransitionTable(
       const tr = document.createElement('tr');
       tr.setAttribute('data-state', String(q));
       tr.setAttribute('data-display-state', String(displayId));
+      if (labelMap) {
+        tr.title = `State ${displayId} (built as ${q})`;
+        tr.setAttribute('title', `State ${displayId} (built as ${q})`);
+      }
       for (const val of [col1, col2, col3]) {
         const td = document.createElement('td');
         td.textContent = val;
+        if (labelMap && val === col1) {
+          td.title = `built as ${q}`;
+          td.setAttribute('title', `built as ${q}`);
+          td.setAttribute('data-built-as', String(q));
+        }
         tr.appendChild(td);
       }
       return tr;
@@ -222,7 +236,7 @@ export function renderTransitionTable(
     } else {
       for (const label of labels) {
         const targets = transitions[label]
-          .map((dest) => `q${isCompact ? compactLabelMap[dest] ?? dest : dest}`)
+          .map((dest) => (labelMap ? labelMap.get(dest) ?? `q${dest}` : `q${isCompact ? compactLabelMap[dest] ?? dest : dest}`))
           .join(', ');
         tbody.appendChild(createRow(stateLabel, label, targets));
       }
@@ -252,15 +266,23 @@ export function updateTableActiveStates(container: HTMLElement, activeStates: nu
 /**
  * Format transition table as CSV for export / copy.
  */
-export function exportTableCsv(analysis: AnalysisSuccess, isCompact: boolean): string {
+export function exportTableCsv(
+  analysis: AnalysisSuccess,
+  isCompact: boolean,
+  labelMap?: Map<number, string>
+): string {
   const { nfa, transitionTable, compactLabelMap } = analysis;
   const lines: string[] = ['State,Symbol,Next State(s)'];
 
   for (const q of nfa.states) {
     const isStart = q === nfa.start ? ' (start)' : '';
     const isAccept = q === nfa.accept ? ' (accept)' : '';
-    const displayId = isCompact ? compactLabelMap[q] ?? q : q;
-    const stateLabel = `q${displayId}${isStart}${isAccept}`;
+    const displayId = labelMap
+      ? (labelMap.get(q) ?? `q${q}`)
+      : (isCompact ? compactLabelMap[q] ?? q : q);
+    const stateLabel = labelMap
+      ? `${displayId}${isStart}${isAccept}`
+      : `q${displayId}${isStart}${isAccept}`;
     const transitions = transitionTable[q] || {};
     const labels = Object.keys(transitions);
 
@@ -269,7 +291,7 @@ export function exportTableCsv(analysis: AnalysisSuccess, isCompact: boolean): s
     } else {
       for (const label of labels) {
         const targets = transitions[label]
-          .map((dest) => `q${isCompact ? compactLabelMap[dest] ?? dest : dest}`)
+          .map((dest) => (labelMap ? labelMap.get(dest) ?? `q${dest}` : `q${isCompact ? compactLabelMap[dest] ?? dest : dest}`))
           .join('; ');
         lines.push(`"${stateLabel}","${label}","${targets}"`);
       }

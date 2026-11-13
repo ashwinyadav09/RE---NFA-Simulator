@@ -59,7 +59,9 @@ export function fitToContainer(
 ): { zoom: number; panX: number; panY: number } {
   const availW = Math.max(1, container.width - 2 * padding);
   const availH = Math.max(1, container.height - 2 * padding);
-  const fitZoom = Math.min(availW / content.width, availH / content.height);
+  const rawFitZoom = Math.min(availW / content.width, availH / content.height);
+  // Floor to 4 decimal places to prevent toFixed(4) rounding up beyond available container bounds
+  const fitZoom = Math.floor(rawFitZoom * 10000) / 10000;
   const panX = (container.width - content.width * fitZoom) / 2;
   const panY = (container.height - content.height * fitZoom) / 2;
   return { zoom: fitZoom, panX, panY };
@@ -82,7 +84,8 @@ export function initialView(
 
   const availW = Math.max(1, container.width - 2 * padding);
   const availH = Math.max(1, container.height - 2 * padding);
-  const fitZoom = Math.min(availW / content.width, availH / content.height);
+  const rawFitZoom = Math.min(availW / content.width, availH / content.height);
+  const fitZoom = Math.floor(rawFitZoom * 10000) / 10000;
 
   if (fitZoom >= LEGIBLE_MIN_ZOOM) {
     return {

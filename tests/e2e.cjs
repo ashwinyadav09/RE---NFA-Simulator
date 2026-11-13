@@ -592,8 +592,8 @@ const assert = require('node:assert');
 
   const traceText = await page.textContent('#trace');
   console.log('Trace text:', traceText);
-  assert(traceText.includes('0, 2, 3, 4, 5, 7, 8'), 'Trace must show the active set after b: {0, 2, 3, 4, 5, 7, 8}');
-  assert(traceText.includes('0, 1, 2, 4, 5, 7, 8, 9'), 'Trace must show the active set after a: {0, 1, 2, 4, 5, 7, 8, 9}');
+  assert(traceText.includes('q1, q2, q3, q4, q5, q7, q8'), 'Trace must show the active set after b: {q1, q2, q3, q4, q5, q7, q8}');
+  assert(traceText.includes('q1, q2, q3, q4, q5, q6, q8, q9'), 'Trace must show the active set after a: {q1, q2, q3, q4, q5, q6, q8, q9}');
 
   // 11. HTML escaping test: enter test string '<b>& ', click Run, verify #trace has no <b> element and textContent contains literal '<b>&'
   await page.evaluate(() => { window.__runDone = false; });
@@ -1477,96 +1477,102 @@ const assert = require('node:assert');
   await page.selectOption('#view-toggle', 'final');
   await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
 
-  // Check state 9 in merge mode before compact labels toggle
-  const rowState9Before = await page.evaluate(() => {
+  // Ticket 34: Final NFA state labels (start is always q0, accept is always last q(n-1))
+  const rowState6 = await page.evaluate(() => {
+    const row = document.querySelector('#transition-table tbody tr[data-state="6"] td:first-child');
+    return row?.textContent || '';
+  });
+  console.log('State 6 (start) row label in Final NFA:', rowState6);
+  assert(rowState6.startsWith('q0'), 'Start state 6 row must start with q0 in Final NFA');
+
+  const rowState9 = await page.evaluate(() => {
     const row = document.querySelector('#transition-table tbody tr[data-state="9"] td:first-child');
     return row?.textContent || '';
   });
-  console.log('State 9 row label before compact:', rowState9Before);
-  assert(rowState9Before.startsWith('q9'), 'Before compact toggle, state 9 row must start with q9');
+  console.log('State 9 (accept) row label in Final NFA:', rowState9);
+  assert(rowState9.startsWith('q8'), 'Accept state 9 row must start with q8 (0..n-1 contiguous) in Final NFA merge mode');
 
-  const node9TextBefore = await page.evaluate(() => {
+  const node6Text = await page.evaluate(() => {
+    const txt = document.querySelector('#canvas svg g[id="n6"] text');
+    return txt?.textContent || '';
+  });
+  console.log('Node n6 label in Final NFA:', node6Text);
+  assert.strictEqual(node6Text, 'q0', 'Node n6 text must be q0 in Final NFA');
+
+  const node9Text = await page.evaluate(() => {
     const txt = document.querySelector('#canvas svg g[id="n9"] text');
     return txt?.textContent || '';
   });
-  console.log('Node n9 label before compact:', node9TextBefore);
-  assert.strictEqual(node9TextBefore, '9', 'Before compact toggle, node n9 text must be 9');
+  console.log('Node n9 label in Final NFA:', node9Text);
+  assert.strictEqual(node9Text, 'q8', 'Node n9 text must be q8 in Final NFA merge mode');
 
-  // Enable compact labels
-  await page.check('#compact-labels');
-  await page.waitForFunction(() => {
-    const txt = document.querySelector('#canvas svg g[id="n9"] text')?.textContent;
-    return txt === '8';
+  // Tooltip / built-as validation
+  const node6Title = await page.evaluate(() => {
+    return document.querySelector('#canvas svg g[id="n6"]')?.getAttribute('title') || '';
   });
+  assert(node6Title.includes('built as 6'), 'Node n6 tooltip must display "built as 6"');
 
-  // Table must now display q8 for row with data-state="9"
-  const rowState9After = await page.evaluate(() => {
-    const row = document.querySelector('#transition-table tbody tr[data-state="9"] td:first-child');
-    return row?.textContent || '';
+  const badgeHiddenInFinal = await page.evaluate(() => {
+    const badge = document.querySelector('#numbering-badge');
+    return badge ? getComputedStyle(badge).display : '';
   });
-  console.log('State 9 row label after compact:', rowState9After);
-  assert(rowState9After.startsWith('q8'), 'After compact toggle, state 9 row must start with q8 (0..n-1)');
+  assert.strictEqual(badgeHiddenInFinal, 'none', '#numbering-badge must be hidden in Final NFA view');
 
-  // Rebuild while #compact-labels is checked: assert no desync occurs on rebuild
+  // Switch to step-by-step view to check construction badge
+  await page.selectOption('#view-toggle', 'flat');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') !== 'final');
+  const badgeTextInStep = await page.evaluate(() => {
+    const badge = document.querySelector('#numbering-badge');
+    return {
+      display: badge ? getComputedStyle(badge).display : '',
+      text: badge?.textContent || ''
+    };
+  });
+  assert.notStrictEqual(badgeTextInStep.display, 'none', '#numbering-badge must be visible in step-by-step view');
+  assert.strictEqual(badgeTextInStep.text, 'construction numbering, Final NFA renumbers so start = q0');
+
+  // Switch back to final view
+  await page.selectOption('#view-toggle', 'final');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+
+  // Rebuild in merge mode: assert no desync occurs
   await page.evaluate(() => { window.__buildDone = false; });
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  await page.selectOption('#view-toggle', 'final');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+
   const rowState9Rebuild = await page.evaluate(() => {
     const row = document.querySelector('#transition-table tbody tr[data-state="9"] td:first-child');
     return row?.textContent || '';
   });
-  console.log('State 9 row label on rebuild with compact checked:', rowState9Rebuild);
-  assert(rowState9Rebuild.startsWith('q8'), `On rebuild with compact checked, state 9 row must read q8, got ${rowState9Rebuild}`);
-
-  // Switch to final view to verify diagram node n9 after rebuild
-  await page.selectOption('#view-toggle', 'final');
-  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+  console.log('State 9 row label on rebuild:', rowState9Rebuild);
+  assert(rowState9Rebuild.startsWith('q8'), `On rebuild, state 9 row must read q8, got ${rowState9Rebuild}`);
 
   // Engine id in table attribute did NOT change
   const dataStateAttr = await page.evaluate(() =>
-    document.querySelector('#transition-table tbody tr[data-display-state="8"]')?.getAttribute('data-state')
+    document.querySelector('#transition-table tbody tr[data-display-state="q8"]')?.getAttribute('data-state')
   );
   assert.strictEqual(dataStateAttr, '9', 'Row data-state attribute must still be engine id "9"');
 
-  // Diagram SVG id did NOT change, but text became 8
-  const node9TextAfter = await page.evaluate(() =>
-    document.querySelector('#canvas svg g[id="n9"] text')?.textContent
-  );
-  assert.strictEqual(node9TextAfter, '8', 'After compact toggle, node n9 text must be mapped label 8');
-
-  // Run 'ba' in merge mode with compact labels on
+  // Run 'ba' in merge mode
   await page.evaluate(() => { window.__runDone = false; });
   await page.fill('#test-input', 'ba');
   await page.click('#run-button');
   await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
 
-  // Trace text must use compact labels (state 9 mapped to 8)
+  // Trace text must use normalized labels
   const compactTraceText = await page.textContent('#trace');
-  console.log('Compact trace text:', compactTraceText);
-  // In merge mode, after 'a': original states are {0, 1, 2, 4, 5, 7, 9} -> mapped to {0, 1, 2, 4, 5, 6, 8}
-  assert(compactTraceText.includes('8'), 'Trace text must contain compact label 8');
-  assert(!compactTraceText.includes('9'), 'Trace text with compact labels must not contain unmapped label 9');
+  console.log('Final NFA merge trace text:', compactTraceText);
+  assert(compactTraceText.includes('q8'), 'Trace text must contain accept state normalized label q8');
 
-  // Click After 'a' in compact trace
+  // Click After 'a' in trace
   await page.click('#trace .trace-step[data-step="2"]');
   await page.waitForFunction(() => document.querySelectorAll('#canvas svg g.node.active').length > 0);
   const compactActiveNodeIds = await page.evaluate(() =>
     Array.from(document.querySelectorAll('#canvas svg g.node.active')).map((el) => el.id)
   );
   assert(compactActiveNodeIds.includes('n9'), 'Node n9 must still be identified by engine ID in SVG');
-
-  // Uncheck compact labels: all revert back to unmapped
-  await page.uncheck('#compact-labels');
-  await page.waitForFunction(() => {
-    const txt = document.querySelector('#canvas svg g[id="n9"] text')?.textContent;
-    return txt === '9';
-  });
-
-  const rowState9Reverted = await page.evaluate(() => {
-    const row = document.querySelector('#transition-table tbody tr[data-state="9"] td:first-child');
-    return row?.textContent || '';
-  });
-  assert(rowState9Reverted.startsWith('q9'), 'Unchecking compact labels must revert table state label to q9');
 
   // ==========================================
   // Ticket 13: Validation panel, Built-in suite, Differential testing
@@ -2913,13 +2919,13 @@ const assert = require('node:assert');
   assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'manual');
   const zoomBeforeCompact = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
   await page.click('#compact-labels');
-  await page.waitForFunction(() => document.querySelector('#canvas svg g.node#n9 text')?.textContent?.trim() === '8');
+  await page.waitForFunction(() => document.querySelector('#canvas svg g.node#n9 text')?.textContent?.trim() === 'q8');
   const modeAfterCompact = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
   const zoomAfterCompact = await page.$eval('#canvas', (el) => el.getAttribute('data-zoom'));
   assert.strictEqual(modeAfterCompact, 'manual', 'Compact toggle with identical viewBox must persist manual mode');
   assert.strictEqual(zoomAfterCompact, zoomBeforeCompact, 'Compact toggle with identical viewBox must persist zoom');
   await page.click('#compact-labels'); // restore uncheck
-  await page.waitForFunction(() => document.querySelector('#canvas svg g.node#n9 text')?.textContent?.trim() === '9');
+  await page.waitForFunction(() => document.querySelector('#canvas svg g.node#n9 text')?.textContent?.trim() === 'q8');
   await page.selectOption('#concat-select', 'epsilon-link'); // restore default
 
   // AC10: Resets on rebuild
