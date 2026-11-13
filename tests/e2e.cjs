@@ -384,7 +384,9 @@ const assert = require('node:assert');
 
   async function gotoPage(p, name) {
     await p.click(`#nav-link-${name}`);
-    await p.waitForSelector(`#page-${name}:not([hidden])`);
+    await p.waitForSelector(`#page-${name}:not([hidden])`, { timeout: 5000 }).catch(() => {
+      throw new Error(`Navigation failed: #page-${name} did not become visible`);
+    });
   }
 
   console.log(`Opening ${fileUrl}...`);

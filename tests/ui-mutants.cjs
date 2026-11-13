@@ -1208,7 +1208,7 @@ async function main() {
       find: "    if (route === 'validation') pageValidation.removeAttribute('hidden');",
       replace: "    if (route === 'validation') pageValidation.setAttribute('hidden', '');",
       testType: 'e2e',
-      expect: "#page-validation must be visible"
+      expect: "Navigation failed: #page-validation did not become visible"
     },
     {
       id: 'T31-AC2-3',
