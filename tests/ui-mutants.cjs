@@ -1351,7 +1351,7 @@ async function main() {
       find: "    this.elements.stepperSlot.appendChild(this.elements.stepperControlsEl);",
       replace: "    // stepper controls omitted",
       testType: 'e2e',
-      expect: "View toggle must be accessible inside fullscreen overlay"
+      expect: "Stepper controls must be reparented inside fullscreen overlay"
     }
   ];
 
