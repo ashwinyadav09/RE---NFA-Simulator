@@ -46,7 +46,8 @@ const UNIT_TESTED_FILES = new Set([
   'src/ui/export.ts',
   'src/ui/url.ts',
   'src/ui/canvas-touch.ts',
-  'src/diagram/index.ts'
+  'src/diagram/index.ts',
+  'src/ui/router.ts'
 ]);
 
 function stripAnsi(str) {
@@ -1202,12 +1203,12 @@ async function main() {
     },
     {
       id: 'T31-AC2-2',
-      desc: 'T31-AC2-2: Workbench page set to hidden instead of visible in src/ui/main.ts',
+      desc: 'T31-AC2-2: Validation page set to hidden instead of visible in src/ui/main.ts',
       file: 'src/ui/main.ts',
-      find: "    if (route === 'workbench') pageWorkbench.removeAttribute('hidden');",
-      replace: "    if (route === 'workbench') pageWorkbench.setAttribute('hidden', '');",
+      find: "    if (route === 'validation') pageValidation.removeAttribute('hidden');",
+      replace: "    if (route === 'validation') pageValidation.setAttribute('hidden', '');",
       testType: 'e2e',
-      expect: "#page-workbench must be visible on default route"
+      expect: "#page-validation must be visible"
     },
     {
       id: 'T31-AC2-3',
@@ -1223,7 +1224,7 @@ async function main() {
       desc: 'T31-AC2-4: Copy Link drops route hash in src/ui/main.ts',
       file: 'src/ui/main.ts',
       find: "    const routeHash = formatRoute(currentRoute);",
-      replace: "    const routeHash = '';",
+      replace: "    const routeHash = currentRoute === 'validation' ? '' : formatRoute(currentRoute);",
       testType: 'e2e',
       expect: "Copied URL from validation must include #validation"
     },

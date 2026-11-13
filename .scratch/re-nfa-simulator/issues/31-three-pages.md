@@ -16,3 +16,4 @@
 - [x] Copy Link and deep links preserve route hash across page changes.
 - [x] Mobile responsive nav at 390x844 without horizontal overflow.
 - [x] Vitest tests, e2e suite, and all Ticket 31 mutants pass cleanly.
+
