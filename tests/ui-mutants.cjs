@@ -1283,6 +1283,23 @@ async function main() {
       replace: "    compactLabels: compact,",
       testType: 'e2e',
       expect: "Node n6 text must be q0 in Final NFA"
+    },
+    // Ticket 35 Mutants (T35-M*)
+    {
+      id: 'T35-M1',
+      desc: 'T35-M1: VizRenderer.render omits postProcessDiagramSvg',
+      file: 'src/diagram/index.ts',
+      find: "const svg = format === 'svg' ? postProcessDiagramSvg(rawOutput) : rawOutput;",
+      replace: "const svg = rawOutput;",
+      expect: "AssertionError"
+    },
+    {
+      id: 'T35-M2',
+      desc: 'T35-M2: postProcessDiagramSvg does not standardize ε stroke-dasharray to 4,3',
+      file: 'src/diagram/index.ts',
+      find: "      updatedInner = updatedInner.replace(/stroke-dasharray=\"[^\"]*\"/g, 'stroke-dasharray=\"4,3\"');",
+      replace: "      // omitted dasharray normalization",
+      expect: "AssertionError"
     }
   ];
 

@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { toDot, FakeRenderer, VizRenderer, computeMasterLayout, checkDiagramCap, CAPS, renderStressChartSvg, type StressChartPoint, type DiagramRenderer } from '../src/diagram/index';
+import { toDot, FakeRenderer, VizRenderer, computeMasterLayout, checkDiagramCap, CAPS, renderStressChartSvg, postProcessDiagramSvg, type StressChartPoint, type DiagramRenderer } from '../src/diagram/index';
 import { type StepSnapshot, analyze, getStepSnapshot } from '../src/engine/index';
 
 test('toDot produces DOT text with id on every node and edge, start arrow, and double-circle accept', () => {
@@ -1201,6 +1201,89 @@ test('toDot supports labelMap for Final NFA renumbering with built-as tooltips',
   expect(dot).toContain('id="n6"');
   expect(dot).toContain('id="n9"');
 });
+
+test('[T35-1] toDot includes Stitch-aligned preamble: ranksep, nodesep, arrowsize, penwidth, transparent bgcolor', () => {
+  const nfa = {
+    states: [0, 1],
+    start: 0,
+    accept: 1,
+    transitions: [{ from: 0, to: 1, label: 'a' }]
+  };
+  const dot = toDot(nfa);
+  expect(dot).toContain('ranksep=0.55;');
+  expect(dot).toContain('nodesep=0.45;');
+  expect(dot).toContain('bgcolor="transparent";');
+  expect(dot).toMatch(/edge\s*\[[^\]]*arrowsize=0\.85/);
+  expect(dot).toMatch(/node\s*\[[^\]]*penwidth=1\.5/);
+});
+
+test('[T35-2] postProcessDiagramSvg adds label pills, standardizes ε dasharray, and ensures arrowhead clearance', async () => {
+  const analysis = analyze('(a|b)*a', { notation: 'standard', concatenation: 'epsilon-link' });
+  expect(analysis.ok).toBe(true);
+  if (!analysis.ok) return;
+
+  const renderer = new VizRenderer();
+  const dot = toDot(analysis.nfa);
+  const rawRes = await renderer.render(dot);
+  expect(rawRes.ok).toBe(true);
+  if (!rawRes.ok) return;
+
+  const processedSvg = rawRes.svg;
+
+  // Background polygon sanitized (no white page rectangle)
+  expect(processedSvg).not.toMatch(/<polygon\s+fill="white"\s+stroke="none"/);
+
+  // Raw fixture with white polygon sanitized to transparent
+  const rawWithWhite = '<svg><polygon fill="white" stroke="none" points="-4,4 -4,-98 500,-98 500,4 -4,4"/></svg>';
+  expect(postProcessDiagramSvg(rawWithWhite)).toContain('fill="transparent"');
+
+  // Epsilon edges have stroke-dasharray="4,3"
+  expect(processedSvg).toContain('stroke-dasharray="4,3"');
+  expect(processedSvg).not.toContain('stroke-dasharray="5,2"');
+
+  // Edge label pills exist
+  expect(processedSvg).toContain('<rect class="edge-label-pill"');
+  expect(processedSvg).toContain('fill="var(--bg-canvas, #ffffff)"');
+
+  // Verify clearance between pill and arrowhead on all edges with arrowheads
+  const edgeRegex = /<g id="(e\d+|start-edge)" class="edge">([\s\S]*?)<\/g>/g;
+  let match;
+  let verifiedEdges = 0;
+
+  while ((match = edgeRegex.exec(processedSvg)) !== null) {
+    const inner = match[2];
+    const rectMatch = /<rect class="edge-label-pill" x="([^"]+)" [^>]*width="([^"]+)"/.exec(inner);
+    const polyMatch = /<polygon [^>]*points="([^"]+)"/.exec(inner);
+
+    if (rectMatch && polyMatch) {
+      const pillX = parseFloat(rectMatch[1]);
+      const pillW = parseFloat(rectMatch[2]);
+      const pillRight = pillX + pillW;
+
+      const pts = polyMatch[1].trim().split(/\s+/).map((p) => {
+        const [x, y] = p.split(',').map(Number);
+        return { x, y };
+      });
+      const xs = pts.map((p) => p.x);
+      const arrowMinX = Math.min(...xs);
+      const arrowMaxX = Math.max(...xs);
+
+      if (arrowMinX >= pillRight) {
+        // Arrow to the right of pill
+        const clearance = arrowMinX - pillRight;
+        expect(clearance).toBeGreaterThanOrEqual(3.5);
+      } else if (arrowMaxX <= pillX) {
+        // Arrow to the left of pill
+        const clearance = pillX - arrowMaxX;
+        expect(clearance).toBeGreaterThanOrEqual(3.5);
+      }
+      verifiedEdges++;
+    }
+  }
+
+  expect(verifiedEdges).toBeGreaterThan(0);
+});
+
 
 
 

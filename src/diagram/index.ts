@@ -101,7 +101,9 @@ export class VizRenderer implements DiagramRenderer {
         ...(options?.engine ? { engine: options.engine } : {})
       });
       if (result.status === 'success' && result.output !== undefined) {
-        return { ok: true, svg: result.output as string };
+        const rawOutput = result.output as string;
+        const svg = format === 'svg' ? postProcessDiagramSvg(rawOutput) : rawOutput;
+        return { ok: true, svg };
       }
       const errMsg =
         result.errors && result.errors.length > 0
@@ -129,6 +131,106 @@ export function extractNodePositions(rawJson: string | object): Map<number, [num
     }
   }
   return positions;
+}
+
+/**
+ * Post-processes rendered Graphviz SVG:
+ * 1. Sanitizes Graphviz default white background polygon to transparent.
+ * 2. Standardizes epsilon edge dashed pattern to 4,3.
+ * 3. Wraps edge labels in rounded <rect class="edge-label-pill"> background pills.
+ * 4. Ensures clearance between label pills and arrowhead polygons so arrowheads are never covered.
+ */
+export function postProcessDiagramSvg(svg: string): string {
+  // 1. Sanitize Graphviz default white background polygon to transparent
+  let out = svg.replace(
+    /<polygon fill="white" stroke="none"[^>]*\/>/,
+    '<polygon fill="transparent" stroke="none" points="" />'
+  );
+
+  // 2. Process edge groups
+  out = out.replace(/<g id="([^"]+)" class="edge">([\s\S]*?)<\/g>/g, (edgeGroup, edgeId, inner) => {
+    // Idempotency: skip if already post-processed
+    if (inner.includes('edge-label-pill')) {
+      return edgeGroup;
+    }
+
+    // Check if epsilon edge
+    const isEps = /<text[^>]*>\s*ε/.test(inner);
+    let updatedInner = inner;
+
+    if (isEps) {
+      // Standardize dash pattern to 4,3
+      updatedInner = updatedInner.replace(/stroke-dasharray="[^"]*"/g, 'stroke-dasharray="4,3"');
+    }
+
+    // Find arrowhead polygon
+    const polyMatch = /<polygon fill="([^"]*)" stroke="([^"]*)"(?: stroke-width="([^"]*)")? points="([^"]+)"\/>/.exec(updatedInner);
+    let arrowBox: { minX: number; maxX: number; minY: number; maxY: number } | null = null;
+    if (polyMatch) {
+      const pts = polyMatch[4].trim().split(/\s+/).map((p) => {
+        const [x, y] = p.split(',').map(Number);
+        return { x, y };
+      });
+      const xs = pts.map((p) => p.x);
+      const ys = pts.map((p) => p.y);
+      arrowBox = {
+        minX: Math.min(...xs),
+        maxX: Math.max(...xs),
+        minY: Math.min(...ys),
+        maxY: Math.max(...ys)
+      };
+    }
+
+    // Find text label
+    const textMatch = /<text([^>]*)>([\s\S]*?)<\/text>/.exec(updatedInner);
+    if (textMatch) {
+      const attrs = textMatch[1];
+      const textContent = textMatch[2].trim();
+      const xMatch = /x="([^"]+)"/.exec(attrs);
+      const yMatch = /y="([^"]+)"/.exec(attrs);
+
+      if (xMatch && yMatch) {
+        let textX = parseFloat(xMatch[1]);
+        const textY = parseFloat(yMatch[1]);
+
+        // Calculate pill geometry
+        const textLen = textContent.replace(/&[^;]+;/g, ' ').length;
+        const pillWidth = Math.max(18, textLen * 8.5 + 8);
+        const pillHeight = 18;
+        let pillX = textX - pillWidth / 2;
+        const pillY = textY - 13;
+
+        // Check clearance with arrowhead (minimum 4px clearance)
+        if (arrowBox) {
+          if (arrowBox.minX >= textX) {
+            // Arrowhead is to the right
+            const overlap = (pillX + pillWidth) - (arrowBox.minX - 4);
+            if (overlap > 0) {
+              pillX -= overlap;
+              textX -= overlap;
+            }
+          } else if (arrowBox.maxX <= textX) {
+            // Arrowhead is to the left
+            const overlap = (arrowBox.maxX + 4) - pillX;
+            if (overlap > 0) {
+              pillX += overlap;
+              textX += overlap;
+            }
+          }
+        }
+
+        const pillRect = `<rect class="edge-label-pill" x="${pillX.toFixed(2)}" y="${pillY.toFixed(2)}" width="${pillWidth.toFixed(2)}" height="${pillHeight.toFixed(2)}" rx="3" ry="3" fill="var(--bg-canvas, #ffffff)" stroke="none"/>`;
+        const updatedAttrs = attrs.replace(/x="[^"]+"/, `x="${textX.toFixed(2)}"`);
+        const updatedText = `<text${updatedAttrs}>${textContent}</text>`;
+
+        updatedInner = updatedInner.replace(textMatch[0], `${pillRect}\n${updatedText}`);
+      }
+    }
+
+    return `<g id="${edgeId}" class="edge">${updatedInner}</g>`;
+  });
+
+  return out;
 }
 
 export async function computeMasterLayout(
@@ -239,8 +341,11 @@ export function toDot(input: NFA | StepSnapshot, options?: DiagramOptions): stri
   const lines: string[] = [
     'digraph NFA {',
     '  rankdir=LR;',
-    '  node [shape=circle, fontname="Helvetica"];',
-    '  edge [fontname="Helvetica"];'
+    '  ranksep=0.55;',
+    '  nodesep=0.45;',
+    '  bgcolor="transparent";',
+    '  node [shape=circle, fontname="Helvetica", penwidth=1.5];',
+    '  edge [fontname="Helvetica", arrowsize=0.85];'
   ];
 
   const hasPin =
