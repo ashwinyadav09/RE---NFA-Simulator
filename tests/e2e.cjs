@@ -382,6 +382,11 @@ const assert = require('node:assert');
 
   const fileUrl = 'file:///' + distHtmlPath.replace(/\\/g, '/');
 
+  async function gotoPage(p, name) {
+    await p.click(`#nav-link-${name}`);
+    await p.waitForSelector(`#page-${name}:not([hidden])`);
+  }
+
   console.log(`Opening ${fileUrl}...`);
   await page.goto(fileUrl);
 
@@ -1603,6 +1608,8 @@ const assert = require('node:assert');
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
 
+  await gotoPage(page, 'validation');
+
   for (const checkId of ['#inv-I1', '#inv-I2', '#inv-I3', '#inv-I4', '#inv-size', '#inv-replay']) {
     const text = await page.textContent(checkId);
     const passAttr = await page.getAttribute(checkId, 'data-pass');
@@ -1703,10 +1710,12 @@ const assert = require('node:assert');
   });
   // Trigger differential run
   await page.click('#diff-run');
-  // Immediately rebuild mid-run with new expression 'b'
+  // Immediately rebuild mid-run with new expression 'b' on Workbench
+  await gotoPage(page, 'workbench');
   await page.fill('#regex-input', 'b');
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  await gotoPage(page, 'validation');
 
   // On rebuild, #diff-status and #diff-results must be cleared immediately
   const statusOnRebuild = await page.textContent('#diff-status');
@@ -1736,10 +1745,12 @@ const assert = require('node:assert');
   console.log('Testing Ticket 14: Stress panel...');
 
   // Fix 2: Mutual exclusion check - start #diff-run, confirm #stress-run is disabled, let it finish with no "ORACLE ERROR"
+  await gotoPage(page, 'workbench');
   await page.evaluate(() => { window.__buildDone = false; });
   await page.fill('#regex-input', '(a|b)*a');
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
+  await gotoPage(page, 'validation');
 
   await page.evaluate(() => {
     window.__diffDone = false;
@@ -1761,6 +1772,8 @@ const assert = require('node:assert');
   const diffStatusTextAfter = await page.textContent('#diff-status');
   console.log('Differential status after mutual exclusion check:', diffStatusTextAfter);
   assert(!diffStatusTextAfter.includes('ORACLE ERROR'), 'Differential run must finish with no ORACLE ERROR');
+
+  await gotoPage(page, 'stress');
 
   // 1. Check browser engine info in panel
   const browserInfoText = await page.textContent('#stress-browser-info');
@@ -1796,10 +1809,12 @@ const assert = require('node:assert');
   assert(firstRowText.includes('12'), 'First row must test n=12');
   assert(firstRowText.includes('REJECT'), 'First row must report verdict REJECT');
 
-  // 5. Verify page controls remain responsive during run
+  // 5. Verify page controls remain responsive during run (and switching pages does not abort stress run)
+  await gotoPage(page, 'workbench');
   await page.fill('#regex-input', 'abc');
   const stressInputVal = await page.$eval('#regex-input', (el) => el.value);
   assert.strictEqual(stressInputVal, 'abc', 'Page input control must remain responsive during stress run');
+  await gotoPage(page, 'stress');
 
   // 6. Verify inline-SVG chart updated with data points
   const circleCount = await page.evaluate(() => document.querySelectorAll('#stress-chart-container svg circle').length);
@@ -2086,6 +2101,7 @@ const assert = require('node:assert');
   // Testing Ticket 27: Validation and Stress Panels
   // ----------------------------------------------------
   console.log('Testing Ticket 27: Validation and Stress Panels...');
+  await gotoPage(page, 'validation');
   const valSummary = await page.evaluate(() => {
     const strip = document.getElementById('validation-summary-strip');
     const invPill = document.getElementById('strip-invariants-pill')?.textContent?.trim();
@@ -2139,6 +2155,7 @@ const assert = require('node:assert');
   assert.strictEqual(valSummary.inv1Name, 'Distinct Start & Accept', '#inv-I1 .check-name must be Distinct Start & Accept');
 
   // Ticket 15: Packaging and Polish
+  await gotoPage(page, 'workbench');
   console.log('Testing Ticket 15: Presets...');
   const presetOptions = await page.$$eval('#preset-select option', (opts) =>
     opts.map((o) => ({ value: o.value, text: o.text })).filter((o) => o.value !== '')
@@ -2312,6 +2329,7 @@ const assert = require('node:assert');
   const invI1Text = await page.textContent('#inv-I1');
   assert(invI1Text.startsWith('PASS') || invI1Text.startsWith('FAIL'), 'Invariant marks must carry PASS/FAIL text');
 
+  await gotoPage(page, 'validation');
   await page.click('#run-suite');
   const suiteVerdictTexts = await page.$$eval('#suite-table tbody tr td:last-child', (tds) =>
     tds.map((td) => td.textContent.trim())
@@ -2322,6 +2340,7 @@ const assert = require('node:assert');
   }
 
   // Trigger timeout marker to assert it has text
+  await gotoPage(page, 'stress');
   await page.evaluate(() => {
     window.__e2eWorkerMode = 'timeout';
     window.__stressDone = false;
@@ -2348,6 +2367,7 @@ const assert = require('node:assert');
   assert.strictEqual(await page.$eval('#stress-chart-container', (el) => el.getAttribute('data-scale')), 'linear');
 
   // Scope A: Clear stale results on every successful build
+  await gotoPage(page, 'workbench');
   console.log('Testing Scope A: Clear stale results on rebuild...');
   // 1. Build (a|b)*a, run "ba" (ACCEPT)
   await page.selectOption('#notation-select', 'standard');
@@ -3446,6 +3466,7 @@ const assert = require('node:assert');
   assert(copiedUrl.includes('alphabet='), 'Copied URL must include edited alphabet');
   assert(copiedUrl.includes('input=ba'), 'Copied URL must include test input');
   assert(copiedUrl.includes('compact=1'), 'Copied URL must include compact=1');
+  assert(copiedUrl.includes('#workbench'), 'Copied URL must include #workbench');
 
   // Verify 2s clear timer
   await page.waitForFunction(() => !document.getElementById('copy-link-status')?.hasAttribute('data-copied'), null, { timeout: 5000 });
@@ -3465,6 +3486,14 @@ const assert = require('node:assert');
   assert.strictEqual(await freshCopyPage.textContent('#step-counter'), 'step 2 / 6', 'Step counter must reproduce step 2 in fresh page');
   assert.strictEqual(await freshCopyPage.$eval('#compact-labels', (el) => el.checked), true, 'Compact labels must reproduce in fresh page');
   await freshCopyPage.close();
+
+  // Verify Copy Link on #validation includes #validation
+  await gotoPage(page, 'validation');
+  await page.evaluate(() => document.getElementById('copy-link-btn')?.click());
+  await page.waitForFunction(() => document.getElementById('copy-link-status')?.textContent === 'Link copied!');
+  const copiedValUrl = await page.evaluate(() => navigator.clipboard.readText());
+  assert.ok(copiedValUrl.includes('#validation'), 'Copied URL from validation must include #validation');
+  await gotoPage(page, 'workbench');
 
   // ---------------------------------------------------------
   // Ticket 19 AC9: Keyboard help dialog
@@ -3632,9 +3661,9 @@ const assert = require('node:assert');
   assert.strictEqual(headerInfo.title, 'RE → NFA (Thompson) Simulator', '#app-header h1 title must match expected');
   assert.ok(headerInfo.hasLogo, '#app-header must contain logo SVG with circle and arrow');
   assert.strictEqual(headerInfo.navLinks.length, 3, 'Must have 3 section nav links');
-  assert.strictEqual(headerInfo.navLinks[0].href, '#app', 'Workbench nav link must point to #app');
-  assert.strictEqual(headerInfo.navLinks[1].href, '#validation-panel', 'Validation nav link must point to #validation-panel');
-  assert.strictEqual(headerInfo.navLinks[2].href, '#stress-section', 'Stress test nav link must point to #stress-section');
+  assert.strictEqual(headerInfo.navLinks[0].href, '#workbench', 'Workbench nav link must point to #workbench');
+  assert.strictEqual(headerInfo.navLinks[1].href, '#validation', 'Validation nav link must point to #validation');
+  assert.strictEqual(headerInfo.navLinks[2].href, '#stress', 'Stress test nav link must point to #stress');
 
   assert.ok(headerInfo.footerText.includes('RE → NFA (Thompson) Simulator · Automata Theory and Computability'), 'Footer must contain course text');
   assert.strictEqual(headerInfo.footerBg, 'rgb(240, 237, 230)', 'Footer background must match --bg-sunken (#f0ede6)');
@@ -4255,6 +4284,92 @@ const assert = require('node:assert');
 
   // Restore desktop viewport
   await page.setViewportSize({ width: 1440, height: 900 });
+
+  // ==========================================
+  // Ticket 31: Three separate pages and hash routing
+  // ==========================================
+  console.log('Testing Ticket 31: Three separate pages and hash routing...');
+
+  // 1. Initial default page is Workbench
+  assert.strictEqual(await page.$eval('#page-workbench', (el) => el.hidden), false, '#page-workbench must be visible on default route');
+  assert.strictEqual(await page.$eval('#page-validation', (el) => el.hidden), true, '#page-validation must be hidden on default route');
+  assert.strictEqual(await page.$eval('#page-stress', (el) => el.hidden), true, '#page-stress must be hidden on default route');
+  assert.strictEqual(await page.$eval('#nav-link-workbench', (el) => el.getAttribute('aria-current')), 'page', 'Workbench nav link must have aria-current="page"');
+  assert.strictEqual(await page.title(), 'RE → NFA Simulator — Workbench');
+
+  // 2. Navigation to Validation via nav link
+  await gotoPage(page, 'validation');
+  assert.strictEqual(await page.$eval('#page-workbench', (el) => el.hidden), true, '#page-workbench must be hidden when on validation');
+  assert.strictEqual(await page.$eval('#page-validation', (el) => el.hidden), false, '#page-validation must be visible');
+  assert.strictEqual(await page.$eval('#nav-link-validation', (el) => el.getAttribute('aria-current')), 'page');
+  assert.strictEqual(await page.$eval('#nav-link-workbench', (el) => el.getAttribute('aria-current')), null);
+  assert.strictEqual(await page.title(), 'RE → NFA Simulator — Validation');
+  assert.strictEqual(await page.evaluate(() => document.activeElement?.id), 'validation-page-heading', 'Focus must move to #validation-page-heading');
+  assert.ok((await page.textContent('#live-region')).includes('Navigated to Validation page'), 'Live region must announce navigation');
+
+  // 3. Navigation to Stress
+  await gotoPage(page, 'stress');
+  assert.strictEqual(await page.$eval('#page-stress', (el) => el.hidden), false, '#page-stress must be visible');
+  assert.strictEqual(await page.$eval('#page-validation', (el) => el.hidden), true, '#page-validation must be hidden');
+  assert.strictEqual(await page.$eval('#nav-link-stress', (el) => el.getAttribute('aria-current')), 'page');
+  assert.strictEqual(await page.title(), 'RE → NFA Simulator — Stress Test');
+  assert.strictEqual(await page.evaluate(() => document.activeElement?.id), 'stress-page-heading', 'Focus must move to #stress-page-heading');
+
+  // 4. Back / Forward button navigation
+  await page.goBack();
+  await page.waitForSelector('#page-validation:not([hidden])');
+  assert.strictEqual(await page.title(), 'RE → NFA Simulator — Validation');
+  assert.strictEqual(await page.$eval('#nav-link-validation', (el) => el.getAttribute('aria-current')), 'page');
+
+  await page.goForward();
+  await page.waitForSelector('#page-stress:not([hidden])');
+  assert.strictEqual(await page.title(), 'RE → NFA Simulator — Stress Test');
+
+  // 5. Legacy aliases: #validation-panel and #stress-section without bounce
+  await page.goto(fileUrl + '#validation-panel');
+  await page.waitForSelector('#page-validation:not([hidden])');
+  assert.strictEqual(await page.$eval('#nav-link-validation', (el) => el.getAttribute('aria-current')), 'page');
+  await page.goBack();
+  await page.waitForSelector('#page-stress:not([hidden])');
+
+  await page.goto(fileUrl + '#stress-section');
+  await page.waitForSelector('#page-stress:not([hidden])');
+  assert.strictEqual(await page.$eval('#nav-link-stress', (el) => el.getAttribute('aria-current')), 'page');
+
+  // 6. Unknown hash falls back to Workbench
+  await page.goto(fileUrl + '#unknown-route-123');
+  await page.waitForSelector('#page-workbench:not([hidden])');
+  assert.strictEqual(await page.$eval('#nav-link-workbench', (el) => el.getAttribute('aria-current')), 'page');
+
+  // 7. Hidden-build trap test (Requirement 7):
+  const hiddenBuildPage = await createHarnessPage(browser);
+  await hiddenBuildPage.goto(fileUrl + '?regex=(a%7Cb)*a#validation');
+  await hiddenBuildPage.waitForSelector('#page-validation:not([hidden])');
+  await gotoPage(hiddenBuildPage, 'workbench');
+  await hiddenBuildPage.waitForSelector('#canvas-viewport svg');
+  const viewportMode = await hiddenBuildPage.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
+  assert.strictEqual(viewportMode, 'fit', 'Diagram must correctly fit when Workbench becomes visible');
+  const renderedSvgNodes = await hiddenBuildPage.$$eval('#canvas-viewport svg g.node', (nodes) => nodes.length);
+  assert.ok(renderedSvgNodes > 0, 'Diagram must contain rendered nodes');
+  await hiddenBuildPage.close();
+
+  // 8. Arrow key stepping active only on Workbench
+  await gotoPage(page, 'validation');
+  const stepBefore = await page.$eval('#step-counter', (el) => el.textContent);
+  await page.keyboard.press('ArrowRight');
+  const stepAfter = await page.$eval('#step-counter', (el) => el.textContent);
+  assert.strictEqual(stepBefore, stepAfter, 'ArrowRight must not step NFA when not on Workbench');
+  await gotoPage(page, 'workbench');
+
+  // 9. Validation empty state vs active summary
+  const emptyValPage = await createHarnessPage(browser);
+  await emptyValPage.goto(fileUrl + '#validation');
+  await emptyValPage.waitForSelector('#page-validation:not([hidden])');
+  assert.strictEqual(await emptyValPage.$eval('#validation-empty-state', (el) => el.style.display), '', 'Empty state banner must be visible when no regex is built');
+  assert.strictEqual(await emptyValPage.$eval('#suite-section', (el) => el.style.display), '', '24-case suite must remain visible and usable when empty');
+  await emptyValPage.click('#btn-goto-workbench');
+  await emptyValPage.waitForSelector('#page-workbench:not([hidden])');
+  await emptyValPage.close();
 
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);

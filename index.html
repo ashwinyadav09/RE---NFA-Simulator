@@ -277,6 +277,37 @@
       box-sizing: border-box;
     }
 
+    /* Multi-page Routing Containers (Ticket 31) */
+    .app-page {
+      display: block;
+      width: 100%;
+    }
+
+    .app-page[hidden] {
+      display: none !important;
+    }
+
+    .validation-active-summary {
+      margin-bottom: 16px;
+      padding: 10px 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .validation-empty-state {
+      padding: 24px;
+      margin-bottom: 24px;
+      background: var(--bg-surface);
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--radius-md);
+      text-align: center;
+    }
+
+    .validation-empty-state p {
+      margin: 0 0 16px 0;
+    }
+
     /* App Shell Header & Navigation (Ticket 22) */
     #app-header {
       position: sticky;
@@ -334,6 +365,12 @@
       text-decoration: none;
       border-radius: 4px;
       transition: color var(--dur-fast), background-color var(--dur-fast);
+    }
+
+    .nav-link[aria-current="page"] {
+      color: var(--primary);
+      background-color: var(--primary-soft);
+      font-weight: 600;
     }
 
     .nav-link:hover {
@@ -2400,9 +2437,9 @@
         <h1>RE → NFA (Thompson) Simulator</h1>
       </div>
       <nav class="app-nav" aria-label="Sections">
-        <a href="#app" class="nav-link">Workbench</a>
-        <a href="#validation-panel" class="nav-link">Validation</a>
-        <a href="#stress-section" class="nav-link">Stress test</a>
+        <a href="#workbench" class="nav-link" id="nav-link-workbench">Workbench</a>
+        <a href="#validation" class="nav-link" id="nav-link-validation">Validation</a>
+        <a href="#stress" class="nav-link" id="nav-link-stress">Stress test</a>
       </nav>
       <div class="app-header-right">
         <label for="theme-select" class="sr-only">Theme</label>
@@ -2414,7 +2451,9 @@
       </div>
     </header>
     <div id="live-region" aria-live="polite" aria-atomic="true" class="sr-only" data-testid="live-region"></div>
-    <section id="input-strip" class="input-strip" aria-label="Expression and settings">
+    <div id="page-workbench" class="app-page">
+      <h2 id="workbench-page-heading" class="sr-only" tabindex="-1">Workbench</h2>
+      <section id="input-strip" class="input-strip" aria-label="Expression and settings">
       <div class="grid-item-preset">
         <label for="preset-select" class="setting-label">Preset</label>
         <select id="preset-select" data-testid="preset-select" aria-label="Presets">
@@ -2602,14 +2641,22 @@
         </div>
       </aside>
     </main>
+    </div>
 
-    <div class="validation-panel" id="validation-panel" data-testid="validation-panel">
-      <div class="section-header-row">
-        <div>
-          <h2>Validation &amp; Oracles</h2>
-          <p class="section-subtitle text-muted">Independent verification that the constructed ε-NFA graph is mathematically correct.</p>
+    <div id="page-validation" class="app-page" hidden>
+      <div class="validation-panel" id="validation-panel" data-testid="validation-panel">
+        <div class="section-header-row">
+          <div>
+            <h2 id="validation-page-heading" tabindex="-1">Validation &amp; Oracles</h2>
+            <p class="section-subtitle text-muted">Independent verification that the constructed ε-NFA graph is mathematically correct.</p>
+          </div>
         </div>
-      </div>
+
+        <div id="validation-active-summary" class="validation-active-summary font-code-sm text-muted" style="display: none;"></div>
+        <div id="validation-empty-state" class="validation-empty-state" style="display: none;">
+          <p class="text-muted">No expression built yet. Build an expression on the Workbench to inspect structural invariants and run differential tests.</p>
+          <a href="#workbench" class="btn btn-primary" id="btn-goto-workbench">Go to Workbench</a>
+        </div>
 
       <div class="validation-summary-strip" id="validation-summary-strip">
         <a href="#invariants-section" class="summary-strip-card" id="strip-card-invariants">
@@ -2687,14 +2734,17 @@
         <div id="diff-status" data-testid="diff-status"></div>
         <div id="diff-results" data-testid="diff-results"></div>
       </div>
+    </div>
+  </div>
 
-      <div class="stress-section" id="stress-section" data-testid="stress-section">
-        <div class="section-header-row">
-          <div>
-            <h3>Stress Test: Backtracking RegExp vs Thompson NFA</h3>
-            <p class="section-subtitle text-muted">Backtracking matchers take exponential time on pathological patterns; Thompson NFA stays strictly linear.</p>
-          </div>
+  <div id="page-stress" class="app-page" hidden>
+    <div class="stress-section" id="stress-section" data-testid="stress-section">
+      <div class="section-header-row">
+        <div>
+          <h2 id="stress-page-heading" tabindex="-1">Stress Test: Backtracking RegExp vs Thompson NFA</h2>
+          <p class="section-subtitle text-muted">Backtracking matchers take exponential time on pathological patterns; Thompson NFA stays strictly linear.</p>
         </div>
+      </div>
         <div class="controls stress-controls">
           <label for="stress-family">Family:</label>
           <select id="stress-family" data-testid="stress-family" aria-label="Family">
@@ -2732,6 +2782,7 @@
         <div id="stress-chart-container" data-testid="stress-chart-container" data-scale="linear" style="margin-top: 8px;"></div>
       </div>
     </div>
+  </div>
 
     <dialog id="keyboard-help-dialog" data-testid="keyboard-help-dialog" aria-labelledby="keyboard-help-title" aria-describedby="keyboard-help-desc">
       <div class="dialog-header">

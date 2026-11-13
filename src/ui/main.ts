@@ -59,6 +59,7 @@ import {
 import { attachTouchGestures } from './canvas-touch';
 import type { StressRow, RegExpVerdict } from './stress-types';
 import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
+import { PageRoute, parseRoute, formatRoute, isLegacyAlias, getRouteTitle } from './router';
 import {
   clampZoom,
   zoomAt,
@@ -240,6 +241,9 @@ function closeKeyboardHelp(): void {
 let currentDot: string | null = null;
 let copyLinkTimer: ReturnType<typeof setTimeout> | null = null;
 
+let currentRoute: PageRoute = 'workbench';
+let pendingFitOnWorkbenchVisible = false;
+
 let currentViewport: ViewportState = { zoom: 1.0, panX: 0, panY: 0 };
 let currentViewportMode: ViewportMode = 'fit';
 let currentContentRect: Rect | null = null;
@@ -306,6 +310,120 @@ function clearViewport(): void {
   updateToolbarButtonStates();
 }
 
+function updateValidationPageState(): void {
+  const summaryEl = document.getElementById('validation-active-summary');
+  const emptyStateEl = document.getElementById('validation-empty-state');
+  const stripEl = document.getElementById('validation-summary-strip');
+  const invEl = document.getElementById('invariants-section');
+  const diffEl = document.getElementById('differential-section');
+
+  if (currentAnalysis) {
+    if (summaryEl) {
+      const expr = inputEl ? inputEl.value : '';
+      const notat = notationSelectEl ? notationSelectEl.value : 'standard';
+      const concat = concatSelectEl ? concatSelectEl.value : 'epsilon-link';
+      summaryEl.style.display = '';
+      summaryEl.textContent = `Validating: ${expr} · ${notat} notation · ${concat} concatenation`;
+    }
+    if (emptyStateEl) emptyStateEl.style.display = 'none';
+    if (stripEl) stripEl.style.display = '';
+    if (invEl) invEl.style.display = '';
+    if (diffEl) diffEl.style.display = '';
+  } else {
+    if (summaryEl) {
+      summaryEl.style.display = 'none';
+      summaryEl.textContent = '';
+    }
+    if (emptyStateEl) emptyStateEl.style.display = '';
+    if (stripEl) stripEl.style.display = 'none';
+    if (invEl) invEl.style.display = 'none';
+    if (diffEl) diffEl.style.display = 'none';
+  }
+}
+
+function showPage(route: PageRoute, options?: { isInitialLoad?: boolean }): void {
+  currentRoute = route;
+
+  const pageWorkbench = document.getElementById('page-workbench');
+  const pageValidation = document.getElementById('page-validation');
+  const pageStress = document.getElementById('page-stress');
+
+  if (pageWorkbench) {
+    if (route === 'workbench') pageWorkbench.removeAttribute('hidden');
+    else pageWorkbench.setAttribute('hidden', '');
+  }
+  if (pageValidation) {
+    if (route === 'validation') pageValidation.removeAttribute('hidden');
+    else pageValidation.setAttribute('hidden', '');
+  }
+  if (pageStress) {
+    if (route === 'stress') pageStress.removeAttribute('hidden');
+    else pageStress.setAttribute('hidden', '');
+  }
+
+  const navLinks = document.querySelectorAll<HTMLAnchorElement>('.app-nav .nav-link');
+  navLinks.forEach((link) => {
+    const href = link.getAttribute('href') || '';
+    const linkRoute = parseRoute(href);
+    if (linkRoute === route) {
+      link.setAttribute('aria-current', 'page');
+    } else {
+      link.removeAttribute('aria-current');
+    }
+  });
+
+  document.title = getRouteTitle(route);
+
+  if (!options?.isInitialLoad) {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    const liveRegionEl = document.getElementById('live-region');
+    if (liveRegionEl) {
+      const routeNames: Record<PageRoute, string> = {
+        workbench: 'Workbench',
+        validation: 'Validation',
+        stress: 'Stress Test'
+      };
+      liveRegionEl.textContent = `Navigated to ${routeNames[route]} page`;
+    }
+    const headingId = route === 'workbench'
+      ? 'workbench-page-heading'
+      : route === 'validation'
+        ? 'validation-page-heading'
+        : 'stress-page-heading';
+    const heading = document.getElementById(headingId);
+    if (heading) {
+      heading.focus();
+    }
+  }
+
+  if (route === 'workbench') {
+    if (pendingFitOnWorkbenchVisible && currentContentRect && currentViewBox && canvasEl) {
+      const containerRect: Rect = {
+        width: canvasEl.clientWidth || 800,
+        height: canvasEl.clientHeight || 500
+      };
+      const fit = fitToContainer(currentContentRect, containerRect);
+      currentFitZoom = fit.zoom;
+      const init = initialView(currentContentRect, containerRect);
+      currentViewport = { zoom: init.zoom, panX: init.panX, panY: init.panY };
+      currentViewportMode = init.mode;
+      applyViewport();
+      pendingFitOnWorkbenchVisible = false;
+    } else if (currentViewportMode === 'fit' && currentContentRect && canvasEl) {
+      const containerRect: Rect = {
+        width: canvasEl.clientWidth || 800,
+        height: canvasEl.clientHeight || 500
+      };
+      const fit = fitToContainer(currentContentRect, containerRect);
+      currentFitZoom = fit.zoom;
+      currentViewport = { zoom: fit.zoom, panX: fit.panX, panY: fit.panY };
+      applyViewport();
+    }
+  }
+
+  updateValidationPageState();
+}
+
 function extractSvgViewBox(svgString: string): string | null {
   const m = /viewBox=["']([^"']+)["']/.exec(svgString);
   return m ? m[1] : null;
@@ -342,6 +460,14 @@ function setCanvasContent(content: string, isText = false): void {
 
   if (!newViewBox || !newRect) {
     clearViewport();
+    return;
+  }
+
+  const isCanvasVisible = canvasEl && canvasEl.clientWidth > 0 && canvasEl.clientHeight > 0;
+  if (!isCanvasVisible) {
+    pendingFitOnWorkbenchVisible = true;
+    currentContentRect = newRect;
+    currentViewBox = newViewBox;
     return;
   }
 
@@ -634,6 +760,7 @@ function clearResults(): void {
   if (diffResultsEl) diffResultsEl.innerHTML = '';
 
   currentAnalysis = null;
+  updateValidationPageState();
 }
 
 function renderPostfixView(container: HTMLElement, tokens: Token[]): void {
@@ -1086,6 +1213,7 @@ async function handleBuild() {
   inputEl.removeAttribute('data-error-position');
 
   currentAnalysis = analysis;
+  updateValidationPageState();
 
   if (alphabetInputEl) {
     alphabetInputEl.value = analysis.alphabet.join(', ');
@@ -1809,12 +1937,14 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
       }
     }
   } else if (e.key === 'ArrowLeft') {
+    if (currentRoute !== 'workbench') return;
     e.preventDefault();
     stopPlayback();
     if (currentStepIndex > 1) {
       navigateToStep(currentStepIndex - 1);
     }
   } else if (e.key === 'ArrowRight') {
+    if (currentRoute !== 'workbench') return;
     e.preventDefault();
     stopPlayback();
     if (currentAnalysis && currentStepIndex < currentAnalysis.steps.length) {
@@ -2497,7 +2627,8 @@ if (copyLinkBtn) {
 
     const query = encodeAppState(state);
     const baseUrl = window.location.href.split('?')[0].split('#')[0];
-    const fullUrl = query ? `${baseUrl}?${query}` : baseUrl;
+    const routeHash = formatRoute(currentRoute);
+    const fullUrl = query ? `${baseUrl}?${query}${routeHash}` : `${baseUrl}${routeHash}`;
 
     const success = await copyTextToClipboard(fullUrl);
     showTransientStatus(
@@ -2515,8 +2646,17 @@ if (copyLinkBtn) {
 }
 
 async function initDeepLink(): Promise<void> {
+  const initialRoute = parseRoute(window.location.hash);
+  if (isLegacyAlias(window.location.hash)) {
+    window.history.replaceState(null, '', formatRoute(initialRoute) + window.location.search);
+  }
+  showPage(initialRoute, { isInitialLoad: true });
+
   const search = window.location.search;
-  if (!search) return;
+  if (!search) {
+    document.body.setAttribute('data-deep-link-done', 'true');
+    return;
+  }
 
   const { state, ignoredKeys } = decodeAppState(search);
 
@@ -2612,5 +2752,23 @@ async function initDeepLink(): Promise<void> {
 
   document.body.setAttribute('data-deep-link-done', 'true');
 }
+
+window.addEventListener('hashchange', () => {
+  const rawHash = window.location.hash;
+  const route = parseRoute(rawHash);
+  if (isLegacyAlias(rawHash)) {
+    window.history.replaceState(null, '', formatRoute(route) + window.location.search);
+  }
+  showPage(route);
+});
+
+document.querySelectorAll<HTMLAnchorElement>('.app-nav .nav-link').forEach((link) => {
+  link.addEventListener('click', (e) => {
+    const href = link.getAttribute('href') || '';
+    const route = parseRoute(href);
+    window.location.hash = formatRoute(route);
+    e.preventDefault();
+  });
+});
 
 initDeepLink();

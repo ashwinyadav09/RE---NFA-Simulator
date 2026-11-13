@@ -783,8 +783,8 @@ async function main() {
       id: 'T19-AC9-4',
       desc: 'T19-AC9-4: one list row removed from keyboard help table',
       file: 'index.html',
-      find: "          <tr>\n            <td><kbd>Esc</kbd></td>\n            <td>Close keyboard shortcuts help</td>\n          </tr>",
-      replace: "          <!-- row removed -->",
+      find: "            <tr>\n              <td><kbd>Esc</kbd></td>\n              <td>Close keyboard shortcuts help</td>\n            </tr>",
+      replace: "            <!-- row removed -->",
       testType: 'e2e',
       expect: 'Keyboard help table must contain 9 shortcut rows'
     },
@@ -894,10 +894,10 @@ async function main() {
       id: 'T22-AC2-1',
       desc: 'T22-AC2-1: Corrupt validation nav link href in index.html',
       file: 'index.html',
-      find: '        <a href="#validation-panel" class="nav-link">Validation</a>',
-      replace: '        <a href="#wrong-validation" class="nav-link">Validation</a>',
+      find: '        <a href="#validation" class="nav-link" id="nav-link-validation">Validation</a>',
+      replace: '        <a href="#wrong-validation" class="nav-link" id="nav-link-validation">Validation</a>',
       testType: 'e2e',
-      expect: 'Validation nav link must point to #validation-panel'
+      expect: 'Validation nav link must point to #validation'
     },
     {
       id: 'T22-AC3-1',
@@ -1171,6 +1171,79 @@ async function main() {
       replace: "  const onPointerDown = (e: PointerEvent) => {\n    return;",
       testType: 'e2e',
       expect: 'Touch drag must pan canvas viewport'
+    },
+    // Ticket 31 mutants
+    {
+      id: 'T31-AC1-1',
+      desc: 'T31-AC1-1: Default route returned as validation instead of workbench in src/ui/router.ts',
+      file: 'src/ui/router.ts',
+      find: "  return 'workbench';",
+      replace: "  return 'validation';",
+      testType: 'vitest',
+      expect: "expected 'validation' to be 'workbench'"
+    },
+    {
+      id: 'T31-AC1-2',
+      desc: 'T31-AC1-2: Legacy alias #validation-panel maps to workbench instead of validation in src/ui/router.ts',
+      file: 'src/ui/router.ts',
+      find: "  '#validation-panel': 'validation',",
+      replace: "  '#validation-panel': 'workbench',",
+      testType: 'vitest',
+      expect: "expected 'workbench' to be 'validation'"
+    },
+    {
+      id: 'T31-AC2-1',
+      desc: 'T31-AC2-1: Active nav link aria-current="page" omitted in src/ui/main.ts',
+      file: 'src/ui/main.ts',
+      find: "      link.setAttribute('aria-current', 'page');",
+      replace: "      // link.setAttribute('aria-current', 'page');",
+      testType: 'e2e',
+      expect: "Workbench nav link must have aria-current=\"page\""
+    },
+    {
+      id: 'T31-AC2-2',
+      desc: 'T31-AC2-2: Workbench page set to hidden instead of visible in src/ui/main.ts',
+      file: 'src/ui/main.ts',
+      find: "    if (route === 'workbench') pageWorkbench.removeAttribute('hidden');",
+      replace: "    if (route === 'workbench') pageWorkbench.setAttribute('hidden', '');",
+      testType: 'e2e',
+      expect: "#page-workbench must be visible on default route"
+    },
+    {
+      id: 'T31-AC2-3',
+      desc: 'T31-AC2-3: Focus heading on navigation omitted in src/ui/main.ts',
+      file: 'src/ui/main.ts',
+      find: "      heading.focus();",
+      replace: "      // heading.focus();",
+      testType: 'e2e',
+      expect: "Focus must move to #validation-page-heading"
+    },
+    {
+      id: 'T31-AC2-4',
+      desc: 'T31-AC2-4: Copy Link drops route hash in src/ui/main.ts',
+      file: 'src/ui/main.ts',
+      find: "    const routeHash = formatRoute(currentRoute);",
+      replace: "    const routeHash = '';",
+      testType: 'e2e',
+      expect: "Copied URL from validation must include #validation"
+    },
+    {
+      id: 'T31-AC3-1',
+      desc: 'T31-AC3-1: Deferred canvas fit omitted on workbench become visible in src/ui/main.ts',
+      file: 'src/ui/main.ts',
+      find: "      currentViewportMode = init.mode;",
+      replace: "      currentViewportMode = 'none' as any;",
+      testType: 'e2e',
+      expect: "Diagram must correctly fit when Workbench becomes visible"
+    },
+    {
+      id: 'T31-AC3-2',
+      desc: 'T31-AC3-2: Arrow keys step NFA when not on Workbench in src/ui/main.ts',
+      file: 'src/ui/main.ts',
+      find: "  } else if (e.key === 'ArrowRight') {\n    if (currentRoute !== 'workbench') return;",
+      replace: "  } else if (e.key === 'ArrowRight') {\n    // if (currentRoute !== 'workbench') return;",
+      testType: 'e2e',
+      expect: "ArrowRight must not step NFA when not on Workbench"
     }
   ];
 
