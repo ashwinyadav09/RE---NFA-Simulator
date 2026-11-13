@@ -1220,7 +1220,7 @@ async function handleBuild() {
   }
   if (alphabetMessageEl) {
     alphabetMessageEl.textContent = '';
-    alphabetMessageEl.className = '';
+    alphabetMessageEl.className = 'grid-item-alphabet-message';
   }
 
   if (statsEl) {
@@ -1519,14 +1519,14 @@ if (alphabetInputEl) {
     if (!valRes.ok) {
       if (alphabetMessageEl) {
         alphabetMessageEl.textContent = valRes.message;
-        alphabetMessageEl.className = 'error';
+        alphabetMessageEl.className = 'grid-item-alphabet-message error';
       }
       // Restore valid alphabet in input
       alphabetInputEl.value = (userEditedAlphabet ?? currentAnalysis.alphabet).join(', ');
     } else {
       if (alphabetMessageEl) {
         alphabetMessageEl.textContent = '';
-        alphabetMessageEl.className = '';
+        alphabetMessageEl.className = 'grid-item-alphabet-message';
       }
       userEditedAlphabet = valRes.alphabet;
       currentAnalysis.alphabet = valRes.alphabet;

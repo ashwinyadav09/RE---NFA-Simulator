@@ -1245,6 +1245,52 @@ async function main() {
       replace: "  } else if (e.key === 'ArrowRight') {\n    // if (currentRoute !== 'workbench') return;",
       testType: 'e2e',
       expect: "ArrowRight must not step NFA when not on Workbench"
+    },
+    // Ticket 32 mutants
+    {
+      id: 'T32-AC1-1',
+      desc: 'T32-AC1-1: Mutate --control-h from 36px to 40px in index.html',
+      file: 'index.html',
+      find: "      --control-h:           36px;",
+      replace: "      --control-h:           40px;",
+      testType: 'e2e',
+      expect: "must have --control-h = 36px"
+    },
+    {
+      id: 'T32-AC1-2',
+      desc: 'T32-AC1-2: Mutate --control-font-size from 14px to 12px in index.html',
+      file: 'index.html',
+      find: "      --control-font-size:   14px;",
+      replace: "      --control-font-size:   12px;",
+      testType: 'e2e',
+      expect: "must have 14px font-size"
+    },
+    {
+      id: 'T32-AC2-1',
+      desc: 'T32-AC2-1: Mutate touch media query from 640px to 100px in index.html',
+      file: 'index.html',
+      find: "    @media (pointer: coarse), (max-width: 640px) {",
+      replace: "    @media (pointer: coarse), (max-width: 100px) {",
+      testType: 'e2e',
+      expect: "Viewport 390x844 must have --control-h = 44px"
+    },
+    {
+      id: 'T32-AC3-1',
+      desc: 'T32-AC3-1: Mutate #insert-eps height to 28px in index.html',
+      file: 'index.html',
+      find: "    #insert-eps, #insert-empty {\n      height: var(--control-h);",
+      replace: "    #insert-eps, #insert-empty {\n      height: 28px;",
+      testType: 'e2e',
+      expect: "#insert-eps height"
+    },
+    {
+      id: 'T32-AC4-1',
+      desc: 'T32-AC4-1: Mutate #alphabet-message grid-column span in index.html',
+      file: 'index.html',
+      find: "    .grid-item-alphabet-message {\n      grid-column: 1 / -1;",
+      replace: "    .grid-item-alphabet-message {\n      grid-column: 1;",
+      testType: 'e2e',
+      expect: "#alphabet-message must span full grid width"
     }
   ];
 

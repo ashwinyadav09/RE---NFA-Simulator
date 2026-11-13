@@ -3793,11 +3793,11 @@ const assert = require('node:assert');
     return {
       hasStrip: Boolean(strip),
       stripDisplay: stripStyle ? stripStyle.display : '',
-      regexHeight: regexInput ? regexInput.clientHeight : 0,
+      regexHeight: regexInput ? regexInput.offsetHeight : 0,
       regexFont: regexStyle ? regexStyle.fontFamily : '',
       hasEps: Boolean(epsBtn),
       hasEmpty: Boolean(emptyBtn),
-      buildHeight: buildBtn ? buildBtn.clientHeight : 0,
+      buildHeight: buildBtn ? buildBtn.offsetHeight : 0,
       buildBg: buildStyle ? buildStyle.backgroundColor : '',
       statsText: stats ? (stats.textContent || '') : ''
     };
@@ -3805,10 +3805,10 @@ const assert = require('node:assert');
 
   assert.strictEqual(t24InputStrip.hasStrip, true, '#input-strip must exist');
   assert.strictEqual(t24InputStrip.stripDisplay, 'grid', '#input-strip must use CSS grid display');
-  assert.ok(t24InputStrip.regexHeight >= 40, '#regex-input height must be >= 40px');
+  assert.ok(t24InputStrip.regexHeight >= 36, '#regex-input height must be >= 36px');
   assert.strictEqual(t24InputStrip.hasEps, true, '#insert-eps must be present');
   assert.strictEqual(t24InputStrip.hasEmpty, true, '#insert-empty must be present');
-  assert.ok(t24InputStrip.buildHeight >= 40, '#build-button height must be >= 40px');
+  assert.ok(t24InputStrip.buildHeight >= 36, '#build-button height must be >= 36px');
 
   // Verify Postfix Timeline
   const t24Postfix = await page.evaluate(() => {
@@ -4372,6 +4372,132 @@ const assert = require('node:assert');
   await emptyValPage.click('#btn-goto-workbench');
   await emptyValPage.waitForSelector('#page-workbench:not([hidden])');
   await emptyValPage.close();
+
+  // ==========================================
+  // Ticket 32: Control Sizing and Alignment
+  // ==========================================
+  console.log('Testing Ticket 32: Control sizing and alignment...');
+  await gotoPage(page, 'workbench');
+
+  const geometryViewports = [
+    { name: '1440x900', width: 1440, height: 900, expectedH: 36 },
+    { name: '1280x800', width: 1280, height: 800, expectedH: 36 },
+    { name: '1024x768', width: 1024, height: 768, expectedH: 36 },
+    { name: '768x1024', width: 768, height: 1024, expectedH: 36 },
+    { name: '640x480', width: 640, height: 480, expectedH: 44 },
+    { name: '390x844', width: 390, height: 844, expectedH: 44 }
+  ];
+
+  for (const vp of geometryViewports) {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+
+    const tokenH = await page.evaluate(() => {
+      return parseFloat(window.getComputedStyle(document.documentElement).getPropertyValue('--control-h'));
+    });
+    assert.strictEqual(tokenH, vp.expectedH, `Viewport ${vp.name} must have --control-h = ${vp.expectedH}px`);
+
+    // Verify Row 1 controls in .input-strip
+    const row1Selectors = [
+      '#preset-select',
+      '#regex-input',
+      '#insert-eps',
+      '#insert-empty',
+      '#build-button',
+      '#copy-link-btn',
+      '#keyboard-help-btn'
+    ];
+    const row1Boxes = [];
+    for (const sel of row1Selectors) {
+      const box = await page.locator(sel).boundingBox();
+      assert(Math.abs(box.height - vp.expectedH) <= 0.5, `${sel} height (${box.height}) must match --control-h (${vp.expectedH}px)`);
+      const fs = await page.$eval(sel, (el) => parseFloat(window.getComputedStyle(el).fontSize));
+      if (sel === '#regex-input') {
+        assert.strictEqual(fs, 16, '#regex-input must have 16px font-size');
+      } else {
+        assert.strictEqual(fs, 14, `${sel} must have 14px font-size`);
+      }
+      row1Boxes.push({ sel, box });
+    }
+
+    // In desktop viewports (>= 1024), all Row 1 controls sit on the exact same bottom line and share identical Y
+    if (vp.width >= 1024) {
+      const baseY = row1Boxes[0].box.y;
+      for (const item of row1Boxes) {
+        if (Math.abs(item.box.y - baseY) > 1) {
+          console.log(`Alignment mismatch at viewport ${vp.name}:`, row1Boxes.map(b => `${b.sel}=${b.box.y}`));
+        }
+        assert(Math.abs(item.box.y - baseY) <= 1, `${item.sel} Y (${item.box.y}) must align with row baseY (${baseY}) within 1px at ${vp.name}`);
+      }
+    }
+
+    // Verify Row 2 controls in .input-strip
+    const row2Selectors = [
+      '#notation-select',
+      '#concat-select',
+      '#alphabet-input'
+    ];
+    const row2Boxes = [];
+    for (const sel of row2Selectors) {
+      const box = await page.locator(sel).boundingBox();
+      assert(Math.abs(box.height - vp.expectedH) <= 0.5, `${sel} height (${box.height}) must match --control-h (${vp.expectedH}px)`);
+      const fs = await page.$eval(sel, (el) => parseFloat(window.getComputedStyle(el).fontSize));
+      assert.strictEqual(fs, 14, `${sel} must have 14px font-size`);
+      row2Boxes.push({ sel, box });
+    }
+    if (vp.width >= 1024) {
+      const baseY2 = row2Boxes[0].box.y;
+      for (const item of row2Boxes) {
+        assert(Math.abs(item.box.y - baseY2) <= 1, `${item.sel} Y (${item.box.y}) must align with row baseY (${baseY2}) within 1px`);
+      }
+    }
+
+    // Verify Stepper bar controls
+    const stepperSelectors = [
+      '#step-first',
+      '#step-prev',
+      '#step-play',
+      '#step-next',
+      '#step-last',
+      '#step-speed',
+      '#view-toggle'
+    ];
+    const stepperBoxes = [];
+    for (const sel of stepperSelectors) {
+      const box = await page.locator(sel).boundingBox();
+      assert(Math.abs(box.height - vp.expectedH) <= 0.5, `${sel} height (${box.height}) must match --control-h (${vp.expectedH}px)`);
+      const fs = await page.$eval(sel, (el) => parseFloat(window.getComputedStyle(el).fontSize));
+      assert.strictEqual(fs, 14, `${sel} must have 14px font-size`);
+      stepperBoxes.push({ sel, box });
+    }
+    if (vp.width >= 640) {
+      const scrubberBox = await page.locator('#step-scrubber').boundingBox();
+      assert.ok(scrubberBox, '#step-scrubber must have a bounding box');
+      const stepCenter = stepperBoxes[0].box.y + stepperBoxes[0].box.height / 2;
+      const scrubberCenter = scrubberBox.y + scrubberBox.height / 2;
+      assert(Math.abs(stepCenter - scrubberCenter) <= 1, 'Scrubber center must align with step buttons within 1px');
+    }
+
+    // Verify Canvas toolbar controls
+    for (const sel of ['#zoom-in-btn', '#zoom-out-btn', '#zoom-fit-btn', '#zoom-reset-btn', '#export-dot-btn', '#export-svg-btn', '#legend-btn']) {
+      const box = await page.locator(sel).boundingBox();
+      assert(Math.abs(box.height - vp.expectedH) <= 0.5, `${sel} height (${box.height}) must match --control-h (${vp.expectedH}px)`);
+      const fs = await page.$eval(sel, (el) => parseFloat(window.getComputedStyle(el).fontSize));
+      assert.strictEqual(fs, 14, `${sel} must have 14px font-size`);
+    }
+
+    // At 390x844: verify 44px touch rule and zero horizontal overflow
+    if (vp.width === 390) {
+      const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+      assert(scrollWidth <= 390, `Page scrollWidth (${scrollWidth}) must not exceed mobile viewport width (390)`);
+    }
+  }
+
+  // Restore desktop viewport
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  // Verify #alphabet-message full width grid span
+  const msgGridSpan = await page.$eval('#alphabet-message', (el) => window.getComputedStyle(el).gridColumn);
+  assert(msgGridSpan.includes('1 / -1') || msgGridSpan.includes('1 / span'), '#alphabet-message must span full grid width');
 
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
