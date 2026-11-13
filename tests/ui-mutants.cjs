@@ -1279,7 +1279,7 @@ async function main() {
       desc: 'T32-AC3-1: Mutate #insert-eps height to 28px in index.html',
       file: 'index.html',
       find: "    #insert-eps, #insert-empty {\n      height: var(--control-h);",
-      replace: "    #insert-eps, #insert-empty {\n      height: 28px;",
+      replace: "    #insert-eps, #insert-empty {\n      height: 28px;\n      min-height: 28px;\n      max-height: 28px;",
       testType: 'e2e',
       expect: "#insert-eps height"
     },
