@@ -81,3 +81,4 @@ All changes must adhere to core project invariants:
 - **Negative / Neutral**:
   - Users navigating from Validation or Stress must switch back to Workbench to inspect the interactive canvas diagram.
   - Requires maintaining the pure `router.ts` module and geometry E2E tests across any future UI controls.
+
