@@ -4575,7 +4575,8 @@ const assert = require('node:assert');
 
   // Press Escape again: exits fullscreen and restores focus to #fullscreen-btn
   await page.keyboard.press('Escape');
-  await page.waitForFunction(() => document.querySelector('#fullscreen-overlay')?.hasAttribute('hidden'));
+  const exited = await page.waitForFunction(() => document.querySelector('#fullscreen-overlay')?.hasAttribute('hidden'), null, { timeout: 1500 }).catch(() => false);
+  assert.strictEqual(Boolean(exited), true, 'Fullscreen overlay must be hidden after exit');
 
   const exitState = await page.evaluate(() => {
     const overlay = document.querySelector('#fullscreen-overlay');

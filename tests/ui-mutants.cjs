@@ -1332,8 +1332,8 @@ async function main() {
       id: 'T36-M4',
       desc: 'T36-M4: re-fit removed in enterFullscreen',
       file: 'src/ui/fullscreen.ts',
-      find: "    // Re-fit if mode is 'fit'\n    if (this.callbacks.isModeFit()) {\n      this.callbacks.recomputeFit();\n    }",
-      replace: "    // re-fit omitted",
+      find: "    // Show overlay\n    this.elements.overlayEl.hidden = false;\n\n    // Re-fit if mode is 'fit'\n    if (this.callbacks.isModeFit()) {\n      this.callbacks.recomputeFit();\n    }",
+      replace: "    this.elements.overlayEl.hidden = false;\n    // re-fit omitted",
       expect: "AssertionError"
     },
     {
