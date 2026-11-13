@@ -1380,7 +1380,7 @@ async function main() {
       find: "  for (let i = 0; i < text.length; i++) {",
       replace: "  container.innerHTML = text;\n  for (let i = 0; i < text.length; i++) {",
       testType: 'e2e',
-      expect: "Mirror must not inject HTML or img tags from user input"
+      expect: "Malicious regex must not execute XSS script"
     }
   ];
 
