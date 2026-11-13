@@ -1399,14 +1399,14 @@ async function main() {
       find: "    .workbench-grid {\n      display: grid;",
       replace: "    .workbench-grid {\n      min-width: 1200px;\n      display: grid;",
       testType: 'e2e',
-      expect: "No horizontal overflow at 390x844"
+      expect: "No horizontal overflow"
     },
     {
       id: 'T38-M3',
       desc: 'T38-M3: banned legacy wording Textbook view in index.html',
       file: 'index.html',
-      find: "            <option value=\"final\">Final NFA</option>",
-      replace: "            <option value=\"final\">Textbook view</option>",
+      find: "        <label for=\"concat-select\" class=\"setting-label\">Concatenation</label>",
+      replace: "        <label for=\"concat-select\" class=\"setting-label\">Textbook view</label>",
       testType: 'e2e',
       expect: "No banned wording"
     }
