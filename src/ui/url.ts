@@ -5,7 +5,7 @@ export interface AppUrlState {
   preset?: string;
   alphabet?: string;
   input?: string;
-  view?: 'flat' | 'textbook' | 'final';
+  view?: 'flat' | 'final';
   step?: number;
   compact?: boolean;
 }
@@ -116,7 +116,9 @@ export function decodeAppState(queryString: string): DecodeResult {
         state.input = rawVal;
       }
     } else if (key === 'view') {
-      if (rawVal === 'flat' || rawVal === 'textbook' || rawVal === 'final') {
+      if (rawVal === 'textbook') {
+        state.view = 'flat';
+      } else if (rawVal === 'flat' || rawVal === 'final') {
         state.view = rawVal;
       } else {
         ignoredKeys.push('view');

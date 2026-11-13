@@ -9,7 +9,7 @@ test('round-trip serialization of special characters (+, &, #, %, space, |, (, )
     preset: 'star-star-b',
     alphabet: 'a, b, c, ε, ∅',
     input: 'a+b\n&%# \nε∅',
-    view: 'textbook',
+    view: 'final',
     step: 4,
     compact: true
   };
@@ -96,4 +96,10 @@ test('decodeAppState strictly parses step with /^[1-9]\\d*$/ and Number.isSafeIn
   expect(decodeAppState('step=1').state.step).toBe(1);
   expect(decodeAppState('step=42').state.step).toBe(42);
   expect(decodeAppState('step=100').ignoredKeys).toEqual([]);
+});
+
+test('decodeAppState maps legacy view=textbook to flat view without error', () => {
+  const res = decodeAppState('view=textbook');
+  expect(res.state.view).toBe('flat');
+  expect(res.ignoredKeys).toEqual([]);
 });

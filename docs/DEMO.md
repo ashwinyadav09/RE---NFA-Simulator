@@ -122,10 +122,8 @@ Click **Stress** in the header navigation (or navigate to `#stress`):
    - Drag anywhere inside `#canvas` to pan, or use `Shift + Arrow` keys.
 2. **Export Diagram**:
    - In step view:
-     - Click **Export DOT** (`#export-dot-btn`): downloads `nfa-step-10-flat.dot` (or current step).
      - Click **Export SVG** (`#export-svg-btn`): downloads standalone `nfa-step-10-flat.svg` vector image.
    - Switch view mode to `Final NFA` (`#view-toggle`):
-     - Click **Export DOT**: downloads `nfa-final.dot`.
      - Click **Export SVG**: downloads `nfa-final.svg`.
 3. **Deep Links**:
    - Click **Copy Link** (`#copy-link-btn`): copies the full shareable URL containing encoded query parameters (`?regex=(a|b)*abb&notation=standard&concat=epsilon...`).

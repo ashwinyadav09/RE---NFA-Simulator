@@ -395,7 +395,6 @@ const assert = require('node:assert');
   // 1. Check page readiness
   await page.waitForFunction('window.__ready === true', null, { timeout: 15000 });
   assert.strictEqual(await page.$eval('#workbench', (el) => window.getComputedStyle(el).display), 'grid', '#workbench must use CSS grid display');
-  assert.strictEqual(await page.$eval('#export-dot-btn', (el) => el.disabled), true, '#export-dot-btn must initially be disabled');
   assert.strictEqual(await page.$eval('#export-svg-btn', (el) => el.disabled), true, '#export-svg-btn must initially be disabled');
 
   // 2. Check inline worker round-trip over file://
@@ -1199,52 +1198,44 @@ const assert = require('node:assert');
     'Step 1 must now display unpinned render after cache invalidation'
   );
 
-  // ---- Ticket 09: Textbook view and size caps ----
-  console.log('Testing Ticket 09: View toggle, textbook view, and size caps...');
+  // ---- Ticket 09: View toggle and size caps ----
+  console.log('Testing Ticket 09: View toggle and size caps...');
 
   // Reset to (a|b)*a
   await page.fill('#regex-input', '(a|b)*a');
   await page.click('#build-button');
   await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
 
-  // 1. view-toggle switches between flat and textbook
-  await page.selectOption('#view-toggle', 'textbook');
-  // Jump to step 4 (star step)
-  await page.click('#step-next'); // step 2
-  await page.click('#step-next'); // step 3
-  await page.click('#step-next'); // step 4
-  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 4 / 6'));
-
-  // In textbook view, canvas SVG must have record box for (a|b)
-  const hasTextbookBox = await page.evaluate(() => {
-    const svgText = document.querySelector('#canvas svg')?.innerHTML || '';
-    return svgText.includes('frag&#45;4&#45;5') || svgText.includes('frag-4-5') || svgText.includes('(a|b)');
+  // 1. view-toggle has exactly 2 options: "NFA" (flat) and "Final NFA" (final)
+  const viewOptions = await page.evaluate(() => {
+    const opts = Array.from(document.querySelectorAll('#view-toggle option'));
+    return opts.map(o => ({ value: o.value, text: o.textContent.trim() }));
   });
-  assert(hasTextbookBox, 'Textbook view on step 4 must render collapsed fragment box for (a|b)');
+  assert.strictEqual(viewOptions.length, 2, '#view-toggle must have exactly 2 options');
+  assert.deepStrictEqual(viewOptions, [
+    { value: 'flat', text: 'NFA' },
+    { value: 'final', text: 'Final NFA' }
+  ], '#view-toggle options must be "NFA" (flat) and "Final NFA" (final)');
 
-  // Assert at least one frag-* box in the browser has a non-empty label
-  const boxLabels = await page.evaluate(() => {
-    const nodes = Array.from(document.querySelectorAll('#canvas svg g.node'));
-    const fragNodes = nodes.filter(n => (n.id && n.id.startsWith('frag')));
-    return fragNodes.map(n => Array.from(n.querySelectorAll('text')).map(t => t.textContent.trim()).filter(Boolean).join(' ')).filter(Boolean);
-  });
-  console.log('Textbook box labels in step 4:', boxLabels);
-  assert(boxLabels.length > 0 && boxLabels.some(l => l.length > 0), 'At least one frag-* box must have a non-empty label');
+  // 2. view-toggle switches between NFA and Final NFA
+  await page.selectOption('#view-toggle', 'final');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('Final NFA'));
 
-  // Switch back to flat view
+  // Switch back to flat/NFA view
   await page.selectOption('#view-toggle', 'flat');
+  await page.waitForFunction(() => document.querySelector('#canvas')?.hasAttribute('data-current-step'));
   const hasFlatStateNodes = await page.evaluate(() => {
-    return document.querySelectorAll('#canvas svg g.node').length >= 6;
+    return document.querySelectorAll('#canvas svg g.node').length >= 3;
   });
-  assert(hasFlatStateNodes, 'Flat view must render individual state circle nodes');
+  assert(hasFlatStateNodes, 'NFA view must render individual state circle nodes');
 
   // Verify a <=150-token build made at least one master layout format==='json' call
   const jsonCallsPre = await page.evaluate(() => window.__harnessRenderCalls.filter(c => c.format === 'json').length);
   assert(jsonCallsPre > 0, `A <=150-token build must make at least one format===json call, got ${jsonCallsPre}`);
   await page.evaluate(() => { window.__harnessRenderCalls = []; });
 
-  // 2. Build a 160-token expression:
-  // '(a|b)' repeated 40 times followed by 'a' gives 161 postfix tokens
+  // 3. Build a 160-token expression (unpinned master layout):
   const expr160 = '(a|b)'.repeat(40) + 'a';
   await page.fill('#regex-input', expr160);
   await page.click('#build-button');
@@ -1255,23 +1246,9 @@ const assert = require('node:assert');
     return counter.includes('step 1 / 161');
   });
 
-  // Verify textbook view offered, flat stepping disabled with message
-  const viewToggleVal = await page.evaluate(() => document.querySelector('#view-toggle')?.value);
-  assert.strictEqual(viewToggleVal, 'textbook', 'Textbook view must be active for 160+ tokens');
-
-  const flatOptionDisabled = await page.evaluate(() => {
-    const opt = document.querySelector('#view-toggle option[value="flat"]');
-    return opt ? opt.disabled : false;
-  });
-  assert.strictEqual(flatOptionDisabled, true, 'Flat view option must be disabled for 160+ tokens');
-
-  const capNote = await page.textContent('#layout-note');
-  console.log('Cap note for 160+ tokens:', capNote);
-  assert(capNote && capNote.includes('150'), 'Note must state flat stepping limit of 150');
-
   // Check SVG is rendered
   const has160Svg = await page.evaluate(() => !!document.querySelector('#canvas svg'));
-  assert(has160Svg, 'Canvas must render textbook SVG for 160+ tokens');
+  assert(has160Svg, 'Canvas must render NFA SVG for 160+ tokens');
 
   // Confirm master layout stays skipped above 150
   const jsonCalls160 = await page.evaluate(() => window.__harnessRenderCalls.filter(c => c.format === 'json').length);
@@ -1288,10 +1265,6 @@ const assert = require('node:assert');
   await page.waitForFunction('window.__runDone === true', null, { timeout: 15000 });
   const verdict160 = await page.textContent('#verdict');
   assert(verdict160 && (verdict160.includes('ACCEPT') || verdict160.includes('REJECT')), 'Simulation must return verdict');
-
-  // Cap note in #layout-note survives the Run
-  const capNoteAfterRun160 = await page.textContent('#layout-note');
-  assert(capNoteAfterRun160 && capNoteAfterRun160.includes('150'), '150 cap note in #layout-note must survive Run');
 
   // 2b. Round-trip: build 161 tokens, then build (b|a)*b
   await page.fill('#regex-input', '(b|a)*b');
@@ -2260,7 +2233,7 @@ const assert = require('node:assert');
   assert.notStrictEqual(liveRegionAfterRun, liveRegionBeforeRun, 'Live region text must change after Run');
   assert(liveRegionAfterRun.includes('ACCEPT'), 'Live region after Run must announce verdict');
 
-  await page.click('#step-first');
+  await page.click('#step-first', { force: true });
   await page.waitForFunction(() => document.getElementById('live-region')?.textContent?.includes('Step 1 of 6'), null, { timeout: 5000 });
   const liveRegionAtStep1 = await page.textContent('#live-region');
   console.log('Live region at step 1:', liveRegionAtStep1);
@@ -2601,8 +2574,7 @@ const assert = require('node:assert');
   }
 
   // 2. Real worst case allowed: 'a'.repeat(200) has 200 symbols and 199 implicit concatenations,
-  // totaling 200 + 199 = 399 postfix tokens. Because 150 < 399 <= 400 (CAPS.textbookStepping),
-  // flat stepping is disabled, but textbook stepping and the final NFA view remain allowed.
+  // totaling 200 + 199 = 399 postfix tokens (<= 400 CAPS.textbookStepping). Stepping and final NFA view remain allowed.
   const expr399 = 'a'.repeat(200);
   for (const vp of [{ width: 1280, height: 800 }, { width: 1920, height: 1080 }]) {
     await page.setViewportSize(vp);
@@ -2642,11 +2614,10 @@ const assert = require('node:assert');
     assert.strictEqual(hasHOverflowCap, false, `Above-the-cap message view must not have horizontal overflow at ${vp.width}x${vp.height}`);
   }
 
-  // 4. Textbook last step at the cap (161 postfix tokens)
+  // 4. NFA last step at 161 postfix tokens
   await page.fill('#regex-input', expr161);
   await page.click('#build-button');
   await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 161'));
-  await page.selectOption('#view-toggle', 'textbook');
   await page.click('#step-last');
   await page.waitForFunction(() => {
     const text = document.querySelector('#step-counter')?.textContent || '';
@@ -2656,7 +2627,7 @@ const assert = require('node:assert');
   for (const vp of [{ width: 1280, height: 800 }, { width: 1920, height: 1080 }]) {
     await page.setViewportSize(vp);
     const hasHOverflow150 = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
-    assert.strictEqual(hasHOverflow150, false, `Textbook last step must not have horizontal overflow at ${vp.width}x${vp.height}`);
+    assert.strictEqual(hasHOverflow150, false, `NFA last step must not have horizontal overflow at ${vp.width}x${vp.height}`);
   }
   await page.setViewportSize({ width: 1280, height: 800 });
 
@@ -2930,20 +2901,6 @@ const assert = require('node:assert');
   const panXStep2 = await page.$eval('#canvas', (el) => el.getAttribute('data-pan-x'));
   assert.strictEqual(zoomStep2, zoomStep1, 'Flat pinned stepping must persist zoom across steps with same viewBox');
   assert.strictEqual(panXStep2, panXStep1, 'Flat pinned stepping must persist pan-x across steps with same viewBox');
-
-  // Switch to textbook view (viewBox changes from 823x349 to 316x102) -> initialView applied
-  await page.selectOption('#view-toggle', 'textbook');
-  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step'));
-  const modeTextbook = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
-  assert.strictEqual(modeTextbook, 'fit', 'Switching to textbook view with different viewBox must apply initial view');
-
-  // Textbook stepping: viewBox changes on each step -> initialView applied
-  await page.click('#zoom-in-btn');
-  assert.strictEqual(await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode')), 'manual');
-  await page.click('#step-next');
-  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 3 / 6'));
-  const modeTextbookStep3 = await page.$eval('#canvas', (el) => el.getAttribute('data-viewport-mode'));
-  assert.strictEqual(modeTextbookStep3, 'fit', 'Textbook stepping must re-initialize view when viewBox changes');
 
   // Final view with compact toggle: viewBox is identical (823x349 in merge mode) -> persists zoom and manual mode
   await page.selectOption('#concat-select', 'merge');
@@ -3222,7 +3179,6 @@ const assert = require('node:assert');
   await page.fill('#regex-input', '(a|b)*a');
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
-  assert.strictEqual(await page.$eval('#export-dot-btn', (el) => el.disabled), false, 'Normal build enables #export-dot-btn');
   assert.strictEqual(await page.$eval('#export-svg-btn', (el) => el.disabled), false, 'Normal build enables #export-svg-btn');
 
   // Step 2 flat view export
@@ -3286,15 +3242,6 @@ const assert = require('node:assert');
   assert(!step2ZoomSvg.includes('data-created-by-step'), 'Exported SVG must come from cached SVG string, never from mutated DOM');
   await page.click('#zoom-reset-btn');
 
-  // Textbook step export
-  await page.selectOption('#view-toggle', 'textbook');
-  await page.waitForFunction(() => document.querySelector('#view-toggle')?.value === 'textbook');
-  const [downloadTextbook] = await Promise.all([
-    page.waitForEvent('download'),
-    page.click('#export-svg-btn')
-  ]);
-  assert.strictEqual(downloadTextbook.suggestedFilename(), 'nfa-step-2-textbook.svg', 'Exported textbook step filename must be nfa-step-2-textbook.svg');
-
   // Final view export
   await page.selectOption('#view-toggle', 'final');
   await page.waitForFunction(() => document.querySelector('#canvas')?.getAttribute('data-view') === 'final');
@@ -3304,48 +3251,18 @@ const assert = require('node:assert');
   ]);
   assert.strictEqual(downloadFinalSvg.suggestedFilename(), 'nfa-final.svg', 'Exported final SVG filename must be nfa-final.svg');
 
-  // AC2: DOT export equals rendered view DOT
-  const [downloadFinalDot] = await Promise.all([
-    page.waitForEvent('download'),
-    page.click('#export-dot-btn')
-  ]);
-  assert.strictEqual(downloadFinalDot.suggestedFilename(), 'nfa-final.dot', 'Exported DOT filename must match expected convention');
-  const finalDotStream = await downloadFinalDot.createReadStream();
-  const finalDotChunks = [];
-  for await (const chunk of finalDotStream) finalDotChunks.push(chunk);
-  const finalDotText = Buffer.concat(finalDotChunks).toString('utf-8');
-  const lastRenderedDot = await page.evaluate(() => window.__lastRenderedDot);
-  assert.strictEqual(finalDotText, lastRenderedDot, 'Exported DOT must match the rendered view DOT');
-
   // AC3: Button states & Diagram-capped build (> 400 postfix tokens)
   const cappedExpr = 'a'.repeat(210);
   await page.fill('#regex-input', cappedExpr);
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
-  assert.strictEqual(await page.$eval('#export-dot-btn', (el) => el.disabled), false, '#export-dot-btn must be enabled when diagram is capped');
   assert.strictEqual(await page.$eval('#export-svg-btn', (el) => el.disabled), true, '#export-svg-btn must be disabled when diagram is capped');
-
-  // For capped build, compare DOT node count with #stats state count
-  const [downloadCappedDot] = await Promise.all([
-    page.waitForEvent('download'),
-    page.click('#export-dot-btn')
-  ]);
-  const cappedDotStream = await downloadCappedDot.createReadStream();
-  const cappedDotChunks = [];
-  for await (const chunk of cappedDotStream) cappedDotChunks.push(chunk);
-  const cappedDotText = Buffer.concat(cappedDotChunks).toString('utf-8');
-  const dotNodeMatches = cappedDotText.match(/^\s*q\d+\s*\[/gm);
-  const statsStatesText = await page.textContent('#stats');
-  const statesMatch = statsStatesText.match(/States:\s*(\d+)/);
-  const expectedStates = statesMatch ? parseInt(statesMatch[1], 10) : 0;
-  assert.strictEqual(dotNodeMatches ? dotNodeMatches.length : 0, expectedStates, 'Capped DOT node count must equal #stats state count');
 
   // Check disabled in flight
   await page.fill('#regex-input', '(a|b)*a');
   await page.evaluate(() => { window.__testRenderDelay = 500; });
   const buildPromise = page.click('#build-button');
   await page.waitForFunction(() => window.__buildDone === false);
-  assert.strictEqual(await page.$eval('#export-dot-btn', (el) => el.disabled), true, 'Export buttons must be disabled during build in flight');
   assert.strictEqual(await page.$eval('#export-svg-btn', (el) => el.disabled), true, 'Export buttons must be disabled during build in flight');
   await buildPromise;
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
@@ -3356,27 +3273,25 @@ const assert = require('node:assert');
   await page.fill('#regex-input', over2000Expr);
   await page.click('#build-button');
   await page.waitForFunction(() => document.querySelector('#error-message')?.textContent.includes('exceeds the engine limit'));
-  assert.strictEqual(await page.$eval('#export-dot-btn', (el) => el.disabled), true, 'Export buttons must be disabled after 2000+ token refusal');
   assert.strictEqual(await page.$eval('#export-svg-btn', (el) => el.disabled), true, 'Export buttons must be disabled after 2000+ token refusal');
 
   // AC4: No stale export after rebuilding different expression
   await page.fill('#regex-input', 'b');
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
-  const [downloadNewDot] = await Promise.all([
+  const [downloadNewSvg] = await Promise.all([
     page.waitForEvent('download'),
-    page.click('#export-dot-btn')
+    page.click('#export-svg-btn')
   ]);
-  const newDotChunks = [];
-  for await (const chunk of await downloadNewDot.createReadStream()) newDotChunks.push(chunk);
-  const newDotText = Buffer.concat(newDotChunks).toString('utf-8');
-  assert(newDotText.includes('b (new)'), 'Exported DOT after rebuild must belong to new expression');
+  const newSvgChunks = [];
+  for await (const chunk of await downloadNewSvg.createReadStream()) newSvgChunks.push(chunk);
+  const newSvgText = Buffer.concat(newSvgChunks).toString('utf-8');
+  assert(newSvgText.includes('b (new)'), 'Exported SVG after rebuild must belong to new expression');
 
   // AC4: No stale export after refused build
   await page.fill('#regex-input', '(a|');
   await page.click('#build-button');
   await page.waitForFunction(() => document.querySelector('#error-message')?.textContent.includes('Missing operand'));
-  assert.strictEqual(await page.$eval('#export-dot-btn', (el) => el.disabled), true, 'Export buttons must be disabled after refused build');
   assert.strictEqual(await page.$eval('#export-svg-btn', (el) => el.disabled), true, 'Export buttons must be disabled after refused build');
 
   // ==========================================
@@ -3399,7 +3314,7 @@ const assert = require('node:assert');
   assert.strictEqual(await freshAc6Page.textContent('#verdict'), 'ACCEPT', 'Simulation verdict must be rendered on deep link load');
 
   // View and step clamped
-  assert.strictEqual(await freshAc6Page.$eval('#view-toggle', (el) => el.value), 'textbook', 'View must be restored on deep link load');
+  assert.strictEqual(await freshAc6Page.$eval('#view-toggle', (el) => el.value), 'flat', 'Legacy view=textbook must load as flat/NFA view');
   const ac6StepText = await freshAc6Page.textContent('#step-counter');
   assert.strictEqual(ac6StepText, 'step 6 / 6', 'Step index over total steps must be clamped to max step');
 
@@ -3442,12 +3357,10 @@ const assert = require('node:assert');
   await xssRegexPage.close();
 
   // AC8: Copy Link button
-  // Configure page state: custom alphabet, compact labels, step 2, textbook view
+  // Configure page state: custom alphabet, compact labels, step 2
   await page.fill('#regex-input', '(a|b)*a');
   await page.click('#build-button');
   await page.waitForFunction('window.__buildDone === true', null, { timeout: 15000 });
-  await page.selectOption('#view-toggle', 'textbook');
-  await page.waitForFunction(() => document.querySelector('#view-toggle')?.value === 'textbook');
   await page.fill('#alphabet-input', 'a, b, x');
   await page.evaluate(() => document.getElementById('alphabet-input')?.dispatchEvent(new Event('change')));
   await page.fill('#test-input', 'ba');
@@ -3484,7 +3397,7 @@ const assert = require('node:assert');
   assert.strictEqual(await freshCopyPage.$eval('#notation-select', (el) => el.value), 'standard', 'Notation must reproduce in fresh page');
   assert.strictEqual(await freshCopyPage.$eval('#concat-select', (el) => el.value), 'epsilon-link', 'Concat mode must reproduce in fresh page');
   assert.strictEqual(await freshCopyPage.$eval('#test-input', (el) => el.value), 'ba', 'Test input must reproduce in fresh page');
-  assert.strictEqual(await freshCopyPage.$eval('#view-toggle', (el) => el.value), 'textbook', 'View mode must reproduce in fresh page');
+  assert.strictEqual(await freshCopyPage.$eval('#view-toggle', (el) => el.value), 'flat', 'View mode must reproduce in fresh page');
   assert.strictEqual(await freshCopyPage.textContent('#step-counter'), 'step 2 / 6', 'Step counter must reproduce step 2 in fresh page');
   assert.strictEqual(await freshCopyPage.$eval('#compact-labels', (el) => el.checked), true, 'Compact labels must reproduce in fresh page');
   await freshCopyPage.close();
@@ -4478,7 +4391,7 @@ const assert = require('node:assert');
     }
 
     // Verify Canvas toolbar controls
-    for (const sel of ['#zoom-in-btn', '#zoom-out-btn', '#zoom-fit-btn', '#zoom-reset-btn', '#export-dot-btn', '#export-svg-btn', '#legend-btn']) {
+    for (const sel of ['#zoom-in-btn', '#zoom-out-btn', '#zoom-fit-btn', '#zoom-reset-btn', '#export-svg-btn', '#legend-btn']) {
       const box = await page.locator(sel).boundingBox();
       assert(Math.abs(box.height - vp.expectedH) <= 0.5, `${sel} height (${box.height}) must match --control-h (${vp.expectedH}px)`);
       const fs = await page.$eval(sel, (el) => parseFloat(window.getComputedStyle(el).fontSize));
@@ -4498,6 +4411,84 @@ const assert = require('node:assert');
   // Verify #alphabet-message full width grid span
   const msgGridSpan = await page.$eval('#alphabet-message', (el) => window.getComputedStyle(el).gridColumn);
   assert(msgGridSpan.includes('1 / -1') || msgGridSpan.includes('1 / span'), '#alphabet-message must span full grid width');
+
+  // ==========================================
+  // Ticket 33: View-Toggle Layout Stability & Stepper Controls
+  // ==========================================
+  console.log('Testing Ticket 33: View-toggle layout stability across 6 viewports...');
+  const t33Viewports = [
+    { width: 1920, height: 1080 },
+    { width: 1440, height: 900 },
+    { width: 1280, height: 800 },
+    { width: 1024, height: 768 },
+    { width: 768, height: 1024 },
+    { width: 390, height: 844 },
+  ];
+  const t33Controls = [
+    '#step-first',
+    '#step-prev',
+    '#step-play',
+    '#step-next',
+    '#step-last',
+    '#step-scrubber',
+    '#step-counter',
+    '#step-speed',
+    '#view-toggle',
+    '#compact-labels'
+  ];
+
+  for (const vp of t33Viewports) {
+    await page.setViewportSize(vp);
+    await page.fill('#regex-input', '(a|b)*a');
+    await page.click('#build-button');
+    await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
+
+    const parent = await page.$('#stepper-controls');
+    const flatBoxes = {};
+    for (const id of t33Controls) {
+      const el = await page.$(id);
+      const box = await page.evaluate(([c, p]) => {
+        const cr = c.getBoundingClientRect();
+        const pr = p.getBoundingClientRect();
+        return { x: cr.left - pr.left, y: cr.top - pr.top, w: cr.width, h: cr.height };
+      }, [el, parent]);
+      flatBoxes[id] = box;
+    }
+
+    await page.selectOption('#view-toggle', 'final');
+    await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('Final NFA'));
+
+    // Check that inapplicable stepper controls in Final NFA are aria-disabled="true" with informative title
+    for (const id of ['#step-first', '#step-prev', '#step-play', '#step-next', '#step-last', '#step-scrubber', '#step-speed']) {
+      const ariaDisabled = await page.$eval(id, (el) => el.getAttribute('aria-disabled'));
+      const title = await page.$eval(id, (el) => el.getAttribute('title'));
+      assert.strictEqual(ariaDisabled, 'true', `${id} must be aria-disabled="true" in Final NFA`);
+      assert(title && title.includes('Switch to NFA view'), `${id} title must explain switching to NFA view`);
+    }
+
+    const finalBoxes = {};
+    for (const id of t33Controls) {
+      const el = await page.$(id);
+      const box = await page.evaluate(([c, p]) => {
+        const cr = c.getBoundingClientRect();
+        const pr = p.getBoundingClientRect();
+        return { x: cr.left - pr.left, y: cr.top - pr.top, w: cr.width, h: cr.height };
+      }, [el, parent]);
+      finalBoxes[id] = box;
+    }
+
+    for (const id of t33Controls) {
+      const f = flatBoxes[id];
+      const n = finalBoxes[id];
+      assert(Math.abs(f.x - n.x) <= 0.5, `${id} x shift must be <= 0.5px at ${vp.width}x${vp.height}, got dx=${Math.abs(f.x - n.x).toFixed(2)}`);
+      assert(Math.abs(f.y - n.y) <= 0.5, `${id} y shift must be <= 0.5px at ${vp.width}x${vp.height}, got dy=${Math.abs(f.y - n.y).toFixed(2)}`);
+      assert(Math.abs(f.w - n.w) <= 0.5, `${id} width shift must be <= 0.5px at ${vp.width}x${vp.height}, got dw=${Math.abs(f.w - n.w).toFixed(2)}`);
+      assert(Math.abs(f.h - n.h) <= 0.5, `${id} height shift must be <= 0.5px at ${vp.width}x${vp.height}, got dh=${Math.abs(f.h - n.h).toFixed(2)}`);
+    }
+  }
+
+  // Restore desktop viewport
+  await page.setViewportSize({ width: 1280, height: 800 });
 
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);

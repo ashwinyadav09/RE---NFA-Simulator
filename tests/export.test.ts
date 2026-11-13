@@ -3,11 +3,7 @@ import { formatStandaloneSvg, getExportFilename } from '../src/ui/export';
 
 test('getExportFilename produces safe filenames without regex content', () => {
   expect(getExportFilename('final', undefined, 'svg')).toBe('nfa-final.svg');
-  expect(getExportFilename('final', undefined, 'dot')).toBe('nfa-final.dot');
   expect(getExportFilename('flat', 2, 'svg')).toBe('nfa-step-2-flat.svg');
-  expect(getExportFilename('flat', 5, 'dot')).toBe('nfa-step-5-flat.dot');
-  expect(getExportFilename('textbook', 4, 'svg')).toBe('nfa-step-4-textbook.svg');
-  expect(getExportFilename('textbook', 1, 'dot')).toBe('nfa-step-1-textbook.dot');
 });
 
 test('formatStandaloneSvg strips existing XML prolog, DOCTYPE, and comments, and emits exactly one XML declaration', () => {

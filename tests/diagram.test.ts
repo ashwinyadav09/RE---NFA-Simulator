@@ -734,153 +734,20 @@ test('[T08-9] fixture-based check: no __start marker overlaps a state node in th
   }
 });
 
-test('[T09-4] toDot with view="textbook" on step 4 of (a|b)*a renders operand as record node with id, in/out ports, and escaped "|" in label', () => {
-  const analysis = analyze('(a|b)*a');
-  if (!analysis.ok) throw new Error(analysis.message);
-
-  // Step 4 is STAR of (a|b)
-  const snap4 = getStepSnapshot(analysis.steps, 4);
-  const dot = toDot(snap4, { view: 'textbook' });
-
-  // Record-shaped box with in/out ports and escaped | in label
-  expect(dot).toContain('shape=record');
-  expect(dot).toMatch(/label="\{<in>\|\(a\\\|b\)\|<out>\}"/);
-  expect(dot).toContain('id="frag-4-5"');
-
-  // Ports are used for edges
-  expect(dot).toMatch(/q6\s*->\s*\w+:in/);
-  expect(dot).toMatch(/\w+:out\s*->\s*q7/);
-  expect(dot).toMatch(/\w+:out\s*->\s*\w+:in/);
-  expect(dot).toMatch(/q6\s*->\s*q7/);
-});
-
-test('[T09-5] toDot with view="textbook" expands only newest operator states and edges while finished fragments are boxes', () => {
-  const analysis = analyze('(a|b)*a');
-  if (!analysis.ok) throw new Error(analysis.message);
-
-  // Step 3 is UNION of 'a' (0->1) and 'b' (2->3)
-  const snap3 = getStepSnapshot(analysis.steps, 3);
-  const dot = toDot(snap3, { view: 'textbook' });
-
-  // Both finished operand fragments are record boxes
-  expect(dot).toContain('id="frag-0-1"');
-  expect(dot).toContain('id="frag-2-3"');
-  expect(dot).toMatch(/label="\{<in>\|a\|<out>\}"/);
-  expect(dot).toMatch(/label="\{<in>\|b\|<out>\}"/);
-
-  // Expanded newest states only: q4 and q5
-  expect(dot).toContain('id="n4"');
-  expect(dot).toContain('id="n5"');
-  expect(dot).not.toMatch(/\bq0\s*\[/);
-  expect(dot).not.toMatch(/\bq1\s*\[/);
-  expect(dot).not.toMatch(/\bq2\s*\[/);
-  expect(dot).not.toMatch(/\bq3\s*\[/);
-
-  // Transitions connect newest states to operand box ports
-  expect(dot).toMatch(/q4\s*->\s*box_0_1:in/);
-  expect(dot).toMatch(/q4\s*->\s*box_2_3:in/);
-  expect(dot).toMatch(/box_0_1:out\s*->\s*q5/);
-  expect(dot).toMatch(/box_2_3:out\s*->\s*q5/);
-
-  // Start marker points to q4
-  expect(dot).toMatch(/__start\s*->\s*q4/);
-});
-
-test('[T09-6] toDot with view="textbook" on concat renders operands as boxes, sets peripheries=2 on accept box, and VizRenderer renders SVG', async () => {
-  const renderer = new VizRenderer();
-  const analysis = analyze('(a|b)*a');
-  if (!analysis.ok) throw new Error(analysis.message);
-
-  // Step 6: CONCAT of (a|b)* (6->7) and a (8->9)
-  const snap6 = getStepSnapshot(analysis.steps, 6);
-  const dot = toDot(snap6, { view: 'textbook' });
-
-  // Both operands rendered as boxes
-  expect(dot).toContain('id="frag-6-7"');
-  expect(dot).toContain('id="frag-8-9"');
-
-  // Accept fragment has peripheries=2
-  expect(dot).toMatch(/box_8_9\s*\[[^\]]*peripheries=2/);
-
-  // Start marker points to box_6_7:in
-  expect(dot).toMatch(/__start\s*->\s*box_6_7:in/);
-
-  // Transition connects out-port of box_6_7 to in-port of box_8_9
-  expect(dot).toMatch(/box_6_7:out\s*->\s*box_8_9:in/);
-
-  // Real VizRenderer renders to valid SVG without throwing
-  const res = await renderer.render(dot, { format: 'svg' });
-  expect(res.ok).toBe(true);
-  if (res.ok) {
-    // Viz.js escapes '-' as '&#45;' in raw SVG attributes
-    expect(res.svg).toMatch(/id="frag(&#45;|-)6(&#45;|-)7"/);
-    expect(res.svg).toMatch(/id="frag(&#45;|-)8(&#45;|-)9"/);
-    expect(res.svg).toMatch(/id="start(&#45;|-)node"/);
-  }
-
-  // Also test merge mode concat in textbook view: join edge is plain unlabelled (not dashed, no label)
-  const mergeAnalysis = analyze('(a|b)*a', { concatenation: 'merge' });
-  if (!mergeAnalysis.ok) throw new Error(mergeAnalysis.message);
-  const mergeSnap6 = getStepSnapshot(mergeAnalysis.steps, 6);
-  const mergeDot = toDot(mergeSnap6, { view: 'textbook' });
-  expect(mergeDot).toMatch(/box_6_7:out\s*->\s*box_8_9:in\s*\[id="e\d+", color="#d62728", penwidth=2.5\]/);
-  expect(mergeDot).not.toMatch(/box_6_7:out\s*->\s*box_8_9:in\s*\[[^\]]*label=/);
-  expect(mergeDot).not.toMatch(/box_6_7:out\s*->\s*box_8_9:in\s*\[[^\]]*dashed/);
-
-  // Epsilon-link mode keeps its dashed epsilon edge
-  expect(dot).toMatch(/box_6_7:out\s*->\s*box_8_9:in\s*\[[^\]]*label="ε \(new\)"[^\]]*style=dashed/);
-
-  const mergeRes = await renderer.render(mergeDot, { format: 'svg' });
-  expect(mergeRes.ok).toBe(true);
-
-  // Merge mode concat with compound right operand: a(b|a) at concat step (step 5)
-  const compoundAnalysis = analyze('a(b|a)', { concatenation: 'merge' });
-  if (!compoundAnalysis.ok) throw new Error(compoundAnalysis.message);
-  const concatStep = compoundAnalysis.steps.findIndex((s) => s.rule === 'concatenation') + 1;
-  const compoundSnap = getStepSnapshot(compoundAnalysis.steps, concatStep);
-  const compoundDot = toDot(compoundSnap, { view: 'textbook' });
-  expect(compoundDot).toMatch(/box_0_1:out\s*->\s*box_6_7:in\s*\[id="e\d+", color="#d62728", penwidth=2.5\]/);
-  expect(compoundDot).not.toMatch(/box_0_1:out\s*->\s*box_6_7:in\s*\[[^\]]*label=/);
-  expect(compoundDot).not.toMatch(/box_0_1:out\s*->\s*box_6_7:in\s*\[[^\]]*dashed/);
-
-  const compoundRes = await renderer.render(compoundDot, { format: 'svg' });
-  expect(compoundRes.ok).toBe(true);
-});
-
-test('[T09-2b] JSON round-trip analyze("(a|b)*a"), take step snapshot, call toDot with view "textbook", and expect label to contain (a\\|b)', () => {
-  const analysis = analyze('(a|b)*a');
-  if (!analysis.ok) throw new Error(analysis.message);
-
-  const roundTripped = JSON.parse(JSON.stringify(analysis));
-  const snap4 = getStepSnapshot(roundTripped.steps, 4);
-  const dot = toDot(snap4, { view: 'textbook' });
-
-  expect(dot).toMatch(/label="\{<in>\|\(a\\\|b\)\|<out>\}"/);
-});
-
-test('[T09-7] Cap boundary 1: toDot in flat view permits 150 postfix tokens and throws at 151 tokens stating limit 150', () => {
+test('[T09-8] Diagram cap: toDot permits 400 postfix tokens in flat view and throws at 401 tokens stating limit 400; checkDiagramCap returns flat at 400 and off at 401', () => {
   const analysis = analyze('(a|b)*a');
   if (!analysis.ok) throw new Error(analysis.message);
   const snap = getStepSnapshot(analysis.steps, 1);
 
-  // 150 tokens in flat view does not throw
-  expect(() => toDot(snap, { view: 'flat', postfixCount: 150 })).not.toThrow();
+  // 400 tokens in flat view does not throw
+  expect(() => toDot(snap, { view: 'flat', postfixCount: 400 })).not.toThrow();
 
-  // 151 tokens in flat view throws stating limit 150
-  expect(() => toDot(snap, { view: 'flat', postfixCount: 151 })).toThrow(/150/);
-});
-
-test('[T09-8] Cap boundary 2: toDot permits 400 postfix tokens in textbook view and throws at 401 tokens in any view stating limit 400', () => {
-  const analysis = analyze('(a|b)*a');
-  if (!analysis.ok) throw new Error(analysis.message);
-  const snap = getStepSnapshot(analysis.steps, 1);
-
-  // 400 tokens in textbook view does not throw
-  expect(() => toDot(snap, { view: 'textbook', postfixCount: 400 })).not.toThrow();
-
-  // 401 tokens in any view throws stating limit 400
-  expect(() => toDot(snap, { view: 'textbook', postfixCount: 401 })).toThrow(/400/);
+  // 401 tokens in flat view throws stating limit 400
   expect(() => toDot(snap, { view: 'flat', postfixCount: 401 })).toThrow(/400/);
+
+  // checkDiagramCap checks
+  expect(checkDiagramCap(400)).toBe('flat');
+  expect(checkDiagramCap(401)).toBe('off');
 });
 
 test('[T10-3] Diagram seam: toDot with activeStates highlights matching states with active class, fillcolor, border color, and thicker line, while leaving inactive states unhighlighted', () => {

@@ -1430,6 +1430,13 @@
       color: var(--text);
       white-space: nowrap;
       min-width: 80px;
+      max-width: 80px;
+      width: 80px;
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 0 0 80px;
+      box-sizing: border-box;
     }
 
     /* Hero Canvas Container & Toolbar (Ticket 23) */
@@ -2647,8 +2654,7 @@
           </select>
           <label for="view-toggle">View:</label>
           <select id="view-toggle" data-testid="view-toggle" aria-label="View mode">
-            <option value="flat">Flat</option>
-            <option value="textbook">Textbook</option>
+            <option value="flat">NFA</option>
             <option value="final">Final NFA</option>
           </select>
           <label for="compact-labels">
@@ -2670,7 +2676,6 @@
               <span id="zoom-level" data-testid="zoom-level" class="zoom-level">100%</span>
             </div>
             <div class="canvas-toolbar-group">
-              <button id="export-dot-btn" data-testid="export-dot-btn" type="button" aria-label="Export diagram as DOT" disabled>Export DOT</button>
               <button id="export-svg-btn" data-testid="export-svg-btn" type="button" aria-label="Export diagram as SVG" disabled>Export SVG</button>
               <button id="legend-btn" data-testid="legend-btn" type="button" aria-label="Diagram legend" aria-expanded="false" aria-controls="canvas-legend">Legend</button>
             </div>

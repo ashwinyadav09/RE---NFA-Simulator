@@ -41,7 +41,7 @@ All algorithmic work happens in a pure TypeScript engine that also runs under No
 12. As a student, at each step the canvas shows every fragment currently on the stack, and what this step created is marked by colour, a thicker line and a text tag, so colour is never the only cue.
 13. As a student, I step with Prev and Next buttons or the arrow keys, play and pause at an adjustable speed, and jump to the first or last step.
 14. As a student, existing states do not move when a step adds elements.
-15. As a student, I switch between the flat view (every state drawn) and the textbook view (finished sub-automata drawn as labelled boxes, only the newest operator expanded), so larger expressions stay readable.
+15. (Removed in Ticket 33 / ADR 0009) Textbook view composite sub-boxes removed; two views remain: NFA (step-by-step) and Final NFA.
 16. As a student, I hover a state to see the step that created it. ε-edges are dashed, the start state has an incoming arrow, the accept state is a double circle.
 17. As a student in merge mode, the step that merges two states shows both and what they became.
 18. As a student, an expression above the stepping cap still builds: I get the final NFA, the table and the tests, plus a message saying why stepping is off.
@@ -96,7 +96,7 @@ All algorithmic work happens in a pure TypeScript engine that also runs under No
 
 ### Budgets and caps (defaults, adjustable in one config object)
 - Engine limit: 2,000 tokens (symbols plus operators); beyond that, a clear message.
-- Stepping in the flat view: up to 150 postfix tokens. Textbook view: up to 400. Beyond 400 the diagram is off but the table and tests still work.
+- Stepping in NFA view: up to 400 postfix tokens (with pinned master layout up to 150). Beyond 400 the diagram is off but the table and tests still work.
 - Measured Graphviz render times (dot, left to right, median of 5, Node): 49 ms at 219 postfix tokens (280 states), 147 ms at 549 tokens, 516 ms at 1,099 tokens (1.2 MB of SVG). Per-step pinned rendering has been shown correct on a 14-state NFA but not timed at scale: the stable-layout ticket must measure it and cache rendered SVG per step if a render exceeds 100 ms.
 - Simulation: 342 ms for a 4,800-state NFA on a length-800 string in unoptimised plain JavaScript; no budget problem.
 
@@ -129,7 +129,7 @@ Backreferences, lookarounds, capture groups, lazy and possessive quantifiers, an
 - D7 Validation uses three oracles; derivatives are promoted from stretch; the RegExp oracle runs in a capped worker (05a, 05b, 05c).
 - D8 Error diagnostics are specified by a taxonomy with a pre-validation pass; the recursive-descent parser is test support (02, 01).
 - D9 Steps carry the merged pair and the stack snapshot and store copies (01, 03).
-- D10 Stable layout from a master layout; textbook view for large expressions; caps (06).
+- D10 Stable layout from a master layout (up to 150 tokens); caps at 400 (06; textbook view removed in Ticket 33 / ADR 0009).
 - D11 Single-file offline delivery with inline workers; pinned, verified toolchain; browser smoke test (07, 00).
 - D12 Plain TypeScript UI and a stable test-id contract.
 - D13 `|` is an error in textbook mode; `ε` and `∅` aliases; whitespace ignored.

@@ -130,10 +130,10 @@ function parseFirstFailure(rawOutput) {
 
 function runSelfTest() {
   const diffLines = Array.from({ length: 35 }, (_, idx) => `-   line ${idx + 1}`).join('\n');
-  const fixture = `E2E test failed: AssertionError [ERR_ASSERTION]: Exported DOT must match the rendered view DOT
+  const fixture = `E2E test failed: AssertionError [ERR_ASSERTION]: Exported SVG must match the rendered view SVG
 + actual - expected
 
-+ 'digraph WRONG_FINAL {}'
++ '<svg WRONG_FINAL>'
 ${diffLines}
     at D:/Projects/Automata/tests/e2e.cjs:3208:10 {
   generatedMessage: false,
@@ -144,7 +144,7 @@ ${diffLines}
   if (!res.location.includes('tests/e2e.cjs:3208:10')) {
     throw new Error(`Self-test failed: expected location to contain "tests/e2e.cjs:3208:10", got "${res.location}"`);
   }
-  if (!res.message.includes('Exported DOT must match the rendered view DOT')) {
+  if (!res.message.includes('Exported SVG must match the rendered view SVG')) {
     throw new Error(`Self-test failed: unexpected message "${res.message}"`);
   }
   console.log('parseFirstFailure self-test passed (35-line diff fixture verified).');
@@ -208,14 +208,6 @@ async function main() {
       find: 'const focal = { x: e.clientX - rect.left, y: e.clientY - rect.top };',
       replace: 'const focal = { x: e.clientX, y: e.clientY };',
       expect: 'Ctrl+wheel focal point X must keep node center within 1 px'
-    },
-    {
-      id: 'T17-M4',
-      desc: 'T17 AC9 always persist in textbook view',
-      file: 'src/ui/main.ts',
-      find: 'if (sameFrame(currentViewBox, newViewBox)) {',
-      replace: "if (sameFrame(currentViewBox, newViewBox) || currentView === 'textbook') {",
-      expect: 'Switching to textbook view with different viewBox must apply initial view'
     },
     {
       id: 'T17-M5',
@@ -565,30 +557,12 @@ async function main() {
     },
     {
       id: 'T19-AC2-1',
-      desc: 'T19-AC2-1: wrong filename convention for final DOT export',
+      desc: 'T19-AC2-1: wrong filename convention for final SVG export',
       file: 'src/ui/export.ts',
       find: 'return `nfa-final.${format}`;',
-      replace: 'return format === "dot" ? "wrong-final.dot" : `nfa-final.${format}`;',
+      replace: 'return "wrong-final.svg";',
       testType: 'e2e',
-      expect: 'Exported DOT filename must match expected convention'
-    },
-    {
-      id: 'T19-AC2-2',
-      desc: 'T19-AC2-2: export stores wrong view DOT for final view',
-      file: 'src/ui/main.ts',
-      find: '    canvasEl.setAttribute(\'data-view\', \'final\');\n    canvasEl.removeAttribute(\'data-current-step\');\n    if (isDeadRun) {\n      canvasEl.setAttribute(\'data-run-status\', \'dead\');\n    } else {\n      canvasEl.removeAttribute(\'data-run-status\');\n    }\n\n    if (result.ok) {\n      currentDot = dot;',
-      replace: '    canvasEl.setAttribute(\'data-view\', \'final\');\n    canvasEl.removeAttribute(\'data-current-step\');\n    if (isDeadRun) {\n      canvasEl.setAttribute(\'data-run-status\', \'dead\');\n    } else {\n      canvasEl.removeAttribute(\'data-run-status\');\n    }\n\n    if (result.ok) {\n      currentDot = "digraph WRONG_FINAL {}";',
-      testType: 'e2e',
-      expect: 'Exported DOT must match the rendered view DOT'
-    },
-    {
-      id: 'T19-AC2-3',
-      desc: 'T19-AC2-3: diagram-capped build exports DOT with wrong node count',
-      file: 'src/ui/main.ts',
-      find: '    currentDot = toDot(analysis.nfa, {\n      compactLabels: isCompactLabels()\n    });',
-      replace: '    currentDot = \'digraph G {\\n  q0 [label="0"];\\n}\';',
-      testType: 'e2e',
-      expect: 'Capped DOT node count must equal #stats state count'
+      expect: 'Exported final SVG filename must be nfa-final.svg'
     },
     {
       id: 'T19-AC3-1',
@@ -600,40 +574,31 @@ async function main() {
       expect: '#export-svg-btn must be disabled when diagram is capped'
     },
     {
-      id: 'T19-AC3-2',
-      desc: 'T19-AC3-2: DOT export button disabled when diagram is capped (>400 tokens)',
-      file: 'src/ui/main.ts',
-      find: 'if (exportDotBtn) exportDotBtn.disabled = false;\n    if (exportSvgBtn) exportSvgBtn.disabled = true;\n\n    const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping}',
-      replace: 'if (exportDotBtn) exportDotBtn.disabled = true;\n    if (exportSvgBtn) exportSvgBtn.disabled = true;\n\n    const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping}',
-      testType: 'e2e',
-      expect: '#export-dot-btn must be enabled when diagram is capped'
-    },
-    {
       id: 'T19-AC3-3',
-      desc: 'T19-AC3-3: export buttons not disabled while build is in flight',
+      desc: 'T19-AC3-3: export button not disabled while build is in flight',
       file: 'src/ui/main.ts',
-      find: 'currentDot = null;\n  if (exportDotBtn) exportDotBtn.disabled = true;\n  if (exportSvgBtn) exportSvgBtn.disabled = true;\n  const gen = ++buildGeneration;',
+      find: 'currentDot = null;\n  if (exportSvgBtn) exportSvgBtn.disabled = true;\n  const gen = ++buildGeneration;',
       replace: 'currentDot = null;\n  const gen = ++buildGeneration;',
       testType: 'e2e',
       expect: 'Export buttons must be disabled during build in flight'
     },
     {
       id: 'T19-AC4-1',
-      desc: 'T19-AC4-1: export buttons not reset in clearResults()',
+      desc: 'T19-AC4-1: export button not reset in clearResults()',
       file: 'src/ui/main.ts',
-      find: 'currentDot = null;\n  if (exportDotBtn) exportDotBtn.disabled = true;\n  if (exportSvgBtn) exportSvgBtn.disabled = true;\n  if (layoutNoteEl) {',
-      replace: 'currentDot = null;\n  if (exportDotBtn) exportDotBtn.disabled = false;\n  if (exportSvgBtn) exportSvgBtn.disabled = false;\n  if (layoutNoteEl) {',
+      find: 'currentDot = null;\n  if (exportSvgBtn) exportSvgBtn.disabled = true;\n  if (layoutNoteEl) {',
+      replace: 'currentDot = null;\n  if (exportSvgBtn) exportSvgBtn.disabled = false;\n  if (layoutNoteEl) {',
       testType: 'e2e',
       expect: 'Export buttons must be disabled after'
     },
     {
       id: 'T19-AC4-2',
-      desc: 'T19-AC4-2: exported DOT stale after rebuilding different expression',
+      desc: 'T19-AC4-2: exported SVG stale after rebuilding different expression',
       file: 'src/ui/main.ts',
-      find: '    canvasEl.setAttribute(\'data-current-step\', String(targetStep));\n    if (result.ok) {\n      currentDot = dot;',
-      replace: '    canvasEl.setAttribute(\'data-current-step\', String(targetStep));\n    if (result.ok) {\n      currentDot = "digraph STALE {}";',
+      find: '  masterPositions = null;\n  stepSvgCache.clear();',
+      replace: '  masterPositions = null;',
       testType: 'e2e',
-      expect: 'Exported DOT after rebuild must belong to new expression'
+      expect: 'Exported SVG after rebuild must belong to new expression'
     },
     // Ticket 19 Mutants (T19-AC5 through T19-AC8)
     {

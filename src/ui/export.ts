@@ -1,7 +1,7 @@
 export function getExportFilename(
-  view: 'flat' | 'textbook' | 'final',
+  view: 'flat' | 'final',
   step?: number,
-  format: 'svg' | 'dot' = 'svg'
+  format: 'svg' = 'svg'
 ): string {
   if (view === 'final') {
     return `nfa-final.${format}`;

@@ -83,7 +83,7 @@ let buildGeneration = 0;
 let stepGeneration = 0;
 let diffGeneration = 0;
 let currentStepIndex = 1;
-let currentView: 'flat' | 'textbook' | 'final' = 'flat';
+let currentView: 'flat' | 'final' = 'flat';
 let currentActiveStates: number[] | null = null;
 let isDeadRun = false;
 let lastRunResults: RunResult[] | null = null;
@@ -202,7 +202,6 @@ const zoomOutBtn = document.getElementById('zoom-out-btn') as HTMLButtonElement 
 const zoomFitBtn = document.getElementById('zoom-fit-btn') as HTMLButtonElement | null;
 const zoomResetBtn = document.getElementById('zoom-reset-btn') as HTMLButtonElement | null;
 const zoomLevelEl = document.getElementById('zoom-level');
-const exportDotBtn = document.getElementById('export-dot-btn') as HTMLButtonElement | null;
 const exportSvgBtn = document.getElementById('export-svg-btn') as HTMLButtonElement | null;
 const copyLinkBtn = document.getElementById('copy-link-btn') as HTMLButtonElement | null;
 const copyLinkStatusEl = document.getElementById('copy-link-status');
@@ -730,7 +729,6 @@ function clearResults(): void {
   stepSvgCache.clear();
   layoutFailed = false;
   currentDot = null;
-  if (exportDotBtn) exportDotBtn.disabled = true;
   if (exportSvgBtn) exportSvgBtn.disabled = true;
   if (layoutNoteEl) {
     layoutNoteEl.textContent = '';
@@ -804,7 +802,7 @@ async function navigateToStep(stepIndex: number): Promise<void> {
     return;
   }
   if (currentView === 'final') {
-    currentView = (viewToggleSelect?.value === 'textbook' ? 'textbook' : 'flat');
+    currentView = 'flat';
     if (viewToggleSelect) {
       viewToggleSelect.value = currentView;
     }
@@ -829,6 +827,7 @@ async function navigateToStep(stepIndex: number): Promise<void> {
 
   if (stepCounterEl) {
     stepCounterEl.textContent = `step ${currentStepIndex} / ${totalSteps}`;
+    stepCounterEl.removeAttribute('title');
   }
   updateScrubberDisplay();
 
@@ -837,10 +836,41 @@ async function navigateToStep(stepIndex: number): Promise<void> {
     announceLive(`Step ${currentStepIndex} of ${totalSteps}: ${stepRecord.rule}`);
   }
 
-  if (stepFirstBtn) stepFirstBtn.disabled = currentStepIndex === 1;
-  if (stepPrevBtn) stepPrevBtn.disabled = currentStepIndex === 1;
-  if (stepNextBtn) stepNextBtn.disabled = currentStepIndex === totalSteps;
-  if (stepLastBtn) stepLastBtn.disabled = currentStepIndex === totalSteps;
+  if (stepFirstBtn) {
+    stepFirstBtn.disabled = currentStepIndex === 1;
+    stepFirstBtn.removeAttribute('aria-disabled');
+    stepFirstBtn.title = 'First step';
+  }
+  if (stepPrevBtn) {
+    stepPrevBtn.disabled = currentStepIndex === 1;
+    stepPrevBtn.removeAttribute('aria-disabled');
+    stepPrevBtn.title = 'Previous step';
+  }
+  if (stepPlayBtn) {
+    stepPlayBtn.disabled = false;
+    stepPlayBtn.removeAttribute('aria-disabled');
+    stepPlayBtn.title = playbackTimer !== null ? 'Pause' : 'Play';
+  }
+  if (stepNextBtn) {
+    stepNextBtn.disabled = currentStepIndex === totalSteps;
+    stepNextBtn.removeAttribute('aria-disabled');
+    stepNextBtn.title = 'Next step';
+  }
+  if (stepLastBtn) {
+    stepLastBtn.disabled = currentStepIndex === totalSteps;
+    stepLastBtn.removeAttribute('aria-disabled');
+    stepLastBtn.title = 'Last step';
+  }
+  if (stepScrubberEl) {
+    stepScrubberEl.disabled = false;
+    stepScrubberEl.removeAttribute('aria-disabled');
+    stepScrubberEl.title = 'Step scrubber';
+  }
+  if (stepSpeedSelect) {
+    stepSpeedSelect.disabled = false;
+    stepSpeedSelect.removeAttribute('aria-disabled');
+    stepSpeedSelect.title = 'Speed';
+  }
 
   if (stepLogEl) {
     updateStepLogActive(stepLogEl, targetStep);
@@ -861,10 +891,7 @@ async function navigateToStep(stepIndex: number): Promise<void> {
   let dot: string;
   let renderEngine: string | undefined;
 
-  if (currentView === 'textbook') {
-    dot = toDot(snapshot, { view: 'textbook', postfixCount: currentAnalysis.postfix.length });
-    renderEngine = undefined;
-  } else if (masterPositions && !layoutFailed) {
+  if (masterPositions && !layoutFailed) {
     dot = toDot(snapshot, { view: 'flat', pin: masterPositions, postfixCount: currentAnalysis.postfix.length });
     renderEngine = 'neato';
   } else {
@@ -874,7 +901,6 @@ async function navigateToStep(stepIndex: number): Promise<void> {
 
   if (stepSvgCache.has(cacheKey)) {
     currentDot = dot;
-    if (exportDotBtn) exportDotBtn.disabled = false;
     if (exportSvgBtn) exportSvgBtn.disabled = false;
     if (canvasEl) {
       canvasEl.setAttribute('data-current-step', String(targetStep));
@@ -906,7 +932,6 @@ async function navigateToStep(stepIndex: number): Promise<void> {
     canvasEl.setAttribute('data-current-step', String(targetStep));
     if (result.ok) {
       currentDot = dot;
-      if (exportDotBtn) exportDotBtn.disabled = false;
       if (exportSvgBtn) exportSvgBtn.disabled = false;
       setCanvasContent(result.svg);
       attachStateHoverListeners(canvasEl);
@@ -915,7 +940,6 @@ async function navigateToStep(stepIndex: number): Promise<void> {
       }
     } else {
       currentDot = null;
-      if (exportDotBtn) exportDotBtn.disabled = true;
       if (exportSvgBtn) exportSvgBtn.disabled = true;
       setCanvasContent(result.error ? `Error rendering diagram: ${result.error}` : '', true);
     }
@@ -935,7 +959,6 @@ async function renderFinalView(): Promise<void> {
     currentDot = toDot(currentAnalysis.nfa, {
       compactLabels: isCompactLabels()
     });
-    if (exportDotBtn) exportDotBtn.disabled = false;
     if (exportSvgBtn) exportSvgBtn.disabled = true;
     const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping} postfix tokens (limit: ${CAPS.textbookStepping}). Table, simulation, and tests remain available.`;
     if (canvasEl) {
@@ -951,15 +974,47 @@ async function renderFinalView(): Promise<void> {
   }
 
   if (stepCounterEl) {
-    stepCounterEl.textContent = `Final NFA (${currentAnalysis.stats.states} states, ${currentAnalysis.stats.transitions} transitions)`;
+    stepCounterEl.textContent = 'Final NFA';
+    stepCounterEl.title = `Final NFA (${currentAnalysis.stats.states} states, ${currentAnalysis.stats.transitions} transitions)`;
   }
   updateScrubberDisplay();
 
-  if (stepFirstBtn) stepFirstBtn.disabled = false;
-  if (stepPrevBtn) stepPrevBtn.disabled = false;
-  if (stepNextBtn) stepNextBtn.disabled = false;
-  if (stepLastBtn) stepLastBtn.disabled = false;
-  if (stepPlayBtn) stepPlayBtn.disabled = true;
+  const disabledTitle = 'Switch to NFA view to step through construction';
+  if (stepFirstBtn) {
+    stepFirstBtn.disabled = false;
+    stepFirstBtn.setAttribute('aria-disabled', 'true');
+    stepFirstBtn.title = disabledTitle;
+  }
+  if (stepPrevBtn) {
+    stepPrevBtn.disabled = false;
+    stepPrevBtn.setAttribute('aria-disabled', 'true');
+    stepPrevBtn.title = disabledTitle;
+  }
+  if (stepPlayBtn) {
+    stepPlayBtn.disabled = true;
+    stepPlayBtn.setAttribute('aria-disabled', 'true');
+    stepPlayBtn.title = disabledTitle;
+  }
+  if (stepNextBtn) {
+    stepNextBtn.disabled = false;
+    stepNextBtn.setAttribute('aria-disabled', 'true');
+    stepNextBtn.title = disabledTitle;
+  }
+  if (stepLastBtn) {
+    stepLastBtn.disabled = false;
+    stepLastBtn.setAttribute('aria-disabled', 'true');
+    stepLastBtn.title = disabledTitle;
+  }
+  if (stepScrubberEl) {
+    stepScrubberEl.disabled = true;
+    stepScrubberEl.setAttribute('aria-disabled', 'true');
+    stepScrubberEl.title = disabledTitle;
+  }
+  if (stepSpeedSelect) {
+    stepSpeedSelect.disabled = true;
+    stepSpeedSelect.setAttribute('aria-disabled', 'true');
+    stepSpeedSelect.title = disabledTitle;
+  }
 
   if (stepLogEl) {
     updateStepLogActive(stepLogEl, 0);
@@ -990,7 +1045,6 @@ async function renderFinalView(): Promise<void> {
 
   if (stepSvgCache.has(cacheKey)) {
     currentDot = toDot(currentAnalysis.nfa, options);
-    if (exportDotBtn) exportDotBtn.disabled = false;
     if (exportSvgBtn) exportSvgBtn.disabled = false;
     if (canvasEl) {
       canvasEl.setAttribute('data-view', 'final');
@@ -1042,7 +1096,6 @@ async function renderFinalView(): Promise<void> {
 
     if (result.ok) {
       currentDot = dot;
-      if (exportDotBtn) exportDotBtn.disabled = false;
       if (exportSvgBtn) exportSvgBtn.disabled = false;
       setCanvasContent(result.svg);
       attachStateHoverListeners(canvasEl);
@@ -1051,7 +1104,6 @@ async function renderFinalView(): Promise<void> {
       }
     } else {
       currentDot = null;
-      if (exportDotBtn) exportDotBtn.disabled = true;
       if (exportSvgBtn) exportSvgBtn.disabled = true;
       setCanvasContent(result.error ? `Error rendering diagram: ${result.error}` : '', true);
     }
@@ -1133,7 +1185,6 @@ async function handleBuild() {
   stopPlayback();
   currentViewBox = null;
   currentDot = null;
-  if (exportDotBtn) exportDotBtn.disabled = true;
   if (exportSvgBtn) exportSvgBtn.disabled = true;
   const gen = ++buildGeneration;
   ++diffGeneration;
@@ -1282,7 +1333,6 @@ async function handleBuild() {
   const postfixLen = analysis.postfix.length;
   const capMode = checkDiagramCap(postfixLen);
   const flatOption = viewToggleSelect?.querySelector('option[value="flat"]') as HTMLOptionElement | null;
-  const textbookOption = viewToggleSelect?.querySelector('option[value="textbook"]') as HTMLOptionElement | null;
 
   if (capMode === 'off') {
     if (stepFirstBtn) stepFirstBtn.disabled = true;
@@ -1291,7 +1341,6 @@ async function handleBuild() {
     if (stepNextBtn) stepNextBtn.disabled = true;
     if (stepLastBtn) stepLastBtn.disabled = true;
     if (flatOption) flatOption.disabled = true;
-    if (textbookOption) textbookOption.disabled = true;
     if (viewToggleSelect) viewToggleSelect.disabled = false;
     currentStepIndex = 0;
     if (stepCounterEl) {
@@ -1301,7 +1350,6 @@ async function handleBuild() {
     currentDot = toDot(analysis.nfa, {
       compactLabels: isCompactLabels()
     });
-    if (exportDotBtn) exportDotBtn.disabled = false;
     if (exportSvgBtn) exportSvgBtn.disabled = true;
 
     const message = `Diagram is disabled for expressions over ${CAPS.textbookStepping} postfix tokens (limit: ${CAPS.textbookStepping}). Table, simulation, and tests remain available.`;
@@ -1322,25 +1370,10 @@ async function handleBuild() {
     return;
   }
 
-  if (capMode === 'textbook') {
-    if (flatOption) flatOption.disabled = true;
-    if (textbookOption) textbookOption.disabled = false;
-    currentView = 'textbook';
-    if (viewToggleSelect) {
-      viewToggleSelect.disabled = false;
-      viewToggleSelect.value = 'textbook';
-    }
-    if (layoutNoteEl) {
-      layoutNoteEl.textContent = `Flat stepping is disabled for expressions over ${CAPS.flatStepping} postfix tokens (limit: ${CAPS.flatStepping}). Showing textbook view.`;
-      layoutNoteEl.className = 'warning';
-    }
-  } else {
-    if (flatOption) flatOption.disabled = false;
-    if (textbookOption) textbookOption.disabled = false;
-    if (viewToggleSelect) {
-      viewToggleSelect.disabled = false;
-      currentView = (viewToggleSelect.value as 'flat' | 'textbook') || 'flat';
-    }
+  if (flatOption) flatOption.disabled = false;
+  if (viewToggleSelect) {
+    viewToggleSelect.disabled = false;
+    currentView = (viewToggleSelect.value as 'flat' | 'final') || 'flat';
   }
 
   if (postfixLen <= CAPS.flatStepping) {
@@ -1641,7 +1674,7 @@ if (stepSpeedSelect) {
 
 if (viewToggleSelect) {
   viewToggleSelect.addEventListener('change', () => {
-    const val = (viewToggleSelect.value as 'flat' | 'textbook' | 'final') || 'flat';
+    const val = (viewToggleSelect.value as 'flat' | 'final') || 'flat';
     currentView = val;
     if (currentAnalysis) {
       if (val === 'final') {
@@ -1712,24 +1745,6 @@ if (zoomResetBtn) {
     const panY = ((canvasEl.clientHeight || 500) - currentContentRect.height) / 2;
     currentViewport = { zoom: 1.0, panX, panY };
     applyViewport();
-  });
-}
-
-if (exportDotBtn) {
-  exportDotBtn.addEventListener('click', () => {
-    if (!currentAnalysis || !currentDot) return;
-    const filename = getExportFilename(currentView, currentStepIndex, 'dot');
-    const blob = new Blob([currentDot], { type: 'text/vnd.graphviz;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => {
-      URL.revokeObjectURL(url);
-    }, 1000);
   });
 }
 
@@ -2728,12 +2743,10 @@ async function initDeepLink(): Promise<void> {
       const capMode = checkDiagramCap(currentAnalysis.postfix.length);
       const totalSteps = currentAnalysis.steps.length;
 
-      let targetView = state.view;
+      let targetView: 'flat' | 'final' | undefined = state.view;
       if (targetView) {
         if (capMode === 'off' && targetView !== 'final') {
           targetView = 'final';
-        } else if (capMode === 'textbook' && targetView === 'flat') {
-          targetView = 'textbook';
         }
       }
 

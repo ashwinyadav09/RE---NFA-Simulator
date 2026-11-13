@@ -3,7 +3,7 @@
 > Handover document for **Stitch** (screen design) and for the engineer who will port the result into the existing codebase.
 > Project: *Automata Theory and Computability* — RE → NFA (Thompson's construction) simulator.
 > Repo: `D:\Projects\Automata` · build: single static file `dist/index.html` (≈1.46 MB, no backend).
-> Written 10 Nov 2026 against the build with `dist/index.html` = 1,462,130 bytes (Ticket 19: Copy Link, Export DOT/SVG, keyboard-help dialog).
+> Written 10 Nov 2026 against the build with `dist/index.html` = 1,462,130 bytes (Ticket 19: Copy Link, Export SVG, keyboard-help dialog).
 
 ---
 
@@ -54,7 +54,7 @@ It is a course deliverable (Automata Theory and Computability, evaluation window
 - Diagrams are rendered by **Viz.js (Graphviz → SVG)**; layout is Graphviz's. Design the *frame and styling* around it; do not assume hand-placed nodes.
 - Works from `file://` and from a static host.
 - Engine is deterministic and returns plain data; UI only renders it.
-- Caps (verified in the running build): **Flat** stepping works up to **150** postfix tokens; above that Flat is disabled and the app shows Textbook. Above **400** tokens the diagram is disabled entirely; table, simulation and tests still work, **Export DOT** stays enabled and **Export SVG** is disabled (§9).
+- Caps (verified in the running build): Diagram stepping works up to **400** postfix tokens. Above **400** tokens the diagram is disabled entirely; table, simulation and tests still work, and **Export SVG** is disabled (§9).
 
 ---
 
@@ -76,7 +76,7 @@ A **single unstyled column** on browser defaults (system font, 16px, default gre
 8. Stepper row: `|◀ ◀ Play ▶ ▶|` · "step 4 / 10" · Speed ▾ · View ▾ · Compact labels
 9. Step log (numbered list, **all** steps)
 10. Layout note (cap/fallback notices)
-11. Canvas toolbar: `+ − Fit 100%` · zoom % · Export DOT · Export SVG · hint text
+11. Canvas toolbar: `+ − Fit 100%` · zoom % · Export SVG · hint text
 12. **Canvas** (the diagram)
 13. Transition table
 14. Test-string textarea + Run · run status · verdict list · trace blocks
@@ -92,7 +92,7 @@ A **single unstyled column** on browser defaults (system font, 16px, default gre
 | **A3** | **A leftover worker handshake string is visible** under the simulation area: `{"pong":"hello","timestamp":19.099999999998545}`. | Visible on first paint and in every state. `#worker-status`. | Remove/hide (P0) |
 | **A4** | **Simulation results are disconnected.** Verdicts are a bare `ACCEPT / REJECT` list; traces are separate blocks below. With 4 strings you cannot tell which verdict belongs to which string without counting. | Run `ba / ab / a / ε`. | Test panel (§6.12) |
 | **A5** | **Status and selection styling is ad hoc.** The current postfix chip (blue pill) and current step-log row (pale lavender, bold) are the only selection cues, and they are inline one-offs. Link notices, run-status lines and layout notes render as plain body text: the `warning` class they use has no style in the stylesheet. | Link-notice line in the deep-link screenshot reads like body copy. | Tokens + components |
-| **A6** | **Diagram frame problems.** Graphviz's white page rectangle shows as a white box inside the grey canvas; at step 1 the two circles `0` and `1` **overlap** and the `a (new)` label sits on top of them; in Textbook view the `ε (new)` labels overlap the fragment box. | Step 1 of any build; Textbook view of `(a\|b)*abb`. | Diagram spec (§8) + engineering ticket |
+| **A6** | **Diagram frame problems.** Graphviz's white page rectangle shows as a white box inside the grey canvas; at step 1 the two circles `0` and `1` **overlap** and the `a (new)` label sits on top of them. | Step 1 of any build. | Diagram spec (§8) + engineering ticket |
 | **A7** | **Mobile is broken-ish.** Page is wider than the viewport (scroll width 398 px at 390 px), suite table is 437 px wide, and the canvas **cannot be panned or pinch-zoomed by touch** (touch drag is disabled; only the +/−/Fit buttons work). | 390×844 run. | Responsive (§12) |
 | **A8** | **Touch targets are small.** Buttons are 28–33 px tall (zoom buttons 32×28). | Measured. Target ≥ 44 px on touch. | Components (§6) |
 | **A9** | **Labels missing on controls.** Regex field, Notation, Concatenation and test textarea have only placeholder text or nothing (no `<label>`); `ε`/`∅` buttons are named only by their bare glyph (the "Insert ε" `title` is a hover tooltip, invisible on touch); the preset's helpful `description` strings exist in data but are never shown. | `index.html`. | A11y (§13) |
@@ -323,7 +323,7 @@ Every component below lists **anatomy, states, behaviour that already exists, an
 |---|---|---|
 | **Primary** | Filled `--primary`, text `--on-primary`, radius 6, 600 weight | **Build** only (one per screen region). *Run*, *Run Suite*, *Run Differential Test*, *Run Stress Test* are **Secondary-strong** (below) so Build stays the single focal action. |
 | **Secondary-strong** | 1 px `--primary` outline, text `--primary`, transparent fill | Run / Run Suite / Run Differential Test / Run Stress Test |
-| **Secondary** | 1 px `--border-strong`, `--bg-surface` fill, `--text` | Copy Link, Copy CSV, Export DOT/SVG, Fit, 100%, Log scale, Cancel |
+| **Secondary** | 1 px `--border-strong`, `--bg-surface` fill, `--text` | Copy Link, Copy CSV, Export SVG, Fit, 100%, Log scale, Cancel |
 | **Ghost** | No border, hover `--bg-sunken` | ε/∅ inserts inside the field, rail chevrons |
 | **Icon** | 36 × 36 (44 touch), ghost or secondary, 20 px icon, tooltip + `aria-label` | First/Prev/Next/Last, Play/Pause, zoom ±, `?`, theme |
 | **Toggle** | Secondary; when on: `--primary-soft` fill + `--primary` text + check icon; `aria-pressed` | **Log scale**, Compact labels (as switch) |
@@ -361,7 +361,7 @@ One component for link notices, layout notes, run status and errors. 1 px tinted
 - Buttons and ids unchanged. **Play** toggles to **Pause** while playing and shows a pause icon; auto-stops at the last step.
 - **Scrubber** (`NEW-UI`): a 6 px track with one tick per step, a primary thumb; keyboard `←/→`; it **drives the same step state** as the buttons (implementation: wrap `input[type=range]` and call the existing step setter). P1.
 - **Counter** text: `step 4 / 10` (mono, tabular). At the end of construction and in Final view it reads `Final NFA (14 states, 16 transitions)` — keep this exact wording; widen the slot so it never wraps.
-- **Speed** options `0.5x · 1x · 2x`; **View** options `Flat · Textbook · Final NFA` (native selects, labelled).
+- **Speed** options `0.5x · 1x · 2x`; **View** options `NFA · Final NFA` (native selects, labelled).
 - Disabled until an NFA exists; **First/Prev disabled at step 0/1, Next/Last disabled at the end, Play disabled in Final view** (existing). Disabled buttons keep their tooltip explaining why.
 - Live region: stepping announces "Step 4 of 10: star of fragment 4→5" (existing `#live-region`).
 
@@ -373,8 +373,8 @@ The canvas is a focusable region (`tabindex=0`, `role=region`, label "NFA diagra
 **Overlays** (all 36 px controls, translucent surface `--bg-surface` at 92 % + hairline border, 8 px from edges, they never cover the diagram's centre):
 | Position | Overlay | Notes |
 |---|---|---|
-| Top-left | **View chip**: `Flat · step 4 of 10` / `Textbook · step 4 of 10` / `Final NFA` | `NEW-UI`, mirrors the counter |
-| Top-right | **Export** group: `Export DOT` · `Export SVG` (secondary, download icon) | `EXISTING`; disabled until built. SVG disabled with tooltip "Too large to export as SVG (over 400 steps)" above the cap; DOT stays enabled |
+| Top-left | **View chip**: `NFA · step 4 of 10` / `Final NFA` | `NEW-UI`, mirrors the counter |
+| Top-right | **Export** group: `Export SVG` (secondary, download icon) | `EXISTING`; disabled until built. SVG disabled with tooltip "Diagram is disabled above 400 postfix tokens" above the cap |
 | Bottom-right | **Zoom cluster**: `−` · `90%` · `+` · `Fit` · `100%` | `EXISTING`; the percentage is a read-only mono label |
 | Bottom-left | **Legend** toggle (`?` in a circle) → popover (§8.3) | `NEW-UI` |
 | Bottom-centre | Hint caption `Ctrl+scroll to zoom · drag or Shift+scroll to pan · Shift+arrows pan` (13 px muted, fades after first interaction, always in the legend) | `EXISTING` text |
@@ -501,7 +501,6 @@ Design each screen in **light and dark**, at **1440 × 900** (desktop) unless st
 | S2 | Workbench — mid-construction (flat view, step 4 of 6) | P0 |
 | S3 | Workbench — Final NFA with simulation traces | P0 |
 | S4 | Workbench — error states (syntax error, alphabet error, dead run) | P0 |
-| S5 | Workbench — Textbook view + merge mode variant | P1 |
 | S6 | Validation section (all pass) + failure variant | P0 |
 | S7 | Stress-test section (running and complete) | P0 |
 | S8 | Overlays: preset menu, legend popover, shortcuts dialog, link-copied status | P0 |
@@ -529,7 +528,7 @@ Deliver exactly the tokens in §5 and the components in §6. This sheet is the s
 ---
 
 ### S2 — Mid-construction (the core screen)
-> **Stitch prompt:** Same app shell. The regular expression "(a|b)*a" has been built and the user is on step 4 of 6, the "star" step, in Flat view. The centre canvas shows a left-to-right NFA diagram on white drafting paper: states 0→1 labelled a, 2→3 labelled b, new states 4 and 5 wrapping them as a union with dashed ε edges, and new states 6 and 7 wrapping that as a star, drawn in vermilion with thicker strokes and "(new)" labels. Above the canvas a stepper bar with first/previous/play/next/last buttons, a scrubber, "step 4 / 6", Speed and View selects, and a row of postfix chips "a b | * a ." where "*" is the highlighted current chip. Right rail lists six steps; step 4 is selected and shows "+2 states +4 transitions" chips. Left rail shows a real parse tree: concat → star → union → a, b; and a. Floating zoom controls bottom-right, a view chip top-left "Flat · step 4 of 6", Export DOT/SVG top-right, a legend button bottom-left.
+> **Stitch prompt:** Same app shell. The regular expression "(a|b)*a" has been built and the user is on step 4 of 6, the "star" step, in Flat view. The centre canvas shows a left-to-right NFA diagram on white drafting paper: states 0→1 labelled a, 2→3 labelled b, new states 4 and 5 wrapping them as a union with dashed ε edges, and new states 6 and 7 wrapping that as a star, drawn in vermilion with thicker strokes and "(new)" labels. Above the canvas a stepper bar with first/previous/play/next/last buttons, a scrubber, "step 4 / 6", Speed and View selects, and a row of postfix chips "a b | * a ." where "*" is the highlighted current chip. Right rail lists six steps; step 4 is selected and shows "+2 states +4 transitions" chips. Left rail shows a real parse tree: concat → star → union → a, b; and a. Floating zoom controls bottom-right, a view chip top-left "Flat · step 4 of 6", Export SVG top-right, a legend button bottom-left.
 
 **Data**
 - Expression `(a|b)*a`, Standard notation, ε-link. Stat chips: today the counts appear once the NFA is built. **Decision:** keep the final counts (`10 states · 12 transitions`) in the input strip, and add `NEW-UI` "so far" counts for the current step (`8 states · 9 transitions so far`) in the step panel header.
@@ -584,16 +583,6 @@ Deliver exactly the tokens in §5 and the components in §6. This sheet is the s
 - Empty submit: the app's existing hint "Enter a regular expression to build its NFA" (class `hint`), shown as an **info** bar.
 - Alphabet messages live under the Alphabet field, `aria-describedby`.
 - Dead run is **not an error**: warning tone, and the verdict pill stays REJECT (neutral).
-
----
-
-### S5 — Textbook view and merge
-> **Stitch prompt:** The classic expression "(a|b)*abb" in Textbook view at step 5. The canvas draws the composite construction as in a textbook: a rounded rectangle labelled "(a|b)" with an input port and an output port inside a star wrapper (new start state and new accept state in vermilion, with ε edges: start→box, box→accept, start→accept, and a loop edge from the box output back to its input), followed by the symbols a, b, b as small circles. Edge labels sit on small paper-coloured pills so nothing overlaps. Include the legend open.
-
-**Notes**
-- Fragment boxes: rounded rect, 1.5 px ink, label = the sub-expression in mono (`(a|b)`), two small port dots (in/out) on the left/right edges. Wrapper states are circles outside the box.
-- **Fix A6:** `ε` labels never overlap the box or each other (labels get an opaque paper-coloured pill; Graphviz HTML-like labels with `BGCOLOR`).
-- **Merge-mode figure**: the junction state is drawn once, with a thin dotted ring and the tooltip "Merged: end of fragment A = start of fragment B".
 
 ---
 
@@ -654,17 +643,16 @@ Deliver exactly the tokens in §5 and the components in §6. This sheet is the s
 
 ---
 
-### S10 — Large expression (two thresholds)
-> **Stitch prompt:** Two variants of the workbench for very long expressions. Variant A (between 150 and 400 postfix tokens): an amber warning bar above the canvas reads "Flat stepping is disabled for expressions over 150 postfix tokens (limit: 150). Showing textbook view." The View select shows Textbook selected with Flat greyed out, stepping still works ("step 1 / 179") and the canvas shows the compact textbook diagram. Variant B (over 400 tokens): the canvas shows a centred, calm message block with an info icon and the text "Diagram is disabled for expressions over 400 postfix tokens (limit: 400). Table, simulation, and tests remain available."; the stepper buttons are disabled with the counter "step 0 / 0", Export SVG is disabled with a tooltip, Export DOT is enabled, and the transition table and test dock are fully usable.
+### S10 — Large expression (diagram cap)
+> **Stitch prompt:** Workbench for expressions over 400 postfix tokens. The canvas shows a centred, calm message block with an info icon and the text "Diagram is disabled for expressions over 400 postfix tokens (limit: 400). Table, simulation, and tests remain available."; the stepper buttons are disabled with the counter "step 0 / 0", Export SVG is disabled with a tooltip, and the transition table and test dock are fully usable.
 
 **Real behaviour (verified):**
 | Postfix tokens | Notice (exact app text) | View select | Stepper | Exports |
 |---|---|---|---|---|
-| ≤ 150 | none | Flat · Textbook · Final | normal | DOT + SVG |
-| 151–400 | "Flat stepping is disabled for expressions over 150 postfix tokens (limit: 150). Showing textbook view." | Flat **disabled**; Textbook selected | enabled (e.g. `step 1 / 179`) | DOT + SVG |
-| > 400 | "Diagram is disabled for expressions over 400 postfix tokens (limit: 400). Table, simulation, and tests remain available." (also fills the canvas) | Flat and Textbook **disabled** | disabled, `step 0 / 0` | **DOT enabled, SVG disabled** |
+| ≤ 400 | none | NFA · Final NFA | normal | SVG |
+| > 400 | "Diagram is disabled for expressions over 400 postfix tokens (limit: 400). Table, simulation, and tests remain available." (also fills the canvas) | NFA and Final NFA disabled | disabled, `step 0 / 0` | SVG disabled with tooltip |
 
-Design the notice as a `warning` alert bar (variant A, above the canvas, reserved row) and as the canvas's empty-state card (variant B). The `Final NFA` view stays selectable in both.
+Design the notice as the canvas's empty-state card. The transition table, test dock, validation, and stress panels stay fully functional.
 
 ---
 
@@ -683,7 +671,6 @@ The diagram is Graphviz SVG. The look is controlled by DOT attributes and, for t
 | **ε-transition** | **Dashed** (4 3), muted ink `#5E584D`, label `ε` | `#A7A092` | Always dashed |
 | **New at this step** | Stroke `--new-stroke` 2.5 px, label `--new`, suffix `(new)` kept | `#FF9A62` | Applies to states **and** edges added by the current step only |
 | **Active (simulation)** | Fill `--active-fill`, stroke `--active-stroke` 2 px | `#1E3A5F` / `#7FB4F0` | Final NFA view only; never together with *new* |
-| **Fragment box** (Textbook) | Rounded rect 1.5 px ink, mono label, in/out port dots | same | |
 | **Merged junction** (merge mode) | State with dotted outer ring | same | Tooltip explains |
 | **Page background** | **Transparent** (the canvas colour shows) | Transparent | Fixes A6 — Graphviz's white page rect must go (`bgcolor="transparent"`) |
 
@@ -714,7 +701,7 @@ Dismiss with `Esc` or outside click; reachable by keyboard; `aria-label` "Diagra
 | Double-click | Fit | `NEW-ENG` P2 |
 
 ### 8.5 Export
-**Export DOT** and **Export SVG** (existing) download the current view. Exported SVG keeps its **own white background and light-theme ink** regardless of app theme (so it pastes into slides). Filenames as today (`nfa-final.svg`, `nfa-step-<k>-<view>.svg`). Success: inline status "Exported nfa-final.svg" next to the buttons (`NEW-UI`).
+**Export SVG** (existing) downloads the current view. Exported SVG keeps its **own white background and light-theme ink** regardless of app theme (so it pastes into slides). Filenames as today (`nfa-final.svg`, `nfa-step-<k>.svg`). Success: inline status "Exported nfa-final.svg" next to the button (`NEW-UI`).
 
 ---
 ## 9. States catalogue
@@ -735,10 +722,10 @@ Every async or conditional surface needs all of these designed. *Copy in quotes 
 | **Differential** | "Please build an expression first." when nothing is built (existing behaviour) | Progress bar + "Comparing against oracles…", Run disabled | "Differential test completed for k = 8 (511 strings tested): ALL PASSED" + "No mismatches found." | Mismatch bar + table (≤ 20 rows) |
 | **Stress** | "Run stress test to see comparison chart" | "Testing n = 26…" + Cancel | "Stress test complete: NFA completed all inputs up to n = 1,000 in linear time." | "Stress test cancelling…" → "Stress test cancelled." · TIMEOUT / SKIPPED / ERROR pills in rows |
 | **Copy Link / Copy CSV** | — | — | "Link copied!" / "Copied!" (≈ 2 s, `role="status"`) | "Couldn't copy" inline + toast with manual fallback |
-| **Export DOT/SVG** | Disabled until built | — | Download + "Exported <file>" | SVG disabled above 400 steps with tooltip; DOT stays enabled |
+| **Export SVG** | Disabled until built | — | Download + "Exported <file>" | SVG disabled above 400 steps with tooltip |
 | **Deep link** | — | — | Page loads built | "Ignored link parameters: notation, step" (info/warning bar, dismissible) |
 
-**Cap and fallback notices** (`#layout-note`, style as a `warning` alert bar above the canvas): "Flat stepping is disabled for expressions over 150 postfix tokens (limit: 150). Showing textbook view." and "Diagram is disabled for expressions over 400 postfix tokens (limit: 400). Table, simulation, and tests remain available." (full table in S10). If the layout of a single step fails, the app also falls back with a note. Never let a notice push the canvas down by more than one 40 px row — reserve the row.
+**Cap and fallback notices** (`#layout-note`, style as a `warning` alert bar above the canvas): "Diagram is disabled for expressions over 400 postfix tokens (limit: 400). Table, simulation, and tests remain available." (full table in S10). If the layout of a single step fails, the app also falls back with a note. Never let a notice push the canvas down by more than one 40 px row — reserve the row.
 
 **Disabled-with-reason rule:** a disabled control always has an accessible tooltip (and `aria-describedby`) saying what enables it.
 
@@ -761,7 +748,7 @@ Every async or conditional surface needs all of these designed. *Copy in quotes 
 | Preset select | `Presets...` (option 0) |
 | Notation | `Standard (\| is union)` · `Textbook (+ is union)` |
 | Concatenation | `ε-link` · `Merge` |
-| Buttons | `Build` · `Copy Link` · `Play` · `Fit` · `100%` · `Export DOT` · `Export SVG` · `Run` · `Run Suite` · `Run Differential Test` · `Run Stress Test` · `Cancel` · `Copy CSV` · `Log scale` |
+| Buttons | `Build` · `Copy Link` · `Play` · `Fit` · `100%` · `Export SVG` · `Run` · `Run Suite` · `Run Differential Test` · `Run Stress Test` · `Cancel` · `Copy CSV` · `Log scale` |
 | Step counter | `step 4 / 10` · `Final NFA (14 states, 16 transitions)` |
 | Stats | `States: 14, Transitions: 16` |
 | Step text | `Step 1: symbol 'a' (fragment 0→1)` · `Step 3: union of fragments 0→1 and 2→3` · `Step 4: star of fragment 4→5` · `Step 6: concatenation of fragments 6→7 and 8→9` · merge: `… (merged states 7 and 8 into 7)` |
@@ -769,7 +756,7 @@ Every async or conditional surface needs all of these designed. *Copy in quotes 
 | Run messages | `Dead at position 0` (trace row) · `Run is dead at position 0: active set is empty.` (status bar) · `Symbol 'c' at position 2 outside alphabet` (trace row) |
 | Syntax / empty input | `Missing operand after '\|' at position 2` (pattern: reason + position) · `Enter a regular expression to build its NFA` · `Please build an expression first.` (differential with nothing built) |
 | Link | `Link copied!` · `Ignored link parameters: notation, step` |
-| Layout notices | `Flat stepping is disabled for expressions over 150 postfix tokens (limit: 150). Showing textbook view.` · `Diagram is disabled for expressions over 400 postfix tokens (limit: 400). Table, simulation, and tests remain available.` |
+| Layout notices | `Diagram is disabled for expressions over 400 postfix tokens (limit: 400). Table, simulation, and tests remain available.` |
 | Headings | `Validation & Oracles` · `Structural Invariants & Consistency` · `Built-in Suite (24 Cases)` · `Differential Testing Against 3 Oracles` · `Stress Test: Backtracking RegExp vs Thompson NFA` · `Keyboard Shortcuts` |
 | Invariant lines | `PASS - I1 (Distinct Start & Accept): Passed: start state (6) and accept state (9) are distinct and valid` (and I2 *No Transition Enters Start*, I3 *No Transition Leaves Accept*, I4 *State Degree Constraints*, *Size Formula*, *Step-log Replay*) |
 | Differential | `Differential test completed for k = 8 (511 strings tested): ALL PASSED` · `No mismatches found.` · oracle names |
@@ -945,7 +932,7 @@ Inline SVG, Lucide-style (20 px grid, 1.5 px stroke) for the list in §5.5; no i
 | Input | `#preset-select` · `#regex-input` · `#insert-eps` · `#insert-empty` · `#notation-select` · `#concat-select` · `#build-button` · `#copy-link-btn` · `#copy-link-status` · `#keyboard-help-btn` · `#link-notice` · `#alphabet-input` · `#alphabet-message` · `#error-message` · `#stats` |
 | Parse | `#token-list` · `#postfix-view` · `#tree-view` |
 | Stepper | `#stepper-controls` · `#step-first` · `#step-prev` · `#step-play` · `#step-next` · `#step-last` · `#step-counter` · `#step-speed` · `#view-toggle` · `#compact-labels` · `#step-log` · `#layout-note` |
-| Canvas | `#canvas-toolbar` · `#zoom-in-btn` · `#zoom-out-btn` · `#zoom-fit-btn` · `#zoom-reset-btn` · `#zoom-level` · `#export-dot-btn` · `#export-svg-btn` · `#canvas-hint` · `#canvas` · `#canvas-viewport` · `#transition-table` |
+| Canvas | `#canvas-toolbar` · `#zoom-in-btn` · `#zoom-out-btn` · `#zoom-fit-btn` · `#zoom-reset-btn` · `#zoom-level` · `#export-svg-btn` · `#canvas-hint` · `#canvas` · `#canvas-viewport` · `#transition-table` |
 | Simulation | `#test-input` · `#run-button` · `#run-status` · `#verdict` · `#trace` · `#worker-status` (**remove the debug text; element may be kept empty / hidden**) |
 | Validation | `#validation-panel` · `#invariants-section` · `#inv-I1` `#inv-I2` `#inv-I3` `#inv-I4` `#inv-size` `#inv-replay` · `#suite-section` · `#run-suite` · `#suite-table` · `#differential-section` · `#diff-run` · `#diff-status` · `#diff-results` |
 | Stress | `#stress-section` · `#stress-family` · `#stress-run` · `#stress-cancel` · `#stress-browser-info` · `#stress-status` · `#stress-table` · `#stress-copy-csv` · `#stress-copy-status` · `#stress-scale-toggle` · `#stress-export-svg` · `#stress-chart-container` (`data-scale="linear|log"`) |
@@ -1017,8 +1004,8 @@ Inline SVG, Lucide-style (20 px grid, 1.5 px stroke) for the list in §5.5; no i
 
 **Input strip:** Presets select (9 presets; choosing one fills the regex, sets notation and concatenation, fills the test strings and builds — it does **not** run the strings) · regex text field (Enter builds) · `ε` and `∅` insert buttons · Notation select (changing it rebuilds an existing expression) · Concatenation select (rebuilds likewise) · **Build** · **Copy Link** (+ transient status) · `?` shortcuts button · Alphabet field (+ message line) · error line · stats line · link-notice line.
 **Parse:** raw token list · postfix chips (click jumps to that step) · parse tree text.
-**Stepper:** first · previous · play/pause · next · last · counter · speed (0.5x/1x/2x) · view (Flat/Textbook/Final NFA) · compact-labels checkbox · step log (click row jumps) · layout-note line.
-**Canvas:** zoom in/out/fit/100% · zoom % · Export DOT · Export SVG · hint text · the pannable/zoomable region · state hover tooltips · transition table.
+**Stepper:** first · previous · play/pause · next · last · counter · speed (0.5x/1x/2x) · view (NFA/Final NFA) · compact-labels checkbox · step log (click row jumps) · layout-note line.
+**Canvas:** zoom in/out/fit/100% · zoom % · Export SVG · hint text · the pannable/zoomable region · state hover tooltips · transition table.
 **Simulation:** test-string textarea (one per line; blank = ε) · Run · run-status line · verdict list · trace blocks (click a trace line to show that active set in Final view) · worker-status line (debug leftover).
 **Validation:** six invariant rows · Run Suite + 24-case table · Run Differential Test + status + three oracle rows + mismatch list (≤ 20) · family select (2) · Run Stress Test · Cancel (only while running) · browser info · status · live table · Copy CSV (+ status) · Log scale toggle · Export SVG · two-panel chart.
 **Dialog:** Keyboard Shortcuts (9 rows) with close button.
@@ -1042,7 +1029,7 @@ Descriptions exist in data but are not shown today; show them (S8a).
 Stress families: `(a*)*b on aⁿ` and `(a+)+ on aⁿb`.
 
 ## Appendix C — Numbers to design for
-- Postfix tokens: typical 6–20; long demo ≈ 40; Flat-stepping cap 150; diagram cap 400.
+- Postfix tokens: typical 6–20; long demo ≈ 40; diagram cap 400.
 - States = about 2 × (atoms + unions + unary operators): `(a|b)*a` → 10; `(a|b)*abb` → 14 (ε-link) / 11 (merge).
 - Differential: strings up to length k = 8 → 511 strings for a 2-letter alphabet.
 - Stress: n from 12 to 30 for backtracking (timeout 8,000 ms), NFA up to 1,000.
@@ -1054,7 +1041,7 @@ Stress families: `(a*)*b on aⁿ` and `(a+)+ on aⁿb`.
 |---|---|---|
 | A3 | Debug JSON visible in `#worker-status` | P0 |
 | A2 | Parse tree whitespace collapses to one line; raw token dump visible | P0 |
-| A6 | Overlapping nodes/labels at step 1; labels overlapping the fragment box in Textbook view; white page rectangle | P0 |
+| A6 | Overlapping nodes/labels at step 1; white page rectangle | P0 |
 | A7 | Horizontal overflow on mobile; no touch pan/pinch | P0 / P1 |
 | A9 | Missing labels/names on controls | P0 |
 | A10 | Chart legend overlaps title | P1 |
