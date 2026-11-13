@@ -4860,11 +4860,11 @@ const assert = require('node:assert');
             }
           }
 
-          // Check banned wording
-          const text = document.body.innerText;
+          // Check banned wording (case-insensitive)
+          const lowerText = document.body.innerText.toLowerCase();
           const banned = [];
-          if (text.includes('Textbook view')) banned.push('Textbook view');
-          if (text.includes('Export DOT')) banned.push('Export DOT');
+          if (lowerText.includes('textbook view')) banned.push('Textbook view');
+          if (lowerText.includes('export dot')) banned.push('Export DOT');
 
           return { overflowDiff, smalls, banned };
         });
