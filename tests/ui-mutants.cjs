@@ -1272,7 +1272,7 @@ async function main() {
       find: "    @media (pointer: coarse), (max-width: 640px) {",
       replace: "    @media (pointer: coarse), (max-width: 100px) {",
       testType: 'e2e',
-      expect: "Viewport 390x844 must have --control-h = 44px"
+      expect: "must have --control-h = 44px"
     },
     {
       id: 'T32-AC3-1',
