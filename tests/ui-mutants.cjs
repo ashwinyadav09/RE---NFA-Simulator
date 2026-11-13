@@ -1371,16 +1371,16 @@ async function main() {
       find: "    syncRegexInput();\n  });\n  inputEl.addEventListener('scroll', () => {",
       replace: "    // syncRegexInput();\n  });\n  inputEl.addEventListener('scroll', () => {",
       testType: 'e2e',
-      expect: "Mirror text must sync during typing"
+      expect: "Mirror text must equal input value"
     },
     {
       id: 'T37-M3',
       desc: 'T37-M3: mirror uses innerHTML in src/ui/typeset-regex.ts',
       file: 'src/ui/typeset-regex.ts',
       find: "  for (let i = 0; i < text.length; i++) {",
-      replace: "  container.innerHTML = text;\n  for (let i = 0; i < 0; i++) {",
-      testType: 'vitest',
-      expect: "typesetRegex is strictly XSS-safe"
+      replace: "  container.innerHTML = text;\n  for (let i = 0; i < text.length; i++) {",
+      testType: 'e2e',
+      expect: "Mirror must not inject HTML or img tags from user input"
     }
   ];
 
