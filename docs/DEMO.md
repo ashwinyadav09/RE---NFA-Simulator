@@ -74,7 +74,7 @@ This guide walks an evaluator through the core features of the simulator using v
 
 ## 4. Built-in Validation & Self-Verification (2 Minutes)
 
-Scroll down to the **Self-Validation Panel**:
+Click **Validation** in the header navigation (or navigate to `#validation`):
 
 1. **Invariants Section**:
    - `inv-I1`: `PASS - I1 (Distinct Start & Accept): Passed: start state (6) and accept state (13) are distinct and valid`
@@ -96,7 +96,9 @@ Scroll down to the **Self-Validation Panel**:
 
 ## 5. Stress Testing & Polynomial vs Exponential Comparison (1 Minute)
 
-1. Scroll to the **Stress Testing** section (`#stress-panel`).
+Click **Stress** in the header navigation (or navigate to `#stress`):
+
+1. The Stress page displays the benchmark controls, SVG chart, and results table.
 2. Keep the default family: `(a*)*b on aⁿ` (`#stress-family` value `star-star-b`).
 3. Click **Run stress test** (`#stress-run`):
    - Executes in a dedicated Web Worker without freezing the UI.

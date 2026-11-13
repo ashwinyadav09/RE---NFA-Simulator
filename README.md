@@ -47,12 +47,12 @@ Open the built `dist/index.html` directly in a browser over `file://` (with netw
    - Type `(a|)` and click **Build**.
    - Expected: Diagnostic error: `Missing operand after '|' at position 2` with caret highlighting position 2.
 6. **Built-in Suite & Differential Oracle Testing**:
-   - In the Validation section, click **Run Suite**.
+   - Navigate to the **Validation** page (`#validation`) via the header navigation and click **Run Suite**.
      - Expected: All 24 built-in test cases pass with green `PASS` badges.
    - Load `(a|b)*abb` and click **Run Differential Test**.
      - Expected: Tests strings up to computed limit `k` (e.g. `k = 8`, 511 strings) against 3 independent oracles with **ALL PASSED** and no mismatches.
 7. **Stress Testing**:
-   - In the Stress section, click **Run Stress Test**.
+   - Navigate to the **Stress** page (`#stress`) via the header navigation and click **Run Stress Test**.
      - Expected: As $n$ increases, backtracking RegExp execution time grows steeply while Thompson NFA execution remains flat/linear. Cancelling halts execution immediately without UI freeze.
    - Click **Log scale** to toggle logarithmic scale for Panel A without re-running the benchmark. Points, ticks (down to `≤0.01 ms`), and any timeout ceiling markers adjust instantaneously.
    - Click **Copy CSV** to copy the stress benchmark table to clipboard in RFC 4180 format (with bare numeric milliseconds and empty time for timeouts/skipped runs) with visual status feedback.
@@ -104,6 +104,15 @@ The simulator supports shareable URLs that capture the full configuration and vi
 | `view` | `step` | `textbook` | `final` | Displayed diagram view tab |
 | `step` | integer (1-based) | Active construction step index (clamped to `[1, totalSteps]`) |
 | `compact` | `1` | `0` | Compact state numbering toggle |
+
+### Hash Routing & Three Dedicated Pages
+
+The simulator splits functionality into three discrete hash-routed pages, accessible from local `file://` or web hosting without external routing libraries:
+- `#workbench` (default): Regular expression input strip, timeline, parse tree, interactive diagram canvas with pan/zoom, step log, transition table, and test dock with simulation traces.
+- `#validation`: 4-card metric strip, formal invariants (I1–I4, size formula, step replay), built-in 24-case test suite, and differential oracle runner.
+- `#stress`: Benchmark controls, polynomial vs exponential performance chart, benchmark results table, CSV clipboard export, and SVG chart export.
+
+Legacy hash anchors (`#validation-panel`, `#stress-section`) automatically route to the corresponding pages and are canonicalized via `history.replaceState` without bounce. Deep links and the **Copy Link** button preserve the active page hash (e.g. `?regex=(a|b)*a&step=3#validation`).
 
 ### Important: Textbook Union Operator (`+`) Encoding
 In standard URL query strings, the `+` character decodes to a whitespace character (` `) per the `application/x-www-form-urlencoded` specification.
