@@ -4813,6 +4813,78 @@ const assert = require('node:assert');
   });
   assert.strictEqual(rawValue, '(a|b)*abb', 'Raw input value for copying must be plain (a|b)*abb with ASCII star');
 
+  // -------------------------------------------------------------
+  // Ticket 38: Whole-app presentation audit
+  // -------------------------------------------------------------
+  console.log('Testing Ticket 38: Whole-app presentation audit...');
+
+  const AUDIT_VIEWPORTS = [
+    { name: '1920x1080', width: 1920, height: 1080 },
+    { name: '1440x900',  width: 1440, height: 900 },
+    { name: '1280x800',  width: 1280, height: 800 },
+    { name: '1024x768',  width: 1024, height: 768 },
+    { name: '768x1024',  width: 768,  height: 1024 },
+    { name: '390x844',   width: 390,  height: 844 },
+  ];
+
+  for (const vp of AUDIT_VIEWPORTS) {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate((t) => {
+        document.documentElement.setAttribute('data-theme', t);
+        const sel = document.getElementById('theme-select');
+        if (sel) sel.value = t;
+      }, theme);
+
+      for (const pName of ['workbench', 'validation', 'stress']) {
+        await gotoPage(page, pName);
+        await page.waitForTimeout(50);
+
+        const auditMetrics = await page.evaluate(() => {
+          const doc = document.documentElement;
+          const body = document.body;
+          const overflowDiff = Math.max(0, doc.scrollWidth - doc.clientWidth, body.scrollWidth - window.innerWidth);
+
+          // Check text elements with font-size < 11.5px (excluding .sr-only and .raised-star superscripts)
+          const smalls = [];
+          const allEls = document.querySelectorAll('#app *:not(script):not(style):not(.sr-only):not(.raised-star)');
+          for (const el of allEls) {
+            if (el.offsetParent === null) continue;
+            const cs = window.getComputedStyle(el);
+            const fSize = parseFloat(cs.fontSize);
+            if (fSize > 0 && fSize < 11.5) {
+              const hasText = Array.from(el.childNodes).some(n => n.nodeType === 3 && n.nodeValue.trim().length > 0);
+              if (hasText) {
+                smalls.push({ tag: el.tagName, id: el.id, cls: el.className, fSize });
+              }
+            }
+          }
+
+          // Check banned wording
+          const text = document.body.innerText;
+          const banned = [];
+          if (text.includes('Textbook view')) banned.push('Textbook view');
+          if (text.includes('Export DOT')) banned.push('Export DOT');
+
+          return { overflowDiff, smalls, banned };
+        });
+
+        assert.strictEqual(auditMetrics.overflowDiff, 0, `No horizontal overflow at ${vp.name} on ${pName} (${theme})`);
+        assert.strictEqual(auditMetrics.smalls.length, 0, `No visible text < 12px at ${vp.name} on ${pName} (${theme}): ${JSON.stringify(auditMetrics.smalls)}`);
+        assert.strictEqual(auditMetrics.banned.length, 0, `No banned wording at ${vp.name} on ${pName} (${theme}): ${auditMetrics.banned.join(', ')}`);
+      }
+    }
+  }
+
+  // Restore desktop viewport & light theme
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => {
+    document.documentElement.setAttribute('data-theme', 'light');
+    const sel = document.getElementById('theme-select');
+    if (sel) sel.value = 'light';
+  });
+  await gotoPage(page, 'workbench');
+
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);

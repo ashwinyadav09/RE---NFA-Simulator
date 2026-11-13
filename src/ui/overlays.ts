@@ -59,9 +59,9 @@ function getLegendSampleSvg(id: string): string {
     case 'accept-state':
       return `<svg class="legend-sample" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="11" fill="var(--bg-canvas)" stroke="currentColor" stroke-width="1.5"></circle><circle cx="16" cy="16" r="7.5" fill="var(--bg-canvas)" stroke="currentColor" stroke-width="1.25"></circle></svg>`;
     case 'symbol-transition':
-      return `<svg class="legend-sample" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><line x1="2" y1="18" x2="26" y2="18" stroke="currentColor" stroke-width="1.5"></line><polygon points="26,18 20,15 20,21" fill="currentColor"></polygon><text x="14" y="12" font-size="10" font-family="var(--font-mono)" text-anchor="middle" fill="currentColor">a</text></svg>`;
+      return `<svg class="legend-sample" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><line x1="2" y1="18" x2="26" y2="18" stroke="currentColor" stroke-width="1.5"></line><polygon points="26,18 20,15 20,21" fill="currentColor"></polygon><text x="14" y="12" font-size="12" font-family="var(--font-mono)" text-anchor="middle" fill="currentColor">a</text></svg>`;
     case 'eps-transition':
-      return `<svg class="legend-sample" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><line x1="2" y1="18" x2="26" y2="18" stroke="var(--text-muted)" stroke-width="1.5" stroke-dasharray="3 2"></line><polygon points="26,18 20,15 20,21" fill="var(--text-muted)"></polygon><text x="14" y="12" font-size="10" font-family="var(--font-mono)" text-anchor="middle" fill="var(--text-muted)">ε</text></svg>`;
+      return `<svg class="legend-sample" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><line x1="2" y1="18" x2="26" y2="18" stroke="var(--text-muted)" stroke-width="1.5" stroke-dasharray="3 2"></line><polygon points="26,18 20,15 20,21" fill="var(--text-muted)"></polygon><text x="14" y="12" font-size="12" font-family="var(--font-mono)" text-anchor="middle" fill="var(--text-muted)">ε</text></svg>`;
     case 'new-step':
       return `<svg class="legend-sample" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="9" fill="var(--bg-canvas)" stroke="var(--vermilion-new, #c84b31)" stroke-width="2.5"></circle></svg>`;
     case 'active-sim':

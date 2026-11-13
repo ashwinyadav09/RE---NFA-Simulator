@@ -1381,6 +1381,34 @@ async function main() {
       replace: "  container.innerHTML = text;\n  for (let i = 0; i < text.length; i++) {",
       testType: 'e2e',
       expect: "Malicious regex must not execute XSS script"
+    },
+    // Ticket 38 mutants
+    {
+      id: 'T38-M1',
+      desc: 'T38-M1: font-size under 12px in setting-label in index.html',
+      file: 'index.html',
+      find: "    .setting-label {\n      display: block;\n      font-family: var(--font-ui);\n      font-size: 12px;",
+      replace: "    .setting-label {\n      display: block;\n      font-family: var(--font-ui);\n      font-size: 10px;",
+      testType: 'e2e',
+      expect: "No visible text < 12px"
+    },
+    {
+      id: 'T38-M2',
+      desc: 'T38-M2: horizontal overflow in workbench-grid in index.html',
+      file: 'index.html',
+      find: "    .workbench-grid {\n      display: grid;",
+      replace: "    .workbench-grid {\n      min-width: 1200px;\n      display: grid;",
+      testType: 'e2e',
+      expect: "No horizontal overflow at 390x844"
+    },
+    {
+      id: 'T38-M3',
+      desc: 'T38-M3: banned legacy wording Textbook view in index.html',
+      file: 'index.html',
+      find: "            <option value=\"final\">Final NFA</option>",
+      replace: "            <option value=\"final\">Textbook view</option>",
+      testType: 'e2e',
+      expect: "No banned wording"
     }
   ];
 

@@ -607,7 +607,7 @@ export function renderStressChartSvg(
   lines.push(`  <text x="${width / 2}" y="22" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#202124">${escapedTitle}</text>`);
 
   // Global Legend
-  lines.push(`  <g transform="translate(${width - 240}, 10)" font-family="sans-serif" font-size="11">`);
+  lines.push(`  <g transform="translate(${width - 240}, 10)" font-family="sans-serif" font-size="12">`);
   lines.push(`    <line x1="0" y1="10" x2="16" y2="10" stroke="#d93025" stroke-width="2.5" />`);
   lines.push(`    <circle cx="8" cy="10" r="3.5" fill="#d93025" />`);
   lines.push(`    <text x="22" y="14" fill="#333333">RegExp</text>`);
@@ -639,7 +639,7 @@ export function renderStressChartSvg(
       const yPos = getYA(val);
       const isTop = val === 8000;
       lines.push(`  <line x1="${panelA.left}" y1="${yPos.toFixed(1)}" x2="${panelA.left + panelA.width}" y2="${yPos.toFixed(1)}" stroke="${isTop ? '#ea4335' : '#e0e0e0'}" stroke-width="${isTop ? '1.5' : '1'}" ${isTop ? 'stroke-dasharray="4,4"' : ''} />`);
-      lines.push(`  <text x="${panelA.left - 8}" y="${(yPos + 4).toFixed(1)}" text-anchor="end" font-family="sans-serif" font-size="10" fill="${isTop ? '#ea4335' : '#5f6368'}">${label}</text>`);
+      lines.push(`  <text x="${panelA.left - 8}" y="${(yPos + 4).toFixed(1)}" text-anchor="end" font-family="sans-serif" font-size="12" fill="${isTop ? '#ea4335' : '#5f6368'}">${label}</text>`);
     }
   } else {
     const yTicksA = [0, 2000, 4000, 6000, 8000];
@@ -647,7 +647,7 @@ export function renderStressChartSvg(
       const yPos = getYA(yt);
       lines.push(`  <line x1="${panelA.left}" y1="${yPos.toFixed(1)}" x2="${panelA.left + panelA.width}" y2="${yPos.toFixed(1)}" stroke="${yt === 8000 ? '#ea4335' : '#e0e0e0'}" stroke-width="${yt === 8000 ? '1.5' : '1'}" ${yt === 8000 ? 'stroke-dasharray="4,4"' : ''} />`);
       const label = yt === 8000 ? '8000 ms' : `${yt} ms`;
-      lines.push(`  <text x="${panelA.left - 8}" y="${(yPos + 4).toFixed(1)}" text-anchor="end" font-family="sans-serif" font-size="10" fill="${yt === 8000 ? '#ea4335' : '#5f6368'}">${label}</text>`);
+      lines.push(`  <text x="${panelA.left - 8}" y="${(yPos + 4).toFixed(1)}" text-anchor="end" font-family="sans-serif" font-size="12" fill="${yt === 8000 ? '#ea4335' : '#5f6368'}">${label}</text>`);
     }
   }
 
@@ -660,9 +660,9 @@ export function renderStressChartSvg(
   for (const xt of xTicksA) {
     const xPos = getXA(xt);
     lines.push(`  <line x1="${xPos.toFixed(1)}" y1="${panelA.top + panelA.height}" x2="${xPos.toFixed(1)}" y2="${panelA.top + panelA.height + 5}" stroke="#70757a" stroke-width="1" />`);
-    lines.push(`  <text x="${xPos.toFixed(1)}" y="${panelA.top + panelA.height + 16}" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#3c4043">${xt}</text>`);
+    lines.push(`  <text x="${xPos.toFixed(1)}" y="${panelA.top + panelA.height + 16}" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#3c4043">${xt}</text>`);
   }
-  lines.push(`  <text x="${panelA.left + panelA.width / 2}" y="${height - 10}" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#5f6368">n (domain [12, 30])</text>`);
+  lines.push(`  <text x="${panelA.left + panelA.width / 2}" y="${height - 10}" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#5f6368">n (domain [12, 30])</text>`);
 
   // Filter points for Panel A
   const pointsA = points.filter((p) => p.n >= 12 && p.n <= 30);
@@ -691,7 +691,7 @@ export function renderStressChartSvg(
         lines.push(`    <circle cx="0" cy="0" r="6" fill="#ea4335" />`);
         lines.push(`    <line x1="-3" y1="-3" x2="3" y2="3" stroke="#fff" stroke-width="2" />`);
         lines.push(`    <line x1="-3" y1="3" x2="3" y2="-3" stroke="#fff" stroke-width="2" />`);
-        lines.push(`    <text x="0" y="-8" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="bold" fill="#ea4335">timeout</text>`);
+        lines.push(`    <text x="0" y="-8" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="bold" fill="#ea4335">timeout</text>`);
         lines.push(`    <title>n=${pt.n}: RegExp TIMEOUT (&gt;8000ms)</title>`);
         lines.push(`  </g>`);
       } else {
@@ -732,7 +732,7 @@ export function renderStressChartSvg(
   for (const yt of yTicksB) {
     const yPos = getYB(yt);
     lines.push(`  <line x1="${panelB.left}" y1="${yPos.toFixed(1)}" x2="${panelB.left + panelB.width}" y2="${yPos.toFixed(1)}" stroke="#e0e0e0" stroke-width="1" />`);
-    lines.push(`  <text x="${panelB.left - 8}" y="${(yPos + 4).toFixed(1)}" text-anchor="end" font-family="sans-serif" font-size="10" fill="#5f6368">${yt} ms</text>`);
+    lines.push(`  <text x="${panelB.left - 8}" y="${(yPos + 4).toFixed(1)}" text-anchor="end" font-family="sans-serif" font-size="12" fill="#5f6368">${yt} ms</text>`);
   }
 
   // Axes lines for Panel B
@@ -744,9 +744,9 @@ export function renderStressChartSvg(
   for (const xt of xTicksB) {
     const xPos = getXB(xt);
     lines.push(`  <line x1="${xPos.toFixed(1)}" y1="${panelB.top + panelB.height}" x2="${xPos.toFixed(1)}" y2="${panelB.top + panelB.height + 5}" stroke="#70757a" stroke-width="1" />`);
-    lines.push(`  <text x="${xPos.toFixed(1)}" y="${panelB.top + panelB.height + 16}" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#3c4043">${xt}</text>`);
+    lines.push(`  <text x="${xPos.toFixed(1)}" y="${panelB.top + panelB.height + 16}" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#3c4043">${xt}</text>`);
   }
-  lines.push(`  <text x="${panelB.left + panelB.width / 2}" y="${height - 10}" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#5f6368">n (domain [0, 1000])</text>`);
+  lines.push(`  <text x="${panelB.left + panelB.width / 2}" y="${height - 10}" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#5f6368">n (domain [0, 1000])</text>`);
 
   // Points for Panel B: all points up to 1000
   const pointsB = points.filter((p) => p.n >= 0 && p.n <= 1000).sort((a, b) => a.n - b.n);
