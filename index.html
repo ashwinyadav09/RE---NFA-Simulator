@@ -1825,6 +1825,210 @@
       fill: var(--bg-canvas, #ffffff);
     }
 
+    /* Fullscreen Mode (Ticket 36) */
+    .fullscreen-overlay {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 9000;
+      background-color: var(--bg-canvas, #ffffff);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .fullscreen-overlay[hidden] {
+      display: none !important;
+    }
+
+    body.fullscreen-mode {
+      overflow: hidden !important;
+    }
+
+    .fullscreen-header {
+      height: 52px;
+      min-height: 52px;
+      background-color: var(--bg-surface, #ffffff);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      gap: 16px;
+      z-index: 10;
+      flex-shrink: 0;
+    }
+
+    .fullscreen-header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-width: 0;
+    }
+
+    .fullscreen-regex {
+      font-family: var(--font-mono);
+      font-size: var(--text-md, 15px);
+      color: var(--text-primary);
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 4px 10px;
+      background: var(--bg-sunken);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+
+    .fullscreen-header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .fullscreen-main {
+      flex: 1;
+      position: relative;
+      display: flex;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .fullscreen-canvas-slot {
+      flex: 1;
+      position: relative;
+      min-width: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .fullscreen-canvas-slot .canvas-container {
+      flex: 1;
+      height: 100%;
+      margin-bottom: 0;
+      border-radius: 0;
+      border: none;
+    }
+
+    .fullscreen-canvas-slot #canvas {
+      height: 100% !important;
+      max-height: 100% !important;
+      min-height: 0 !important;
+    }
+
+    .fullscreen-canvas-slot .canvas-viewport {
+      height: 100% !important;
+      max-height: 100% !important;
+    }
+
+    .fullscreen-table-drawer {
+      width: 420px;
+      max-width: 45vw;
+      background: var(--bg-surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      z-index: 20;
+      box-shadow: -4px 0 16px rgba(0, 0, 0, 0.08);
+      transition: transform 0.2s ease-in-out;
+    }
+
+    .fullscreen-table-drawer.hidden {
+      display: none !important;
+    }
+
+    .fullscreen-drawer-header {
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-sunken);
+    }
+
+    .fullscreen-drawer-title {
+      font-weight: 600;
+      font-size: var(--text-sm);
+    }
+
+    .fullscreen-table-slot {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+
+    .fullscreen-footer {
+      background-color: var(--bg-surface);
+      border-top: 1px solid var(--border);
+      padding: 8px 16px;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .fullscreen-stepper-slot {
+      width: 100%;
+    }
+
+    .fullscreen-stepper-slot .stepper-controls {
+      margin-bottom: 0;
+      width: 100%;
+    }
+
+    #fullscreen-btn,
+    #exit-fullscreen-btn {
+      touch-action: manipulation;
+    }
+
+    @media (pointer: coarse), (max-width: 768px) {
+      #fullscreen-btn,
+      #exit-fullscreen-btn {
+        min-width: 44px;
+        min-height: 44px;
+      }
+      .fullscreen-header {
+        height: 48px;
+        padding: 0 8px;
+        gap: 8px;
+      }
+      .fullscreen-regex {
+        font-size: var(--text-sm);
+        max-width: 140px;
+      }
+      .fullscreen-table-drawer {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        max-width: 100%;
+        height: 60vh;
+        border-left: none;
+        border-top: 1px solid var(--border);
+        box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15);
+      }
+      .fullscreen-footer {
+        padding: 8px;
+        overflow-x: auto;
+      }
+      .fullscreen-stepper-slot .stepper-controls {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .fullscreen-overlay,
+      .fullscreen-table-drawer {
+        transition: none !important;
+        animation: none !important;
+      }
+    }
+
     /* Tables */
     .table-wrapper {
       max-height: 400px;
@@ -2698,6 +2902,7 @@
             <div class="canvas-toolbar-group">
               <button id="export-svg-btn" data-testid="export-svg-btn" type="button" aria-label="Export diagram as SVG" disabled>Export SVG</button>
               <button id="legend-btn" data-testid="legend-btn" type="button" aria-label="Diagram legend" aria-expanded="false" aria-controls="canvas-legend">Legend</button>
+              <button id="fullscreen-btn" data-testid="fullscreen-btn" type="button" aria-label="Full screen" title="Full screen">Full screen</button>
             </div>
             <span class="canvas-hint" id="canvas-hint">Ctrl+scroll to zoom, drag or Shift+scroll to pan, Shift+arrows pan</span>
           </div>
@@ -2912,7 +3117,33 @@
     </div>
   </div>
 
-    <dialog id="keyboard-help-dialog" data-testid="keyboard-help-dialog" aria-labelledby="keyboard-help-title" aria-describedby="keyboard-help-desc">
+  <!-- Fullscreen Overlay (Ticket 36) -->
+  <div id="fullscreen-overlay" data-testid="fullscreen-overlay" class="fullscreen-overlay" hidden>
+    <header class="fullscreen-header" id="fullscreen-header" data-testid="fullscreen-header">
+      <div class="fullscreen-header-left">
+        <button id="exit-fullscreen-btn" data-testid="exit-fullscreen-btn" class="btn btn-secondary btn-sm" type="button" aria-label="Exit full screen">Exit full screen</button>
+        <div id="fullscreen-regex" data-testid="fullscreen-regex" class="fullscreen-regex"></div>
+      </div>
+      <div class="fullscreen-header-right">
+        <button id="fullscreen-table-btn" data-testid="fullscreen-table-btn" class="btn btn-secondary btn-sm" type="button" aria-expanded="false" aria-controls="fullscreen-table-drawer">Table</button>
+      </div>
+    </header>
+    <div class="fullscreen-main" id="fullscreen-main">
+      <div class="fullscreen-canvas-slot" id="fullscreen-canvas-slot"></div>
+      <div class="fullscreen-table-drawer hidden" id="fullscreen-table-drawer" data-testid="fullscreen-table-drawer" role="region" aria-label="Transition Table Drawer">
+        <div class="fullscreen-drawer-header">
+          <span class="fullscreen-drawer-title">Transition Table</span>
+          <button id="fullscreen-table-close-btn" data-testid="fullscreen-table-close-btn" class="btn-icon" type="button" aria-label="Close transition table">✕</button>
+        </div>
+        <div class="fullscreen-table-slot" id="fullscreen-table-slot"></div>
+      </div>
+    </div>
+    <footer class="fullscreen-footer" id="fullscreen-footer">
+      <div class="fullscreen-stepper-slot" id="fullscreen-stepper-slot"></div>
+    </footer>
+  </div>
+
+  <dialog id="keyboard-help-dialog" data-testid="keyboard-help-dialog" aria-labelledby="keyboard-help-title" aria-describedby="keyboard-help-desc">
       <div class="dialog-header">
         <div>
           <h2 id="keyboard-help-title" class="dialog-title">Keyboard Shortcuts</h2>

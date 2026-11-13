@@ -74,6 +74,7 @@ import {
   type Rect
 } from './viewport';
 import { normalizeStateLabels, computeStateCreators } from './state-labels';
+import { FullscreenManager } from './fullscreen';
 import InlineWorker from './worker.ts?worker&inline';
 
 const renderer = new VizRenderer();
@@ -308,6 +309,73 @@ function clearViewport(): void {
     zoomLevelEl.textContent = '100%';
   }
   updateToolbarButtonStates();
+}
+
+function recomputeFit(): void {
+  if (!currentContentRect || !canvasEl) return;
+  currentViewportMode = 'fit';
+  const containerRect: Rect = { width: canvasEl.clientWidth || 800, height: canvasEl.clientHeight || 500 };
+  const fit = fitToContainer(currentContentRect, containerRect);
+  const limits = getEffectiveLimits(fit.zoom);
+  currentViewport = { zoom: clampZoom(fit.zoom, limits), panX: fit.panX, panY: fit.panY };
+  applyViewport();
+}
+
+const appEl = document.getElementById('app');
+const canvasContainerEl = document.getElementById('canvas-container');
+const stepperControlsEl = document.getElementById('stepper-controls');
+const tablePanelEl = document.querySelector('.table-panel') as HTMLElement | null;
+const fullscreenBtn = document.getElementById('fullscreen-btn') as HTMLButtonElement | null;
+const exitFullscreenBtn = document.getElementById('exit-fullscreen-btn') as HTMLButtonElement | null;
+const fullscreenTableBtn = document.getElementById('fullscreen-table-btn') as HTMLButtonElement | null;
+const fullscreenTableCloseBtn = document.getElementById('fullscreen-table-close-btn') as HTMLButtonElement | null;
+const fullscreenOverlayEl = document.getElementById('fullscreen-overlay');
+const fullscreenTableDrawerEl = document.getElementById('fullscreen-table-drawer');
+const fullscreenCanvasSlotEl = document.getElementById('fullscreen-canvas-slot');
+const fullscreenStepperSlotEl = document.getElementById('fullscreen-stepper-slot');
+const fullscreenTableSlotEl = document.getElementById('fullscreen-table-slot');
+const fullscreenRegexEl = document.getElementById('fullscreen-regex');
+
+let fullscreenManager: FullscreenManager | null = null;
+if (
+  fullscreenOverlayEl &&
+  appEl &&
+  canvasContainerEl &&
+  stepperControlsEl &&
+  tablePanelEl &&
+  fullscreenBtn &&
+  exitFullscreenBtn &&
+  fullscreenTableBtn &&
+  fullscreenTableDrawerEl &&
+  fullscreenCanvasSlotEl &&
+  fullscreenStepperSlotEl &&
+  fullscreenTableSlotEl
+) {
+  fullscreenManager = new FullscreenManager(
+    {
+      overlayEl: fullscreenOverlayEl,
+      appEl,
+      canvasContainerEl,
+      stepperControlsEl,
+      tablePanelEl,
+      fullscreenBtn,
+      exitBtn: exitFullscreenBtn,
+      tableToggleBtn: fullscreenTableBtn,
+      tableCloseBtn: fullscreenTableCloseBtn,
+      tableDrawerEl: fullscreenTableDrawerEl,
+      canvasSlot: fullscreenCanvasSlotEl,
+      stepperSlot: fullscreenStepperSlotEl,
+      tableSlot: fullscreenTableSlotEl,
+      regexDisplayEl: fullscreenRegexEl
+    },
+    {
+      getRegexText: () => (inputEl ? inputEl.value : ''),
+      isModeFit: () => currentViewportMode === 'fit',
+      recomputeFit: () => {
+        recomputeFit();
+      }
+    }
+  );
 }
 
 function updateValidationPageState(): void {
@@ -1647,6 +1715,9 @@ if (inputEl) {
         if (presetDescEl) presetDescEl.textContent = '';
       }
     }
+    if (fullscreenRegexEl && fullscreenManager?.isActive()) {
+      fullscreenRegexEl.textContent = inputEl.value;
+    }
   });
   inputEl.addEventListener('keydown', (e) => {
     if (e.key === '^') {
@@ -1759,13 +1830,7 @@ if (zoomOutBtn) {
 
 if (zoomFitBtn) {
   zoomFitBtn.addEventListener('click', () => {
-    if (!currentContentRect || !canvasEl) return;
-    currentViewportMode = 'fit';
-    const containerRect: Rect = { width: canvasEl.clientWidth || 800, height: canvasEl.clientHeight || 500 };
-    const fit = fitToContainer(currentContentRect, containerRect);
-    const limits = getEffectiveLimits(fit.zoom);
-    currentViewport = { zoom: clampZoom(fit.zoom, limits), panX: fit.panX, panY: fit.panY };
-    applyViewport();
+    recomputeFit();
   });
 }
 
@@ -1970,6 +2035,11 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
     if (legendEl && isLegendOpen(legendEl)) {
       closeLegend(legendEl, legendBtn);
+      return;
+    }
+    if (fullscreenManager?.isActive()) {
+      fullscreenManager.exit();
+      return;
     }
     if (currentActiveStates !== null) {
       currentActiveStates = null;
@@ -2799,6 +2869,9 @@ async function initDeepLink(): Promise<void> {
 }
 
 window.addEventListener('hashchange', () => {
+  if (fullscreenManager?.isActive()) {
+    fullscreenManager.exit();
+  }
   const rawHash = window.location.hash;
   const route = parseRoute(rawHash);
   if (isLegacyAlias(rawHash)) {

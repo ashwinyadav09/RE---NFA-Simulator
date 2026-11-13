@@ -4496,6 +4496,157 @@ const assert = require('node:assert');
   // Restore desktop viewport
   await page.setViewportSize({ width: 1280, height: 800 });
 
+  // Ticket 36: Full-screen canvas mode
+  console.log('Testing Ticket 36: Full-screen canvas mode...');
+  await page.fill('#regex-input', '(a|b)*a');
+  await page.click('#build-button');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 6'));
+
+  // Enter full-screen via #fullscreen-btn
+  await page.click('#fullscreen-btn');
+  await page.waitForFunction(() => !document.querySelector('#fullscreen-overlay')?.hasAttribute('hidden'));
+
+  const fsState = await page.evaluate(() => {
+    const overlay = document.querySelector('#fullscreen-overlay');
+    const app = document.querySelector('#app');
+    const exitBtn = document.querySelector('#exit-fullscreen-btn');
+    const regexEl = document.querySelector('#fullscreen-regex');
+    const activeEl = document.activeElement;
+
+    // Check unique IDs
+    const allIds = Array.from(document.querySelectorAll('[id]')).map((el) => el.id);
+    const duplicates = allIds.filter((id, idx) => allIds.indexOf(id) !== idx);
+
+    return {
+      overlayVisible: overlay && !overlay.hidden,
+      appInert: app?.hasAttribute('inert') || app?.inert === true,
+      bodyClass: document.body.classList.contains('fullscreen-mode'),
+      activeIsExit: activeEl === exitBtn,
+      regexText: regexEl?.textContent || '',
+      duplicates,
+      stepperInside: Boolean(overlay?.querySelector('#stepper-controls')),
+      canvasInside: Boolean(overlay?.querySelector('#canvas-container')),
+      tableInside: Boolean(overlay?.querySelector('.table-panel')),
+      viewToggleInside: Boolean(overlay?.querySelector('#view-toggle'))
+    };
+  });
+
+  assert.strictEqual(fsState.overlayVisible, true, 'Fullscreen overlay must be visible');
+  assert.strictEqual(fsState.appInert, true, 'App background must be marked inert in fullscreen');
+  assert.strictEqual(fsState.bodyClass, true, 'Body must have fullscreen-mode class');
+  assert.strictEqual(fsState.activeIsExit, true, 'Focus must move to exit button on entering fullscreen');
+  assert.strictEqual(fsState.regexText, '(a|b)*a', 'Current regex must be displayed in fullscreen header');
+  assert.deepStrictEqual(fsState.duplicates, [], `DOM must have zero duplicate IDs, found: ${fsState.duplicates.join(', ')}`);
+  assert.strictEqual(fsState.stepperInside, true, 'Stepper controls must be reparented inside fullscreen overlay');
+  assert.strictEqual(fsState.canvasInside, true, 'Canvas container must be reparented inside fullscreen overlay');
+  assert.strictEqual(fsState.tableInside, true, 'Table panel must be reparented inside fullscreen overlay');
+  assert.strictEqual(fsState.viewToggleInside, true, 'View toggle must be accessible inside fullscreen overlay');
+
+  // Test stepping inside fullscreen
+  await page.click('#step-next');
+  await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 2 / 6'));
+
+  // Test table drawer toggle inside fullscreen
+  const drawerDefault = await page.evaluate(() => {
+    const drawer = document.querySelector('#fullscreen-table-drawer');
+    const btn = document.querySelector('#fullscreen-table-btn');
+    return {
+      hidden: drawer?.classList.contains('hidden'),
+      ariaExpanded: btn?.getAttribute('aria-expanded')
+    };
+  });
+  assert.strictEqual(drawerDefault.hidden, true, 'Table drawer must be collapsed by default');
+  assert.strictEqual(drawerDefault.ariaExpanded, 'false', 'Table toggle button aria-expanded must be false by default');
+
+  await page.click('#fullscreen-table-btn');
+  await page.waitForFunction(() => !document.querySelector('#fullscreen-table-drawer')?.classList.contains('hidden'));
+  assert.strictEqual(await page.$eval('#fullscreen-table-btn', (el) => el.getAttribute('aria-expanded')), 'true', 'Table toggle aria-expanded must be true when drawer opened');
+
+  await page.click('#fullscreen-table-close-btn');
+  await page.waitForFunction(() => document.querySelector('#fullscreen-table-drawer')?.classList.contains('hidden'));
+  assert.strictEqual(await page.$eval('#fullscreen-table-btn', (el) => el.getAttribute('aria-expanded')), 'false', 'Table toggle aria-expanded must be false when drawer closed');
+
+  // Test Escape hierarchy: Legend closes first, overlay remains open
+  await page.click('#legend-btn');
+  await page.waitForFunction(() => !document.querySelector('#canvas-legend')?.classList.contains('hidden'));
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelector('#canvas-legend')?.classList.contains('hidden'));
+  assert.strictEqual(await page.$eval('#fullscreen-overlay', (el) => !el.hidden), true, 'Escape with legend open must close only legend and keep fullscreen open');
+
+  // Press Escape again: exits fullscreen and restores focus to #fullscreen-btn
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelector('#fullscreen-overlay')?.hasAttribute('hidden'));
+
+  const exitState = await page.evaluate(() => {
+    const overlay = document.querySelector('#fullscreen-overlay');
+    const app = document.querySelector('#app');
+    const fsBtn = document.querySelector('#fullscreen-btn');
+    const activeEl = document.activeElement;
+    const centre = document.querySelector('#centre-column');
+    const rail = document.querySelector('#right-rail');
+
+    return {
+      overlayHidden: overlay?.hidden,
+      appInert: app?.hasAttribute('inert') || app?.inert === true,
+      bodyClass: document.body.classList.contains('fullscreen-mode'),
+      activeIsFsBtn: activeEl === fsBtn,
+      stepperRestored: Boolean(centre?.querySelector('#stepper-controls')),
+      canvasRestored: Boolean(centre?.querySelector('#canvas-container')),
+      tableRestored: Boolean(rail?.querySelector('.table-panel'))
+    };
+  });
+
+  assert.strictEqual(exitState.overlayHidden, true, 'Fullscreen overlay must be hidden after exit');
+  assert.strictEqual(exitState.appInert, false, 'App background inert must be removed after exit');
+  assert.strictEqual(exitState.bodyClass, false, 'Body fullscreen-mode class must be removed after exit');
+  assert.strictEqual(exitState.activeIsFsBtn, true, 'Focus must be restored to #fullscreen-btn on exit');
+  assert.strictEqual(exitState.stepperRestored, true, 'Stepper controls must be restored to centre column');
+  assert.strictEqual(exitState.canvasRestored, true, 'Canvas container must be restored to centre column');
+  assert.strictEqual(exitState.tableRestored, true, 'Table panel must be restored to right rail');
+
+  // Step index preserved
+  assert.strictEqual(await page.$eval('#step-counter', (el) => el.textContent), 'step 2 / 6', 'Step index must survive fullscreen enter and exit');
+
+  // Test exit via #exit-fullscreen-btn
+  await page.click('#fullscreen-btn');
+  await page.waitForFunction(() => !document.querySelector('#fullscreen-overlay')?.hasAttribute('hidden'));
+  await page.click('#exit-fullscreen-btn');
+  await page.waitForFunction(() => document.querySelector('#fullscreen-overlay')?.hasAttribute('hidden'));
+  assert.strictEqual(await page.evaluate(() => document.activeElement?.id), 'fullscreen-btn', 'Exit button must restore focus to #fullscreen-btn');
+
+  // Test route change exits fullscreen
+  await page.click('#fullscreen-btn');
+  await page.waitForFunction(() => !document.querySelector('#fullscreen-overlay')?.hasAttribute('hidden'));
+  await page.evaluate(() => { window.location.hash = '#validation'; });
+  await page.waitForFunction(() => document.querySelector('#fullscreen-overlay')?.hasAttribute('hidden'));
+  assert.strictEqual(await page.$eval('#fullscreen-overlay', (el) => el.hidden), true, 'Route change must exit fullscreen mode');
+  await page.evaluate(() => { window.location.hash = '#workbench'; });
+  await page.waitForFunction(() => !document.querySelector('#workbench-page')?.hidden);
+
+  // Test mobile 390x844 layout in fullscreen
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.click('#fullscreen-btn');
+  await page.waitForFunction(() => !document.querySelector('#fullscreen-overlay')?.hasAttribute('hidden'));
+
+  const mobileFs = await page.evaluate(() => {
+    const overlay = document.querySelector('#fullscreen-overlay');
+    const exitBtn = document.querySelector('#exit-fullscreen-btn');
+    const exitRect = exitBtn?.getBoundingClientRect();
+    const hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
+
+    return {
+      hasHorizontalOverflow,
+      exitBtnTargetOk: exitRect ? exitRect.width >= 44 && exitRect.height >= 44 : false
+    };
+  });
+
+  assert.strictEqual(mobileFs.hasHorizontalOverflow, false, 'Mobile fullscreen must have zero horizontal overflow');
+  assert.strictEqual(mobileFs.exitBtnTargetOk, true, 'Exit button on mobile must have >= 44px touch target');
+
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelector('#fullscreen-overlay')?.hasAttribute('hidden'));
+  await page.setViewportSize({ width: 1280, height: 800 });
+
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);

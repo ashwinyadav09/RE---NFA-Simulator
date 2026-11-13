@@ -48,7 +48,8 @@ const UNIT_TESTED_FILES = new Set([
   'src/ui/canvas-touch.ts',
   'src/diagram/index.ts',
   'src/ui/router.ts',
-  'src/ui/state-labels.ts'
+  'src/ui/state-labels.ts',
+  'src/ui/fullscreen.ts'
 ]);
 
 function stripAnsi(str) {
@@ -1300,6 +1301,57 @@ async function main() {
       find: "      updatedInner = updatedInner.replace(/stroke-dasharray=\"[^\"]*\"/g, 'stroke-dasharray=\"4,3\"');",
       replace: "      // omitted dasharray normalization",
       expect: "AssertionError"
+    },
+    // Ticket 36 Mutants (T36-M*)
+    {
+      id: 'T36-M1',
+      desc: 'T36-M1: Escape handler removed in main.ts',
+      file: 'src/ui/main.ts',
+      find: "    if (fullscreenManager?.isActive()) {\n      fullscreenManager.exit();\n      return;\n    }",
+      replace: "    // escape handler removed",
+      testType: 'e2e',
+      expect: "Fullscreen overlay must be hidden after exit"
+    },
+    {
+      id: 'T36-M2',
+      desc: 'T36-M2: app inert missing in enterFullscreen',
+      file: 'src/ui/fullscreen.ts',
+      find: "    this.elements.appEl.setAttribute('inert', '');",
+      replace: "    // appEl inert omitted",
+      expect: "AssertionError"
+    },
+    {
+      id: 'T36-M3',
+      desc: 'T36-M3: focus restore removed in exitFullscreen',
+      file: 'src/ui/fullscreen.ts',
+      find: "    // Restore focus to fullscreen button\n    this.elements.fullscreenBtn.focus();",
+      replace: "    // focus restore omitted",
+      expect: "AssertionError"
+    },
+    {
+      id: 'T36-M4',
+      desc: 'T36-M4: re-fit removed in enterFullscreen',
+      file: 'src/ui/fullscreen.ts',
+      find: "    // Re-fit if mode is 'fit'\n    if (this.callbacks.isModeFit()) {\n      this.callbacks.recomputeFit();\n    }",
+      replace: "    // re-fit omitted",
+      expect: "AssertionError"
+    },
+    {
+      id: 'T36-M5',
+      desc: 'T36-M5: table collapse broken in toggleTableDrawer',
+      file: 'src/ui/fullscreen.ts',
+      find: "  toggleTableDrawer(): boolean {\n    this.tableDrawerOpen = !this.tableDrawerOpen;\n    this.syncTableDrawer();\n    return this.tableDrawerOpen;\n  }",
+      replace: "  toggleTableDrawer(): boolean {\n    return this.tableDrawerOpen;\n  }",
+      expect: "AssertionError"
+    },
+    {
+      id: 'T36-M6',
+      desc: 'T36-M6: view toggle missing in overlay (stepper slot append omitted)',
+      file: 'src/ui/fullscreen.ts',
+      find: "    this.elements.stepperSlot.appendChild(this.elements.stepperControlsEl);",
+      replace: "    // stepper controls omitted",
+      testType: 'e2e',
+      expect: "View toggle must be accessible inside fullscreen overlay"
     }
   ];
 

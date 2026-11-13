@@ -121,6 +121,7 @@ export function initLegend(
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape' && isLegendOpen(legendEl)) {
+      e.stopPropagation();
       closeLegend(legendEl, legendBtn);
     }
   };
