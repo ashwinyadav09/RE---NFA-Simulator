@@ -49,7 +49,8 @@ const UNIT_TESTED_FILES = new Set([
   'src/diagram/index.ts',
   'src/ui/router.ts',
   'src/ui/state-labels.ts',
-  'src/ui/fullscreen.ts'
+  'src/ui/fullscreen.ts',
+  'src/ui/typeset-regex.ts'
 ]);
 
 function stripAnsi(str) {
@@ -1352,6 +1353,34 @@ async function main() {
       replace: "    // stepper controls omitted",
       testType: 'e2e',
       expect: "Stepper controls must be reparented inside fullscreen overlay"
+    },
+    // Ticket 37 mutants
+    {
+      id: 'T37-M1',
+      desc: 'T37-M1: star not raised in .raised-star transform in index.html',
+      file: 'index.html',
+      find: "      transform: translateY(-0.35em);",
+      replace: "      transform: none;",
+      testType: 'e2e',
+      expect: ".raised-star must have a vertical transform to raise it"
+    },
+    {
+      id: 'T37-M2',
+      desc: 'T37-M2: mirror desync on input in src/ui/main.ts',
+      file: 'src/ui/main.ts',
+      find: "    syncRegexInput();\n  });\n  inputEl.addEventListener('scroll', () => {",
+      replace: "    // syncRegexInput();\n  });\n  inputEl.addEventListener('scroll', () => {",
+      testType: 'e2e',
+      expect: "Mirror text must sync during typing"
+    },
+    {
+      id: 'T37-M3',
+      desc: 'T37-M3: mirror uses innerHTML in src/ui/typeset-regex.ts',
+      file: 'src/ui/typeset-regex.ts',
+      find: "  for (let i = 0; i < text.length; i++) {",
+      replace: "  container.innerHTML = text;\n  for (let i = 0; i < 0; i++) {",
+      testType: 'vitest',
+      expect: "typesetRegex is strictly XSS-safe"
     }
   ];
 

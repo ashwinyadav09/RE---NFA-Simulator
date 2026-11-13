@@ -5,6 +5,21 @@ class MockNode {
   nodeType = 1;
   parentNode: MockNode | null = null;
   children: MockNode[] = [];
+  protected _text = '';
+
+  constructor(text = '') {
+    this._text = text;
+  }
+
+  get textContent(): string {
+    if (this.children.length === 0) return this._text;
+    return this.children.map((c) => c.textContent).join('');
+  }
+
+  set textContent(val: string) {
+    this._text = val;
+    this.children = [];
+  }
 
   insertBefore(newChild: MockNode, refChild: MockNode | null): void {
     if (newChild.parentNode) {
@@ -44,11 +59,19 @@ class MockElement extends MockNode {
   classes = new Set<string>();
   listeners: Record<string, ((e?: any) => void)[]> = {};
   focused = false;
-  textContent = '';
 
   constructor(tagName = 'div') {
-    super();
+    super('');
     this.tagName = tagName;
+  }
+
+  replaceChildren(...nodes: MockNode[]): void {
+    while (this.children.length > 0) {
+      this.removeChild(this.children[0]);
+    }
+    for (const n of nodes) {
+      this.appendChild(n);
+    }
   }
 
   get classList() {
@@ -109,8 +132,12 @@ class MockComment extends MockNode {
 
 const mockDoc = {
   body: new MockElement('body'),
+  createElement: (tag: string) => new MockElement(tag),
+  createTextNode: (text: string) => new MockNode(text),
   createComment: (data: string) => new MockComment(data),
 };
+
+(globalThis as any).document = mockDoc;
 
 describe('FullscreenManager', () => {
   let appEl: MockElement;

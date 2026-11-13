@@ -1,3 +1,5 @@
+import { typesetRegex } from './typeset-regex.js';
+
 export interface FullscreenElements {
   overlayEl: HTMLElement;
   appEl: HTMLElement;
@@ -73,7 +75,13 @@ export class FullscreenManager {
 
     // Update regex display
     if (this.elements.regexDisplayEl) {
-      this.elements.regexDisplayEl.textContent = this.callbacks.getRegexText();
+      const expr = this.callbacks.getRegexText();
+      if (typeof this.elements.regexDisplayEl.replaceChildren === 'function') {
+        this.elements.regexDisplayEl.replaceChildren(typesetRegex(expr));
+      } else {
+        this.elements.regexDisplayEl.textContent = '';
+        this.elements.regexDisplayEl.appendChild(typesetRegex(expr));
+      }
     }
 
     // Drawer state (remembered across sessions)

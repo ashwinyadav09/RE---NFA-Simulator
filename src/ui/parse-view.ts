@@ -1,4 +1,5 @@
 import type { ParseNode, Token } from '../engine/index.js';
+import { typesetRegex } from './typeset-regex.js';
 
 /**
  * Format a ParseNode AST into indented text representation for accessibility
@@ -32,7 +33,8 @@ export function nodeToText(node: ParseNode, depth: number = 0): string {
 export function renderParseTree(
   container: HTMLElement,
   tree: ParseNode,
-  onNodeClick?: (kind: string) => void
+  onNodeClick?: (kind: string) => void,
+  rootRegex?: string
 ): void {
   container.textContent = '';
 
@@ -48,10 +50,20 @@ export function renderParseTree(
   visualTree.setAttribute('role', 'tree');
   visualTree.setAttribute('aria-label', 'Parse tree');
 
+  if (rootRegex) {
+    const rootPill = document.createElement('div');
+    rootPill.className = 'parse-tree-root-expr';
+    rootPill.appendChild(typesetRegex(rootRegex));
+    visualTree.appendChild(rootPill);
+  }
+
   function createVisualNode(node: ParseNode, depth: number = 0): HTMLElement {
     const wrapper = document.createElement('div');
     wrapper.className = 'tree-node-wrapper';
     wrapper.setAttribute('role', 'treeitem');
+    if (depth === 0) {
+      wrapper.setAttribute('data-parse-tree-root', 'true');
+    }
 
     const chip = document.createElement('div');
     const isLeaf = node.k === 'sym' || node.k === 'eps' || node.k === 'empty';
@@ -60,7 +72,11 @@ export function renderParseTree(
 
     let label: string = node.k;
     if (node.k === 'sym') label = `sym(${node.v})`;
-    chip.textContent = label;
+    if (label.includes('*')) {
+      chip.appendChild(typesetRegex(label));
+    } else {
+      chip.textContent = label;
+    }
 
     if (onNodeClick) {
       chip.addEventListener('click', (e) => {

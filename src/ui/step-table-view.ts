@@ -1,4 +1,5 @@
 import type { AnalysisSuccess, Step } from '../engine/index.js';
+import { typesetRegex } from './typeset-regex.js';
 
 /**
  * Format delta chips string (e.g. "+2 st", "+4 tr").
@@ -71,7 +72,12 @@ export function renderStepLog(
 
     const ruleName = document.createElement('span');
     ruleName.className = 'step-rule-name';
-    ruleName.textContent = step.token || step.rule.toUpperCase();
+    const rawRule = step.token || step.rule.toUpperCase();
+    if (rawRule.includes('*')) {
+      ruleName.appendChild(typesetRegex(rawRule));
+    } else {
+      ruleName.textContent = rawRule;
+    }
     header.appendChild(ruleName);
 
     if (step.result) {
@@ -101,7 +107,12 @@ export function renderStepLog(
     // Description line (must preserve "Step N: ..." for tests)
     const desc = document.createElement('div');
     desc.className = 'step-description';
-    desc.textContent = `Step ${step.index}: ${step.description}`;
+    const descText = `Step ${step.index}: ${step.description}`;
+    if (descText.includes('*')) {
+      desc.appendChild(typesetRegex(descText));
+    } else {
+      desc.textContent = descText;
+    }
     li.appendChild(desc);
 
     // Merged note if present

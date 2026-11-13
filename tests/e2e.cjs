@@ -4648,6 +4648,171 @@ const assert = require('node:assert');
   await page.waitForFunction(() => document.querySelector('#fullscreen-overlay')?.hasAttribute('hidden'));
   await page.setViewportSize({ width: 1280, height: 800 });
 
+  // ============================================================
+  // Ticket 37: Kleene star in regex bar (mirror overlay & raised star)
+  // ============================================================
+  console.log('Running Ticket 37 Kleene star mirror overlay tests...');
+
+  // Reset to default viewport and clear zoom
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => { document.body.style.zoom = '1'; });
+
+  // 1. Caret x at each index matches mirror cell start (+/-1px) for (a|b)*abb at zoom 100%, 150%, 200%
+  await page.fill('#regex-input', '(a|b)*abb');
+  assert.strictEqual(
+    await page.evaluate(() => document.getElementById('regex-mirror')?.textContent),
+    '(a|b)*abb',
+    'Mirror text must equal input value'
+  );
+  assert.strictEqual(
+    await page.evaluate(() => document.querySelectorAll('#regex-mirror .raised-star').length),
+    1,
+    'Postfix star in (a|b)*abb must be wrapped in .raised-star'
+  );
+
+  // Check raised star styling (raised and advance preserved)
+  const starStyle = await page.evaluate(() => {
+    const star = document.querySelector('#regex-mirror .raised-star');
+    if (!star) return null;
+    const cs = window.getComputedStyle(star);
+    return {
+      display: cs.display,
+      transform: cs.transform,
+      width: star.getBoundingClientRect().width
+    };
+  });
+  assert(starStyle, '.raised-star element must exist in mirror');
+  assert.notStrictEqual(starStyle.transform, 'none', '.raised-star must have a vertical transform to raise it');
+
+  for (const zoom of [1, 1.5, 2]) {
+    await page.evaluate((z) => { document.body.style.zoom = String(z); }, zoom);
+    const maxDiff = await page.evaluate(() => {
+      const mirror = document.getElementById('regex-mirror');
+      const raisedStar = mirror.querySelector('.raised-star');
+      const starRect = raisedStar.getBoundingClientRect();
+      const chWidth = starRect.width;
+
+      const walker = document.createTreeWalker(mirror, NodeFilter.SHOW_TEXT);
+      let node;
+      const textNodes = [];
+      while ((node = walker.nextNode())) textNodes.push(node);
+
+      const results = [];
+      let charIdx = 0;
+      for (let i = 0; i < textNodes[0].nodeValue.length; i++) {
+        const r = document.createRange();
+        r.setStart(textNodes[0], i);
+        r.setEnd(textNodes[0], i + 1);
+        results.push({ idx: charIdx++, left: r.getBoundingClientRect().left });
+      }
+      results.push({ idx: charIdx++, left: starRect.left });
+      for (let i = 0; i < textNodes[2].nodeValue.length; i++) {
+        const r = document.createRange();
+        r.setStart(textNodes[2], i);
+        r.setEnd(textNodes[2], i + 1);
+        results.push({ idx: charIdx++, left: r.getBoundingClientRect().left });
+      }
+
+      const baseLeft = results[0].left;
+      const diffs = results.map(r => Math.abs(r.left - (baseLeft + r.idx * chWidth)));
+      return Math.max(...diffs);
+    });
+    assert(maxDiff <= 1.0, `Caret grid at zoom ${zoom * 100}% must align with glyph cells within 1px (got ${maxDiff}px)`);
+  }
+  await page.evaluate(() => { document.body.style.zoom = '1'; });
+
+  // 2. Typing, backspace, select-all, paste
+  await page.focus('#regex-input');
+  await page.fill('#regex-input', '');
+  await page.type('#regex-input', 'a*');
+  assert.strictEqual(
+    await page.evaluate(() => document.getElementById('regex-mirror')?.textContent),
+    'a*',
+    'Mirror text must sync during typing'
+  );
+  assert.strictEqual(
+    await page.evaluate(() => document.querySelectorAll('#regex-mirror .raised-star').length),
+    1,
+    'Typing a* must raise star'
+  );
+
+  await page.keyboard.press('Backspace');
+  assert.strictEqual(
+    await page.evaluate(() => document.getElementById('regex-mirror')?.textContent),
+    'a',
+    'Mirror text must sync after backspace'
+  );
+  assert.strictEqual(
+    await page.evaluate(() => document.querySelectorAll('#regex-mirror .raised-star').length),
+    0,
+    'After backspacing star, zero .raised-star should remain'
+  );
+
+  // Paste / fill
+  await page.fill('#regex-input', '(a|b)*a');
+  assert.strictEqual(
+    await page.evaluate(() => document.getElementById('regex-mirror')?.textContent),
+    '(a|b)*a',
+    'Mirror must sync on paste/fill'
+  );
+
+  // 3. Epsilon and empty-set insertions
+  await page.click('#insert-eps');
+  assert.strictEqual(
+    await page.evaluate(() => document.getElementById('regex-mirror')?.textContent),
+    '(a|b)*aε',
+    'Mirror must sync when insert-eps is clicked'
+  );
+  await page.click('#insert-empty');
+  assert.strictEqual(
+    await page.evaluate(() => document.getElementById('regex-mirror')?.textContent),
+    '(a|b)*aε∅',
+    'Mirror must sync when insert-empty is clicked'
+  );
+
+  // 4. 150-token regex horizontal scrolling sync
+  const longRegex = 'a*'.repeat(75);
+  await page.fill('#regex-input', longRegex);
+  await page.evaluate(() => {
+    const input = document.getElementById('regex-input');
+    input.scrollLeft = 200;
+    input.dispatchEvent(new Event('scroll'));
+  });
+  const mirrorScroll = await page.evaluate(() => document.getElementById('regex-mirror')?.scrollLeft);
+  assert.strictEqual(mirrorScroll, 200, 'Mirror horizontal scroll must synchronize with input element scroll');
+
+  // 5. Dark theme styling
+  await page.evaluate(() => { document.documentElement.setAttribute('data-theme', 'dark'); });
+  const darkMirrorColor = await page.evaluate(() => {
+    const mirror = document.getElementById('regex-mirror');
+    return window.getComputedStyle(mirror).color;
+  });
+  assert(darkMirrorColor, 'Mirror color must be computed under dark theme');
+  await page.evaluate(() => { document.documentElement.setAttribute('data-theme', 'light'); });
+
+  // 6. XSS safety: typing <img src=x onerror=alert(1)> renders as plain text
+  await page.fill('#regex-input', '<img src=x onerror=alert(1)>*');
+  const xssCheck = await page.evaluate(() => {
+    const mirror = document.getElementById('regex-mirror');
+    return {
+      hasImg: Boolean(mirror.querySelector('img')),
+      text: mirror.textContent,
+      raisedCount: mirror.querySelectorAll('.raised-star').length
+    };
+  });
+  assert.strictEqual(xssCheck.hasImg, false, 'Mirror must not inject HTML or img tags from user input');
+  assert.strictEqual(xssCheck.text, '<img src=x onerror=alert(1)>*', 'Mirror must render HTML entities as plain text');
+  assert.strictEqual(xssCheck.raisedCount, 1, 'Star following tag string should be styled safely');
+
+  // 7. Plain copy test: input value remains raw unformatted string with plain *
+  await page.fill('#regex-input', '(a|b)*abb');
+  const rawValue = await page.evaluate(() => {
+    const input = document.getElementById('regex-input');
+    input.select();
+    return input.value;
+  });
+  assert.strictEqual(rawValue, '(a|b)*abb', 'Raw input value for copying must be plain (a|b)*abb with ASCII star');
+
   console.log(`E2E policy: treated ${consoleWarnings.length} console warning(s) as non-fatal notices (${consoleWarnings.join('; ') || 'none'}).`);
   assert.strictEqual(consoleErrors.length, 0, `Browser console errors encountered: ${consoleErrors.join(', ')}`);
   assert.strictEqual(errors.length, 0, `Page errors encountered: ${errors.join(', ')}`);

@@ -537,7 +537,6 @@
     }
 
     #regex-input {
-      width: 320px;
       font-family: var(--font-mono);
       font-size: var(--text-regex);
     }
@@ -658,17 +657,53 @@
       width: 100%;
     }
 
-    #regex-input {
+    .regex-input-container {
+      position: relative;
       flex: 1;
       min-width: 0;
+      height: var(--control-h);
+      display: flex;
+      align-items: center;
+      background-color: var(--bg-surface);
+      border-radius: var(--control-radius);
+    }
+
+    .regex-mirror {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 0 var(--control-pad-x);
+      border: 1px solid transparent;
+      box-sizing: border-box;
+      font-family: var(--font-mono);
+      font-size: 16px;
+      line-height: calc(var(--control-h) - 2px);
+      letter-spacing: normal;
+      white-space: pre;
+      overflow-x: hidden;
+      overflow-y: hidden;
+      pointer-events: none;
+      color: var(--text);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #regex-input {
+      position: relative;
+      width: 100%;
       height: var(--control-h);
       min-height: var(--control-h);
       max-height: var(--control-h);
       padding: 0 var(--control-pad-x);
       font-family: var(--font-mono);
       font-size: 16px;
-      background-color: var(--bg-surface);
-      color: var(--text);
+      line-height: calc(var(--control-h) - 2px);
+      letter-spacing: normal;
+      background-color: transparent;
+      color: transparent;
+      caret-color: var(--text);
       border: var(--control-border);
       border-radius: var(--control-radius);
       box-sizing: border-box;
@@ -676,9 +711,35 @@
       transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
     }
 
+    #regex-input::placeholder {
+      color: var(--text-faint);
+    }
+
+    #regex-input::selection {
+      background-color: var(--primary-soft);
+      color: transparent;
+    }
+
     #regex-input:focus {
       border-color: var(--border-focus);
       box-shadow: 0 0 0 2px var(--primary-soft);
+    }
+
+    .raised-star {
+      display: inline-block;
+      width: calc(1ch / 0.85);
+      text-align: center;
+      transform: translateY(-0.35em);
+      font-size: 0.85em;
+      line-height: 1;
+      vertical-align: baseline;
+    }
+
+    .parse-tree-root-expr {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
     }
 
     .regex-action-buttons {
@@ -2797,7 +2858,10 @@
       <div class="grid-item-regex">
         <label for="regex-input" class="setting-label">Regular expression</label>
         <div class="regex-field-wrapper">
-          <input id="regex-input" type="text" placeholder="Enter regular expression" value="" spellcheck="false" autocomplete="off" autocapitalize="off" />
+          <div class="regex-input-container">
+            <div id="regex-mirror" class="regex-mirror" aria-hidden="true"></div>
+            <input id="regex-input" type="text" placeholder="Enter regular expression" value="" spellcheck="false" autocomplete="off" autocapitalize="off" />
+          </div>
           <div class="regex-action-buttons">
             <button id="insert-eps" data-testid="insert-eps" type="button" class="btn btn-secondary" title="Insert ε" aria-label="Insert epsilon">ε</button>
             <button id="insert-empty" data-testid="insert-empty" type="button" class="btn btn-secondary" title="Insert ∅" aria-label="Insert empty set">∅</button>

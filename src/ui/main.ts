@@ -57,6 +57,7 @@ import {
   formatPresetDescription
 } from './overlays';
 import { attachTouchGestures } from './canvas-touch';
+import { typesetRegex, updateRegexMirror } from './typeset-regex';
 import type { StressRow, RegExpVerdict } from './stress-types';
 import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
 import { PageRoute, parseRoute, formatRoute, isLegacyAlias, getRouteTitle } from './router';
@@ -187,6 +188,7 @@ try {
 }
 
 const inputEl = document.getElementById('regex-input') as HTMLInputElement | null;
+const regexMirrorEl = document.getElementById('regex-mirror');
 const presetSelectEl = document.getElementById('preset-select') as HTMLSelectElement | null;
 const liveRegionEl = document.getElementById('live-region');
 const buttonEl = document.getElementById('build-button') as HTMLButtonElement | null;
@@ -336,6 +338,20 @@ const fullscreenStepperSlotEl = document.getElementById('fullscreen-stepper-slot
 const fullscreenTableSlotEl = document.getElementById('fullscreen-table-slot');
 const fullscreenRegexEl = document.getElementById('fullscreen-regex');
 
+function syncRegexInput(): void {
+  if (inputEl && regexMirrorEl) {
+    updateRegexMirror(inputEl, regexMirrorEl);
+  }
+  if (fullscreenRegexEl && fullscreenManager?.isActive()) {
+    if (typeof fullscreenRegexEl.replaceChildren === 'function') {
+      fullscreenRegexEl.replaceChildren(typesetRegex(inputEl ? inputEl.value : ''));
+    } else {
+      fullscreenRegexEl.textContent = '';
+      fullscreenRegexEl.appendChild(typesetRegex(inputEl ? inputEl.value : ''));
+    }
+  }
+}
+
 let fullscreenManager: FullscreenManager | null = null;
 if (
   fullscreenOverlayEl &&
@@ -391,7 +407,17 @@ function updateValidationPageState(): void {
       const notat = notationSelectEl ? notationSelectEl.value : 'standard';
       const concat = concatSelectEl ? concatSelectEl.value : 'epsilon-link';
       summaryEl.style.display = '';
-      summaryEl.textContent = `Validating: ${expr} · ${notat} notation · ${concat} concatenation`;
+      if (typeof summaryEl.replaceChildren === 'function') {
+        summaryEl.replaceChildren(
+          document.createTextNode('Validating: '),
+          typesetRegex(expr),
+          document.createTextNode(` · ${notat} notation · ${concat} concatenation`)
+        );
+      } else {
+        summaryEl.textContent = 'Validating: ';
+        summaryEl.appendChild(typesetRegex(expr));
+        summaryEl.appendChild(document.createTextNode(` · ${notat} notation · ${concat} concatenation`));
+      }
     }
     if (emptyStateEl) emptyStateEl.style.display = 'none';
     if (stripEl) stripEl.style.display = '';
@@ -677,7 +703,7 @@ function renderTokenList(container: HTMLElement, tokens: Token[]): void {
 }
 
 function renderTreeView(container: HTMLElement, tree: ParseNode): void {
-  renderParseTree(container, tree);
+  renderParseTree(container, tree, undefined, inputEl ? inputEl.value : '');
 }
 
 
@@ -712,6 +738,7 @@ function insertAtCursor(char: string): void {
   const nextPos = start + char.length;
   inputEl.focus();
   inputEl.setSelectionRange(nextPos, nextPos);
+  syncRegexInput();
 }
 
 function clearResults(): void {
@@ -1681,6 +1708,7 @@ if (presetSelectEl) {
     if (presetDescEl) presetDescEl.textContent = formatPresetDescription(selectedId, PRESETS);
 
     if (inputEl) inputEl.value = preset.regex;
+    syncRegexInput();
     if (notationSelectEl) notationSelectEl.value = preset.notation;
     if (preset.concatenation && concatSelectEl) {
       concatSelectEl.value = preset.concatenation;
@@ -1715,9 +1743,18 @@ if (inputEl) {
         if (presetDescEl) presetDescEl.textContent = '';
       }
     }
-    if (fullscreenRegexEl && fullscreenManager?.isActive()) {
-      fullscreenRegexEl.textContent = inputEl.value;
+    syncRegexInput();
+  });
+  inputEl.addEventListener('scroll', () => {
+    if (regexMirrorEl) {
+      regexMirrorEl.scrollLeft = inputEl.scrollLeft;
     }
+  });
+  inputEl.addEventListener('keyup', () => {
+    syncRegexInput();
+  });
+  inputEl.addEventListener('change', () => {
+    syncRegexInput();
   });
   inputEl.addEventListener('keydown', (e) => {
     if (e.key === '^') {
@@ -2786,6 +2823,7 @@ async function initDeepLink(): Promise<void> {
       const presetDescEl = document.getElementById('preset-description');
       if (presetDescEl) presetDescEl.textContent = formatPresetDescription(state.preset, PRESETS);
       if (inputEl) inputEl.value = preset.regex;
+      syncRegexInput();
       if (notationSelectEl) notationSelectEl.value = preset.notation;
       if (preset.concatenation && concatSelectEl) {
         concatSelectEl.value = preset.concatenation;
@@ -2798,6 +2836,7 @@ async function initDeepLink(): Promise<void> {
 
   if (state.regex !== undefined && inputEl) {
     inputEl.value = state.regex;
+    syncRegexInput();
     if (presetSelectEl && presetSelectEl.value) {
       const activePreset = PRESETS.find((p) => p.id === presetSelectEl.value);
       if (activePreset && activePreset.regex !== inputEl.value) {
@@ -2890,3 +2929,4 @@ document.querySelectorAll<HTMLAnchorElement>('.app-nav .nav-link').forEach((link
 });
 
 initDeepLink();
+syncRegexInput();
