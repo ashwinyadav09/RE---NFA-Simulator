@@ -3,6 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
+const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+
 function getGitStatus() {
   try {
     execSync('git update-index --refresh', { stdio: 'ignore' });
@@ -1457,7 +1460,7 @@ async function main() {
 
       // For unit-tested files, run vitest BEFORE e2e (unless testType is e2e)
       if (UNIT_TESTED_FILES.has(m.file) && m.testType !== 'e2e') {
-        const vitestRes = runCommand('npx.cmd vitest run');
+        const vitestRes = runCommand(`${npxCmd} vitest run`);
         if (!vitestRes.ok) {
           const parsed = parseFirstFailure(vitestRes.output);
           failMsg = parsed.message;
@@ -1469,7 +1472,7 @@ async function main() {
           }
         } else {
           // Vitest passed, proceed to build and e2e
-          const buildRes = runCommand('npm.cmd run build');
+          const buildRes = runCommand(`${npmCmd} run build`);
           if (!buildRes.ok) {
             failMsg = 'Build failed: ' + buildRes.output.slice(0, 120);
             failLoc = m.file;
@@ -1491,7 +1494,7 @@ async function main() {
           }
         }
       } else {
-        const buildRes = runCommand('npm.cmd run build');
+        const buildRes = runCommand(`${npmCmd} run build`);
         if (!buildRes.ok) {
           failMsg = 'Build failed: ' + buildRes.output.slice(0, 120);
           failLoc = m.file;
@@ -1535,7 +1538,7 @@ async function main() {
   }
 
   // Ensure dist is rebuilt clean after all mutations
-  runCommand('npm.cmd run build');
+  runCommand(`${npmCmd} run build`);
 
   const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
 

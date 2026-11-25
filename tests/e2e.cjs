@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const path = require('node:path');
+const url = require('node:url');
 const assert = require('node:assert');
 
 (async () => {
@@ -380,7 +381,7 @@ const assert = require('node:assert');
     return freshPage;
   }
 
-  const fileUrl = 'file:///' + distHtmlPath.replace(/\\/g, '/');
+  const fileUrl = url.pathToFileURL(distHtmlPath).href;
 
   async function gotoPage(p, name) {
     await p.click(`#nav-link-${name}`);
