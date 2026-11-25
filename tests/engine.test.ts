@@ -10,7 +10,7 @@ function assertSuccess(result: AnalysisResult): asserts result is AnalysisSucces
   }
 }
 
-const fixturePath = resolve(__dirname, '../.agents/skills/thompson-rules/fixtures/worked-example.json');
+const fixturePath = resolve(__dirname, './fixtures/worked-example.json');
 const workedExample = JSON.parse(readFileSync(fixturePath, 'utf-8'));
 const step1 = workedExample.steps[0];
 
@@ -118,7 +118,7 @@ test('steps store independent copies and step-log replay reproduces final NFA ex
   expect(cleanResult.steps[cleanResult.steps.length - 1].result.accept).toBe(cleanResult.nfa.accept);
 });
 
-const classicAbbPath = resolve(__dirname, '../.agents/skills/thompson-rules/fixtures/classic-abb.json');
+const classicAbbPath = resolve(__dirname, './fixtures/classic-abb.json');
 const classicAbbFixture = JSON.parse(readFileSync(classicAbbPath, 'utf-8'));
 
 test('invariants I1-I4, no dangling edges, and size formulas hold for fixture expressions', () => {
@@ -461,7 +461,7 @@ test('UNBALANCED_LPAREN reported at first unclosed ( scanning left-to-right', ()
   }
 });
 
-const errorCasesFixturePath = resolve(__dirname, '../.agents/skills/thompson-rules/fixtures/error-cases.json');
+const errorCasesFixturePath = resolve(__dirname, './fixtures/error-cases.json');
 const errorCasesFixture = JSON.parse(readFileSync(errorCasesFixturePath, 'utf-8'));
 
 test('error-case fixture cases return expected code and position', () => {
@@ -1790,7 +1790,7 @@ test('Ticket 15: every preset in PRESETS compiles without error in its declared 
 
 test('Ticket 15: classic presets match state and transition counts from fixtures and rules', () => {
   const classicAbbFixture = JSON.parse(
-    readFileSync(resolve(__dirname, '../.agents/skills/thompson-rules/fixtures/classic-abb.json'), 'utf-8')
+    readFileSync(resolve(__dirname, './fixtures/classic-abb.json'), 'utf-8')
   );
 
   // 1. (a|b)*a in epsilon-link mode: 10 states, 12 transitions (worked-example fixture)
