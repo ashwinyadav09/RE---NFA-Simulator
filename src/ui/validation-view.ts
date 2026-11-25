@@ -1,4 +1,15 @@
-import type { CheckResult } from '../engine/index.js';
+import {
+  type CheckResult,
+  type AnalysisSuccess,
+  validateInvariants,
+  checkSizeFormula,
+  checkStepReplay,
+  runBuiltinSuite,
+  computeDifferentialK,
+  allStrings,
+  toJs,
+  runDifferential
+} from '../engine/index.js';
 
 export interface ValidationSummaryData {
   invariantsPass?: number;
@@ -242,3 +253,249 @@ export function renderDifferentialResults(
     </div>
   `;
 }
+
+export interface ValidationElements {
+  runSuiteBtn?: HTMLButtonElement | null;
+  suiteTableEl?: HTMLElement | null;
+  suiteSummaryEl?: HTMLElement | null;
+  summaryStripEl?: HTMLElement | null;
+  diffRunBtn?: HTMLButtonElement | null;
+  diffStatusEl?: HTMLElement | null;
+  diffResultsEl?: HTMLElement | null;
+  stressRunBtn?: HTMLButtonElement | null;
+  invI1El?: HTMLElement | null;
+  invI2El?: HTMLElement | null;
+  invI3El?: HTMLElement | null;
+  invI4El?: HTMLElement | null;
+  invSizeEl?: HTMLElement | null;
+  invReplayEl?: HTMLElement | null;
+}
+
+export interface ValidationDeps {
+  getAnalysis: () => AnalysisSuccess | null;
+  getUserEditedAlphabet: () => string[] | null;
+  runRegExpInWorker: (
+    pattern: string,
+    strings: string[],
+    timeoutMs?: number,
+    owner?: 'stress' | 'diff'
+  ) => Promise<{ matches?: boolean[]; timeout?: boolean; cancelled?: boolean; error?: string }>;
+  isStressActive: () => boolean;
+  onDiffActiveChange?: (active: boolean) => void;
+}
+
+export interface ValidationController {
+  renderChecks(analysis: AnalysisSuccess, concatenation: 'epsilon-link' | 'merge'): void;
+  resetDiff(): void;
+  dispose(): void;
+}
+
+export function initValidationController(
+  elements: ValidationElements = {},
+  deps: ValidationDeps
+): ValidationController {
+  const runSuiteBtn = elements.runSuiteBtn ?? (document.getElementById('run-suite') as HTMLButtonElement | null);
+  const suiteTableEl = elements.suiteTableEl ?? document.getElementById('suite-table');
+  const suiteSummaryEl = elements.suiteSummaryEl ?? document.getElementById('suite-summary');
+  const summaryStripEl = elements.summaryStripEl ?? document.getElementById('validation-summary-strip');
+  const diffRunBtn = elements.diffRunBtn ?? (document.getElementById('diff-run') as HTMLButtonElement | null);
+  const diffStatusEl = elements.diffStatusEl ?? document.getElementById('diff-status');
+  const diffResultsEl = elements.diffResultsEl ?? document.getElementById('diff-results');
+  const stressRunBtn = elements.stressRunBtn ?? (document.getElementById('stress-run') as HTMLButtonElement | null);
+
+  const invI1El = elements.invI1El ?? document.getElementById('inv-I1');
+  const invI2El = elements.invI2El ?? document.getElementById('inv-I2');
+  const invI3El = elements.invI3El ?? document.getElementById('inv-I3');
+  const invI4El = elements.invI4El ?? document.getElementById('inv-I4');
+  const invSizeEl = elements.invSizeEl ?? document.getElementById('inv-size');
+  const invReplayEl = elements.invReplayEl ?? document.getElementById('inv-replay');
+
+  let diffGeneration = 0;
+  let diffIsActive = false;
+
+  const onRunSuiteClick = () => {
+    if (!suiteTableEl) return;
+    const results = runBuiltinSuite();
+    if (summaryStripEl) {
+      const passCount = results.filter((r) => r.pass).length;
+      updateSummaryStrip(summaryStripEl, {
+        suitePass: passCount,
+        suiteTotal: results.length
+      });
+    }
+    if (suiteSummaryEl) {
+      suiteSummaryEl.textContent = formatSuiteSummary(results.map((r) => ({ verdict: r.pass ? 'PASS' : 'FAIL' })));
+      suiteSummaryEl.className = `suite-summary-chip font-code-sm ${results.every((r) => r.pass) ? 'chip-pass' : 'chip-fail'}`;
+    }
+    const tbody = suiteTableEl.querySelector('tbody');
+    if (tbody) {
+      tbody.innerHTML = '';
+      for (const r of results) {
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-id', r.id);
+        tr.setAttribute('data-verdict', r.pass ? 'PASS' : 'FAIL');
+        tr.className = r.pass ? 'row-pass' : 'row-fail';
+
+        const tdId = document.createElement('td');
+        tdId.textContent = r.id;
+
+        const tdSource = document.createElement('td');
+        tdSource.textContent = r.source;
+
+        const tdNotation = document.createElement('td');
+        tdNotation.textContent = r.notation;
+
+        const tdExpected = document.createElement('td');
+        tdExpected.textContent = r.expected;
+
+        const tdGenerated = document.createElement('td');
+        tdGenerated.textContent = r.generated;
+
+        const tdVerdict = document.createElement('td');
+        tdVerdict.textContent = r.pass ? 'PASS' : 'FAIL';
+        tdVerdict.className = r.pass ? 'badge-pass' : 'badge-fail';
+
+        tr.appendChild(tdId);
+        tr.appendChild(tdSource);
+        tr.appendChild(tdNotation);
+        tr.appendChild(tdExpected);
+        tr.appendChild(tdGenerated);
+        tr.appendChild(tdVerdict);
+
+        tbody.appendChild(tr);
+      }
+    }
+  };
+
+  const onDiffRunClick = async () => {
+    const currentAnalysis = deps.getAnalysis();
+    if (!currentAnalysis) {
+      if (diffStatusEl) {
+        diffStatusEl.textContent = 'Please build an expression first.';
+      }
+      return;
+    }
+
+    const gen = ++diffGeneration;
+    diffIsActive = true;
+    deps.onDiffActiveChange?.(true);
+    if (diffRunBtn) diffRunBtn.disabled = true;
+    if (stressRunBtn) {
+      stressRunBtn.disabled = true;
+    }
+
+    try {
+      const activeAlphabet = deps.getUserEditedAlphabet() ?? currentAnalysis.alphabet;
+      const k = computeDifferentialK(activeAlphabet.length);
+      const strings = allStrings(activeAlphabet, k);
+
+      if (diffStatusEl) {
+        diffStatusEl.textContent = `Running differential test: k = ${k} (${strings.length.toLocaleString()} strings) over alphabet {${activeAlphabet.join(', ')}}...`;
+      }
+      if (diffResultsEl) {
+        diffResultsEl.innerHTML = '';
+      }
+
+      // Yield to allow UI update
+      await new Promise((r) => setTimeout(r, 10));
+      if (gen !== diffGeneration) return;
+
+      // Run RegExp oracle in Web Worker with 2,000ms cap
+      const jsPattern = toJs(currentAnalysis.parseTree);
+      const regExpRes = await deps.runRegExpInWorker(jsPattern, strings, 2000, 'diff');
+      if (gen !== diffGeneration) return;
+
+      // Yield to prevent UI freezing
+      await new Promise((r) => setTimeout(r, 0));
+      if (gen !== diffGeneration) return;
+
+      const diffResult = runDifferential(currentAnalysis.nfa, currentAnalysis.parseTree, activeAlphabet, {
+        k,
+        regExpResult: regExpRes
+      });
+      if (gen !== diffGeneration) return;
+
+      let statusSummary = '';
+      const oraclesList = Object.values(diffResult.oracles);
+      if (oraclesList.some((o) => o.status === 'error')) {
+        statusSummary = 'ORACLE ERROR';
+      } else if (diffResult.allPassed) {
+        if (diffResult.oracles.regExp.status === 'skipped (timeout)') {
+          statusSummary = 'ALL PASSED (RegExp oracle skipped: timeout)';
+        } else {
+          statusSummary = 'ALL PASSED';
+        }
+      } else {
+        statusSummary = 'MISMATCH DETECTED';
+      }
+
+      if (diffStatusEl) {
+        diffStatusEl.textContent = `Differential test completed for k = ${k} (${diffResult.totalStrings.toLocaleString()} strings tested): ${statusSummary}`;
+      }
+
+      if (summaryStripEl) {
+        updateSummaryStrip(summaryStripEl, {
+          diffStatus: statusSummary,
+          diffStrings: diffResult.totalStrings
+        });
+      }
+
+      if (diffResultsEl) {
+        renderDifferentialResults(diffResultsEl, diffResult);
+      }
+    } finally {
+      diffIsActive = false;
+      deps.onDiffActiveChange?.(false);
+      if (diffRunBtn) diffRunBtn.disabled = deps.isStressActive();
+      if (stressRunBtn && !deps.isStressActive()) {
+        stressRunBtn.disabled = false;
+      }
+    }
+  };
+
+  if (runSuiteBtn) runSuiteBtn.addEventListener('click', onRunSuiteClick);
+  if (diffRunBtn) diffRunBtn.addEventListener('click', onDiffRunClick);
+
+  return {
+    renderChecks(analysis: AnalysisSuccess, concatenation: 'epsilon-link' | 'merge') {
+      const inv = validateInvariants(analysis.nfa);
+      const size = checkSizeFormula(analysis, concatenation);
+      const replay = checkStepReplay(analysis);
+
+      const items: Array<{ el: HTMLElement | null; label: string; check: CheckResult }> = [
+        { el: invI1El, label: 'I1 (Distinct Start & Accept)', check: inv.I1 },
+        { el: invI2El, label: 'I2 (No Transition Enters Start)', check: inv.I2 },
+        { el: invI3El, label: 'I3 (No Transition Leaves Accept)', check: inv.I3 },
+        { el: invI4El, label: 'I4 (State Degree Constraints)', check: inv.I4 },
+        { el: invSizeEl, label: 'Size Formula', check: size },
+        { el: invReplayEl, label: 'Step-log Replay', check: replay }
+      ];
+
+      for (const item of items) {
+        if (item.el) {
+          renderInvariantRow(item.el, item.label, item.check);
+        }
+      }
+
+      if (summaryStripEl) {
+        const passCount = items.filter((it) => it.check.pass).length;
+        updateSummaryStrip(summaryStripEl, {
+          invariantsPass: passCount,
+          invariantsTotal: items.length
+        });
+      }
+    },
+
+    resetDiff() {
+      ++diffGeneration;
+      if (diffStatusEl) diffStatusEl.textContent = '';
+      if (diffResultsEl) diffResultsEl.innerHTML = '';
+    },
+
+    dispose() {
+      if (runSuiteBtn) runSuiteBtn.removeEventListener('click', onRunSuiteClick);
+      if (diffRunBtn) diffRunBtn.removeEventListener('click', onDiffRunClick);
+    }
+  };
+}
+

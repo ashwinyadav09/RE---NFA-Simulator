@@ -293,7 +293,7 @@ async function main() {
     {
       id: 'T18-AC3-1',
       desc: 'AC3: rows cleared on cancel',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: '    stressCancelled = true;',
       replace: '    stressCancelled = true;\n    currentStressRows = [];',
       expect: 'Stress chart must retain points across scale toggle'
@@ -301,7 +301,7 @@ async function main() {
     {
       id: 'T18-AC3-2',
       desc: 'AC3: toggle re-renders from an empty array',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: "    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log'));\n    updateStressChart();",
       replace: "    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log'));\n    updateStressChart();\n    stressChartContainer.innerHTML = renderStressChartSvg([], { scale: currentStressScale });",
       expect: 'Stress chart must retain points across scale toggle'
@@ -311,7 +311,7 @@ async function main() {
     {
       id: 'T18-AC4-1',
       desc: 'AC4: scale reset to linear on family change',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: "const stressFamilySelect = document.getElementById('stress-family') as HTMLSelectElement | null;",
       replace: "const stressFamilySelect = document.getElementById('stress-family') as HTMLSelectElement | null;\nif (stressFamilySelect) stressFamilySelect.addEventListener('change', () => { currentStressScale = 'linear'; updateStressChart(); });",
       expect: 'Chart scale must stay log after family change'
@@ -319,7 +319,7 @@ async function main() {
     {
       id: 'T18-AC4-2',
       desc: 'AC4: scale reset to linear on a new run',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: '    currentStressRows = [];',
       replace: "    currentStressRows = []; currentStressScale = 'linear';",
       expect: 'Chart scale must stay log on new run'
@@ -327,7 +327,7 @@ async function main() {
     {
       id: 'T18-AC4-3',
       desc: 'AC4: label text swaps to "Linear scale"',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: "    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log'));",
       replace: "    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log')); stressScaleToggleBtn.textContent = currentStressScale === 'log' ? 'Linear scale' : 'Log scale';",
       expect: 'Toggle button label must remain stable as "Log scale"'
@@ -361,7 +361,7 @@ async function main() {
     {
       id: 'T18-AC6-4',
       desc: 'AC6: Copy not disabled at 0 rows',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: '    stressCopyCsvBtn.disabled = !hasRows;',
       replace: '    stressCopyCsvBtn.disabled = false;',
       expect: '#stress-copy-csv must initially be disabled'
@@ -369,7 +369,7 @@ async function main() {
     {
       id: 'T18-AC6-5',
       desc: 'AC6: Copy disabled mid-run after the first row',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: '    stressCopyCsvBtn.disabled = !hasRows;',
       replace: '    stressCopyCsvBtn.disabled = stressIsActive || !hasRows;',
       expect: '#stress-copy-csv must be re-enabled once rows are added mid-run'
@@ -377,7 +377,7 @@ async function main() {
     {
       id: 'T18-AC6-6',
       desc: 'AC6: new run does not clear rows or re-disable buttons',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: '    stressIsActive = true;\n    currentStressRows = [];\n    updateStressActionButtons();',
       replace: '    stressIsActive = true;\n    // currentStressRows = [];\n    // updateStressActionButtons();',
       expect: '#stress-copy-csv must be disabled when run starts with 0 rows'
@@ -387,7 +387,7 @@ async function main() {
     {
       id: 'T18-AC7-1',
       desc: 'AC7: 2 s clear timer omitted',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: "  const timer = setTimeout(() => {\n    if (statusEl) {\n      statusEl.textContent = '';\n      statusEl.removeAttribute('data-copied');\n    }\n    setActiveTimer(null);\n  }, durationMs);",
       replace: '  // 2 s clear timer omitted',
       expect: 'Timeout 5000ms exceeded'
@@ -395,7 +395,7 @@ async function main() {
     {
       id: 'T18-AC7-2',
       desc: 'AC7: execCommand fallback omitted',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: "  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {\n    try {\n      await navigator.clipboard.writeText(text);\n      return true;\n    } catch {\n      // Fallback to execCommand\n    }\n  }",
       replace: "  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {\n    try {\n      await navigator.clipboard.writeText(text);\n      return true;\n    } catch {\n      return false;\n    }\n  }",
       expect: 'Copy fallback must succeed via execCommand when writeText rejects'
@@ -403,7 +403,7 @@ async function main() {
     {
       id: 'T18-AC7-3',
       desc: 'AC7: "Copy failed" path omitted',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: "  } else {\n    statusEl.textContent = failureText;",
       replace: '  } else {\n    // "Copy failed" path omitted',
       expect: 'Status must show Copy failed when both writeText and execCommand fail'
@@ -411,7 +411,7 @@ async function main() {
     {
       id: 'T18-AC7-4',
       desc: 'AC7: a write to #live-region added',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: "  if (success) {\n    statusEl.textContent = successText;",
       replace: "  if (success) {\n    statusEl.textContent = successText;\n    const lr = document.getElementById('live-region'); if (lr) lr.textContent = 'Copied!';",
       expect: 'Copy action must not write to #live-region'
@@ -429,7 +429,7 @@ async function main() {
     {
       id: 'T18-AC8-2',
       desc: 'AC8: a.click omitted on export',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: '    a.download = `stress-chart-${familyId}-${currentStressScale}.svg`;\n    document.body.appendChild(a);\n    a.click();',
       replace: '    a.download = `stress-chart-${familyId}-${currentStressScale}.svg`;\n    document.body.appendChild(a);\n    // a.click();',
       expect: 'Timeout 30000ms exceeded while waiting for event "download"'
@@ -445,7 +445,7 @@ async function main() {
     {
       id: 'T18-AC8-4',
       desc: 'AC8: export ignores current scale (content stays linear)',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: '        scale: currentStressScale,',
       replace: "        scale: 'linear',",
       expect: 'Exported log SVG must include (log scale)'
@@ -453,7 +453,7 @@ async function main() {
     {
       id: 'T18-AC8-5',
       desc: 'AC8: export enabled at 0 rows',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: '    stressExportSvgBtn.disabled = !hasRows;',
       replace: '    stressExportSvgBtn.disabled = false;',
       expect: '#stress-export-svg must initially be disabled'
@@ -471,7 +471,7 @@ async function main() {
     {
       id: 'T18b-1',
       desc: 'T18b-1: table uses toFixed(2) for RegExp time (CSV unchanged)',
-      file: 'src/ui/main.ts',
+      file: 'src/ui/stress-controller.ts',
       find: '      ? `${formatRegExpTime(row.regExpTimeMs)} ms`',
       replace: '      ? `${row.regExpTimeMs.toFixed(2)} ms`',
       testType: 'e2e',

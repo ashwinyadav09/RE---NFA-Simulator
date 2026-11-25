@@ -10,23 +10,10 @@ import {
   getStepSnapshot,
   validateAlphabet,
   CAPS,
-  validateInvariants,
-  checkSizeFormula,
-  checkStepReplay,
-  runBuiltinSuite,
-  computeDifferentialK,
-  runDifferential,
-  allStrings,
-  toJs,
   CheckResult,
-  STRESS_FAMILIES,
-  STRESS_N_SERIES,
-  STRESS_SCALE_N_SERIES,
-  runStressNfa,
-  detectBrowserEngine,
   PRESETS
 } from '../engine/index';
-import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions, renderStressChartSvg, type StressChartPoint } from '../diagram/index';
+import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions } from '../diagram/index';
 import { formatStandaloneSvg, getExportFilename } from './export';
 import { encodeAppState, decodeAppState, type AppUrlState } from './url';
 import { formatBuildStamp } from './stamp';
@@ -48,7 +35,8 @@ import {
   renderFragmentStack
 } from './step-table-view';
 import { formatDockSummary, renderTraceCards } from './test-dock';
-import { renderInvariantRow, updateSummaryStrip, formatSuiteSummary, renderDifferentialResults } from './validation-view';
+import { initValidationController, updateSummaryStrip } from './validation-view';
+import { initStressController, copyTextToClipboard, showTransientStatus } from './stress-controller';
 import {
   initLegend,
   isLegendOpen,
@@ -57,8 +45,6 @@ import {
 } from './overlays';
 import { attachTouchGestures } from './canvas-touch';
 import { typesetRegex, updateRegexMirror } from './typeset-regex';
-import type { StressRow, RegExpVerdict } from './stress-types';
-import { formatStressCsv, formatRegExpTime, formatNfaTime } from './csv';
 import { PageRoute, parseRoute, formatRoute, isLegacyAlias, getRouteTitle } from './router';
 import {
   clampZoom,
@@ -83,7 +69,6 @@ let currentAnalysis: AnalysisSuccess | null = null;
 let userEditedAlphabet: string[] | null = null;
 let buildGeneration = 0;
 let stepGeneration = 0;
-let diffGeneration = 0;
 let currentStepIndex = 1;
 let currentView: 'flat' | 'final' = 'flat';
 let currentActiveStates: number[] | null = null;
@@ -655,6 +640,61 @@ const stressRunBtn = document.getElementById('stress-run') as HTMLButtonElement 
 const numberingBadgeEl = document.getElementById('numbering-badge');
 let diffIsActive = false;
 let stressIsActive = false;
+
+const validationController = initValidationController(
+  {
+    runSuiteBtn,
+    suiteTableEl,
+    suiteSummaryEl: document.getElementById('suite-summary'),
+    summaryStripEl: document.getElementById('validation-summary-strip'),
+    diffRunBtn,
+    diffStatusEl,
+    diffResultsEl,
+    stressRunBtn,
+    invI1El,
+    invI2El,
+    invI3El,
+    invI4El,
+    invSizeEl,
+    invReplayEl
+  },
+  {
+    getAnalysis: () => currentAnalysis,
+    getUserEditedAlphabet: () => userEditedAlphabet,
+    runRegExpInWorker,
+    isStressActive: () => stressIsActive,
+    onDiffActiveChange: (active) => {
+      diffIsActive = active;
+    }
+  }
+);
+
+const stressController = initStressController(
+  {
+    stressBrowserInfoEl: document.getElementById('stress-browser-info'),
+    stressChartContainer: document.getElementById('stress-chart-container'),
+    stressScaleToggleBtn: document.getElementById('stress-scale-toggle') as HTMLButtonElement | null,
+    stressCancelBtn: document.getElementById('stress-cancel') as HTMLButtonElement | null,
+    stressFamilySelect: document.getElementById('stress-family') as HTMLSelectElement | null,
+    stressTableBody: document.querySelector('#stress-table tbody') as HTMLElement | null,
+    stressStatusEl: document.getElementById('stress-status'),
+    stressCopyCsvBtn: document.getElementById('stress-copy-csv') as HTMLButtonElement | null,
+    stressCopyStatusEl: document.getElementById('stress-copy-status'),
+    stressExportSvgBtn: document.getElementById('stress-export-svg') as HTMLButtonElement | null,
+    stressRunBtn,
+    diffRunBtn,
+    summaryStripEl: document.getElementById('validation-summary-strip')
+  },
+  {
+    runRegExpInWorker,
+    resetWorker,
+    getActiveWorkerOwner: () => activeWorkerOwner,
+    isDiffActive: () => diffIsActive,
+    onStressActiveChange: (active) => {
+      stressIsActive = active;
+    }
+  }
+);
 let liveRegionTimer: ReturnType<typeof setTimeout> | null = null;
 
 function announceLive(message: string): void {
@@ -1268,36 +1308,6 @@ function stopPlayback(): void {
   }
 }
 
-function renderValidationChecks(analysis: AnalysisSuccess, concatenation: 'epsilon-link' | 'merge'): void {
-  const inv = validateInvariants(analysis.nfa);
-  const size = checkSizeFormula(analysis, concatenation);
-  const replay = checkStepReplay(analysis);
-
-  const items: Array<{ el: HTMLElement | null; label: string; check: CheckResult }> = [
-    { el: invI1El, label: 'I1 (Distinct Start & Accept)', check: inv.I1 },
-    { el: invI2El, label: 'I2 (No Transition Enters Start)', check: inv.I2 },
-    { el: invI3El, label: 'I3 (No Transition Leaves Accept)', check: inv.I3 },
-    { el: invI4El, label: 'I4 (State Degree Constraints)', check: inv.I4 },
-    { el: invSizeEl, label: 'Size Formula', check: size },
-    { el: invReplayEl, label: 'Step-log Replay', check: replay }
-  ];
-
-  for (const item of items) {
-    if (item.el) {
-      renderInvariantRow(item.el, item.label, item.check);
-    }
-  }
-
-  const summaryStripEl = document.getElementById('validation-summary-strip');
-  if (summaryStripEl) {
-    const passCount = items.filter((it) => it.check.pass).length;
-    updateSummaryStrip(summaryStripEl, {
-      invariantsPass: passCount,
-      invariantsTotal: items.length
-    });
-  }
-}
-
 async function handleBuild() {
   if (!inputEl) return;
   stopPlayback();
@@ -1305,9 +1315,7 @@ async function handleBuild() {
   currentDot = null;
   if (exportSvgBtn) exportSvgBtn.disabled = true;
   const gen = ++buildGeneration;
-  ++diffGeneration;
-  if (diffStatusEl) diffStatusEl.textContent = '';
-  if (diffResultsEl) diffResultsEl.innerHTML = '';
+  validationController.resetDiff();
   if (verdictEl) verdictEl.textContent = '';
   if (traceEl) traceEl.innerHTML = '';
   if (runStatusEl) {
@@ -1435,7 +1443,7 @@ async function handleBuild() {
     renderFragmentStack(activeFragmentStackEl, analysis.steps[0].stackAfter);
   }
 
-  renderValidationChecks(analysis, concatenation);
+  validationController.renderChecks(analysis, concatenation);
 
   if (stepPlayBtn) {
     stepPlayBtn.disabled = false;
@@ -2163,557 +2171,6 @@ if (copyTableCsvBtn) {
   });
 }
 
-if (runSuiteBtn && suiteTableEl) {
-  runSuiteBtn.addEventListener('click', () => {
-    const results = runBuiltinSuite();
-    const summaryStripEl = document.getElementById('validation-summary-strip');
-    if (summaryStripEl) {
-      const passCount = results.filter((r) => r.pass).length;
-      updateSummaryStrip(summaryStripEl, {
-        suitePass: passCount,
-        suiteTotal: results.length
-      });
-    }
-    const suiteSummaryEl = document.getElementById('suite-summary');
-    if (suiteSummaryEl) {
-      suiteSummaryEl.textContent = formatSuiteSummary(results.map((r) => ({ verdict: r.pass ? 'PASS' : 'FAIL' })));
-      suiteSummaryEl.className = `suite-summary-chip font-code-sm ${results.every((r) => r.pass) ? 'chip-pass' : 'chip-fail'}`;
-    }
-    const tbody = suiteTableEl.querySelector('tbody');
-    if (tbody) {
-      tbody.innerHTML = '';
-      for (const r of results) {
-        const tr = document.createElement('tr');
-        tr.setAttribute('data-id', r.id);
-        tr.setAttribute('data-verdict', r.pass ? 'PASS' : 'FAIL');
-        tr.className = r.pass ? 'row-pass' : 'row-fail';
-
-        const tdId = document.createElement('td');
-        tdId.textContent = r.id;
-
-        const tdSource = document.createElement('td');
-        tdSource.textContent = r.source;
-
-        const tdNotation = document.createElement('td');
-        tdNotation.textContent = r.notation;
-
-        const tdExpected = document.createElement('td');
-        tdExpected.textContent = r.expected;
-
-        const tdGenerated = document.createElement('td');
-        tdGenerated.textContent = r.generated;
-
-        const tdVerdict = document.createElement('td');
-        tdVerdict.textContent = r.pass ? 'PASS' : 'FAIL';
-        tdVerdict.className = r.pass ? 'badge-pass' : 'badge-fail';
-
-        tr.appendChild(tdId);
-        tr.appendChild(tdSource);
-        tr.appendChild(tdNotation);
-        tr.appendChild(tdExpected);
-        tr.appendChild(tdGenerated);
-        tr.appendChild(tdVerdict);
-
-        tbody.appendChild(tr);
-      }
-    }
-  });
-}
-
-if (diffRunBtn) {
-  diffRunBtn.addEventListener('click', async () => {
-    if (!currentAnalysis) {
-      if (diffStatusEl) {
-        diffStatusEl.textContent = 'Please build an expression first.';
-      }
-      return;
-    }
-
-    const gen = ++diffGeneration;
-    diffIsActive = true;
-    diffRunBtn.disabled = true;
-    if (stressRunBtn) {
-      stressRunBtn.disabled = true;
-    }
-
-    try {
-      const activeAlphabet = userEditedAlphabet ?? currentAnalysis.alphabet;
-      const k = computeDifferentialK(activeAlphabet.length);
-      const strings = allStrings(activeAlphabet, k);
-
-      if (diffStatusEl) {
-        diffStatusEl.textContent = `Running differential test: k = ${k} (${strings.length.toLocaleString()} strings) over alphabet {${activeAlphabet.join(', ')}}...`;
-      }
-      if (diffResultsEl) {
-        diffResultsEl.innerHTML = '';
-      }
-
-      // Yield to allow UI update
-      await new Promise((r) => setTimeout(r, 10));
-      if (gen !== diffGeneration) return;
-
-      // Run RegExp oracle in Web Worker with 2,000ms cap
-      const jsPattern = toJs(currentAnalysis.parseTree);
-      const regExpRes = await runRegExpInWorker(jsPattern, strings, 2000);
-      if (gen !== diffGeneration) return;
-
-      // Yield to prevent UI freezing
-      await new Promise((r) => setTimeout(r, 0));
-      if (gen !== diffGeneration) return;
-
-      const diffResult = runDifferential(currentAnalysis.nfa, currentAnalysis.parseTree, activeAlphabet, {
-        k,
-        regExpResult: regExpRes
-      });
-      if (gen !== diffGeneration) return;
-
-      let statusSummary = '';
-      const oraclesList = Object.values(diffResult.oracles);
-      if (oraclesList.some((o) => o.status === 'error')) {
-        statusSummary = 'ORACLE ERROR';
-      } else if (diffResult.allPassed) {
-        if (diffResult.oracles.regExp.status === 'skipped (timeout)') {
-          statusSummary = 'ALL PASSED (RegExp oracle skipped: timeout)';
-        } else {
-          statusSummary = 'ALL PASSED';
-        }
-      } else {
-        statusSummary = 'MISMATCH DETECTED';
-      }
-
-      if (diffStatusEl) {
-        diffStatusEl.textContent = `Differential test completed for k = ${k} (${diffResult.totalStrings.toLocaleString()} strings tested): ${statusSummary}`;
-      }
-
-      const summaryStripEl = document.getElementById('validation-summary-strip');
-      if (summaryStripEl) {
-        updateSummaryStrip(summaryStripEl, {
-          diffStatus: statusSummary,
-          diffStrings: diffResult.totalStrings
-        });
-      }
-
-      if (diffResultsEl) {
-        renderDifferentialResults(diffResultsEl, diffResult);
-      }
-    } finally {
-      diffIsActive = false;
-      diffRunBtn.disabled = stressIsActive;
-      if (stressRunBtn && !stressIsActive) {
-        stressRunBtn.disabled = false;
-      }
-    }
-  });
-}
-
-// -------------------------------------------------------------
-// Stress Panel Controller
-// -------------------------------------------------------------
-const stressBrowserInfoEl = document.getElementById('stress-browser-info');
-if (stressBrowserInfoEl) {
-  const info = detectBrowserEngine(typeof navigator !== 'undefined' ? navigator.userAgent : '');
-  stressBrowserInfoEl.textContent = `Browser engine: ${info.label}`;
-}
-
-const stressChartContainer = document.getElementById('stress-chart-container');
-const stressScaleToggleBtn = document.getElementById('stress-scale-toggle') as HTMLButtonElement | null;
-const stressCancelBtn = document.getElementById('stress-cancel') as HTMLButtonElement | null;
-const stressFamilySelect = document.getElementById('stress-family') as HTMLSelectElement | null;
-const stressTableBody = document.querySelector('#stress-table tbody') as HTMLElement | null;
-const stressStatusEl = document.getElementById('stress-status');
-const stressCopyCsvBtn = document.getElementById('stress-copy-csv') as HTMLButtonElement | null;
-const stressCopyStatusEl = document.getElementById('stress-copy-status');
-const stressExportSvgBtn = document.getElementById('stress-export-svg') as HTMLButtonElement | null;
-
-let currentStressScale: 'linear' | 'log' = 'linear';
-
-let stressCancelled = false;
-let stressGeneration = 0;
-let currentStressRows: StressRow[] = [];
-
-function updateStressActionButtons() {
-  const hasRows = currentStressRows.length > 0;
-  if (stressCopyCsvBtn) {
-    stressCopyCsvBtn.disabled = !hasRows;
-  }
-  if (stressExportSvgBtn) {
-    stressExportSvgBtn.disabled = !hasRows;
-  }
-}
-
-updateStressActionButtons();
-
-let copyStatusTimer: ReturnType<typeof setTimeout> | null = null;
-
-async function copyTextToClipboard(text: string): Promise<boolean> {
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      // Fallback to execCommand
-    }
-  }
-
-  try {
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.style.position = 'fixed';
-    textarea.style.left = '-9999px';
-    textarea.style.top = '-9999px';
-    textarea.setAttribute('readonly', '');
-    document.body.appendChild(textarea);
-    textarea.select();
-    const ok = document.execCommand('copy');
-    document.body.removeChild(textarea);
-    return ok;
-  } catch {
-    return false;
-  }
-}
-
-function showTransientStatus(
-  statusEl: HTMLElement | null,
-  success: boolean,
-  successText: string,
-  failureText: string,
-  getActiveTimer: () => ReturnType<typeof setTimeout> | null,
-  setActiveTimer: (t: ReturnType<typeof setTimeout> | null) => void,
-  durationMs = 2000
-): void {
-  if (!statusEl) return;
-  const currentTimer = getActiveTimer();
-  if (currentTimer !== null) {
-    clearTimeout(currentTimer);
-    setActiveTimer(null);
-  }
-
-  if (success) {
-    statusEl.textContent = successText;
-    statusEl.setAttribute('data-copied', 'true');
-  } else {
-    statusEl.textContent = failureText;
-    statusEl.setAttribute('data-copied', 'false');
-  }
-
-  const timer = setTimeout(() => {
-    if (statusEl) {
-      statusEl.textContent = '';
-      statusEl.removeAttribute('data-copied');
-    }
-    setActiveTimer(null);
-  }, durationMs);
-  setActiveTimer(timer);
-}
-
-if (stressCopyCsvBtn) {
-  stressCopyCsvBtn.addEventListener('click', async () => {
-    if (currentStressRows.length === 0) return;
-    const csv = formatStressCsv(currentStressRows);
-    const success = await copyTextToClipboard(csv);
-
-    showTransientStatus(
-      stressCopyStatusEl,
-      success,
-      'Copied!',
-      'Copy failed',
-      () => copyStatusTimer,
-      (t) => {
-        copyStatusTimer = t;
-      },
-      2000
-    );
-  });
-}
-
-if (stressExportSvgBtn) {
-  stressExportSvgBtn.addEventListener('click', () => {
-    if (currentStressRows.length === 0) return;
-    const familyId = stressFamilySelect ? stressFamilySelect.value : 'star-star-b';
-    const family = STRESS_FAMILIES[familyId] || STRESS_FAMILIES['star-star-b'];
-    const title = `${family.name} - Backtracking vs Thompson NFA`;
-    const desc = `Benchmark comparison chart for ${family.name} comparing RegExp backtracking with Thompson NFA under ${currentStressScale} scale.`;
-
-    const svgString = renderStressChartSvg(
-      stressRowsToChartPoints(currentStressRows),
-      {
-        title,
-        desc,
-        scale: currentStressScale,
-        standalone: true
-      }
-    );
-
-    const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `stress-chart-${familyId}-${currentStressScale}.svg`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-
-    setTimeout(() => {
-      URL.revokeObjectURL(url);
-    }, 1000);
-  });
-}
-
-function stressRowsToChartPoints(rows: StressRow[]): StressChartPoint[] {
-  return rows.map((r) => ({
-    n: r.n,
-    regExpTime:
-      r.regExpVerdict === 'TIMEOUT'
-        ? 8000
-        : r.regExpVerdict === 'SKIPPED' || r.regExpVerdict === 'ERROR'
-        ? null
-        : r.regExpTimeMs,
-    regExpTimeout: r.regExpVerdict === 'TIMEOUT',
-    nfaTime: r.nfaTimeMs
-  }));
-}
-
-function updateStressChart() {
-  if (!stressChartContainer) return;
-  stressChartContainer.setAttribute('data-scale', currentStressScale);
-  const familyId = stressFamilySelect ? stressFamilySelect.value : 'star-star-b';
-  const family = STRESS_FAMILIES[familyId] || STRESS_FAMILIES['star-star-b'];
-  const title = currentStressRows.length > 0
-    ? `${family.name} - Backtracking vs Thompson NFA`
-    : undefined;
-  stressChartContainer.innerHTML = renderStressChartSvg(
-    stressRowsToChartPoints(currentStressRows),
-    {
-      title,
-      scale: currentStressScale
-    }
-  );
-}
-
-if (stressChartContainer) {
-  stressChartContainer.setAttribute('data-scale', currentStressScale);
-  stressChartContainer.innerHTML = renderStressChartSvg([], {
-    scale: currentStressScale
-  });
-}
-
-if (stressScaleToggleBtn) {
-  stressScaleToggleBtn.addEventListener('click', () => {
-    currentStressScale = currentStressScale === 'linear' ? 'log' : 'linear';
-    stressScaleToggleBtn.setAttribute('aria-pressed', String(currentStressScale === 'log'));
-    updateStressChart();
-  });
-}
-
-function renderStressTableRow(row: StressRow): HTMLTableRowElement {
-  const tr = document.createElement('tr');
-  const regExpTimeDisplay =
-    row.regExpVerdict === 'TIMEOUT'
-      ? '> 8,000 ms (timeout)'
-      : row.regExpVerdict === 'SKIPPED'
-      ? '— (skipped)'
-      : row.regExpVerdict === 'ERROR'
-      ? 'Error'
-      : row.regExpTimeMs !== null
-      ? `${formatRegExpTime(row.regExpTimeMs)} ms`
-      : '—';
-
-  const regExpVerdictDisplay =
-    row.regExpVerdict === 'SKIPPED' ? '—' : row.regExpVerdict;
-
-  tr.innerHTML = `
-    <td>${row.n}</td>
-    <td>${row.inputLength}</td>
-    <td>${regExpTimeDisplay}</td>
-    <td>${formatNfaTime(row.nfaTimeMs)} ms</td>
-    <td>${regExpVerdictDisplay}</td>
-    <td>${row.nfaVerdict}</td>
-  `;
-  return tr;
-}
-
-if (stressCancelBtn) {
-  stressCancelBtn.addEventListener('click', () => {
-    stressCancelled = true;
-    if (activeWorkerOwner === 'stress') {
-      resetWorker();
-    }
-    if (stressStatusEl) {
-      stressStatusEl.textContent = 'Stress test cancelling...';
-    }
-  });
-}
-
-if (stressRunBtn) {
-  stressRunBtn.addEventListener('click', async () => {
-    stressCancelled = false;
-    const gen = ++stressGeneration;
-    stressIsActive = true;
-    currentStressRows = [];
-    updateStressActionButtons();
-    stressRunBtn.disabled = true;
-    if (diffRunBtn) {
-      diffRunBtn.disabled = true;
-    }
-    if (stressFamilySelect) {
-      stressFamilySelect.disabled = true;
-    }
-    if (stressCancelBtn) {
-      stressCancelBtn.style.display = 'inline-block';
-    }
-    if (stressTableBody) {
-      stressTableBody.innerHTML = '';
-    }
-
-    const familyId = stressFamilySelect ? stressFamilySelect.value : 'star-star-b';
-    const family = STRESS_FAMILIES[familyId] || STRESS_FAMILIES['star-star-b'];
-
-    const analysis = analyze(family.expression, { notation: family.notation });
-    const jsPattern = analysis.ok ? toJs(analysis.parseTree) : family.expression;
-
-    let regExpStopped = false;
-
-    if (stressChartContainer) {
-      updateStressChart();
-    }
-
-    try {
-      // 1. Series n = 12..30 in steps of 2
-      for (const n of STRESS_N_SERIES) {
-        if (stressCancelled || gen !== stressGeneration) break;
-        if (stressStatusEl) {
-          stressStatusEl.textContent = `Testing n = ${n}...`;
-        }
-
-        const input = family.generateInput(n);
-        await new Promise((r) => setTimeout(r, 0));
-        if (stressCancelled || gen !== stressGeneration) break;
-
-        // Run NFA
-        const nfaRes = runStressNfa(family.id, n);
-
-        // Run RegExp (in worker, 8s cap)
-        let regExpDurationMs: number | null = null;
-        let regExpVerdict: RegExpVerdict = 'SKIPPED';
-
-        if (!regExpStopped) {
-          const t0 = performance.now();
-          const res = await runRegExpInWorker(jsPattern, [input], 8000, 'stress');
-          const elapsed = performance.now() - t0;
-
-          if (stressCancelled || gen !== stressGeneration || res.cancelled) {
-            break;
-          }
-
-          if (res.timeout || elapsed >= 8000) {
-            regExpStopped = true;
-            regExpDurationMs = 8000;
-            regExpVerdict = 'TIMEOUT';
-          } else if (res.error) {
-            regExpVerdict = 'ERROR';
-          } else {
-            regExpDurationMs = elapsed;
-            const matched = res.matches && res.matches[0];
-            regExpVerdict = matched ? 'ACCEPT' : 'REJECT';
-          }
-        } else {
-          regExpVerdict = 'SKIPPED';
-        }
-
-        const row: StressRow = {
-          family: family.id,
-          n,
-          inputLength: input.length,
-          regExpTimeMs: regExpDurationMs,
-          regExpVerdict,
-          nfaTimeMs: nfaRes.durationMs,
-          nfaVerdict: nfaRes.verdict
-        };
-        currentStressRows.push(row);
-        updateStressActionButtons();
-
-        if (stressTableBody && gen === stressGeneration) {
-          stressTableBody.appendChild(renderStressTableRow(row));
-        }
-
-        if (stressChartContainer && gen === stressGeneration) {
-          updateStressChart();
-        }
-
-        await new Promise((r) => setTimeout(r, 0));
-      }
-
-      // 2. Scale NFA series up to 1,000
-      for (const n of STRESS_SCALE_N_SERIES) {
-        if (stressCancelled || gen !== stressGeneration) break;
-        if (stressStatusEl) {
-          stressStatusEl.textContent = `Testing NFA scale n = ${n}...`;
-        }
-
-        const input = family.generateInput(n);
-        await new Promise((r) => setTimeout(r, 0));
-        if (stressCancelled || gen !== stressGeneration) break;
-
-        const nfaRes = runStressNfa(family.id, n);
-
-        if (stressCancelled || gen !== stressGeneration) break;
-
-        const row: StressRow = {
-          family: family.id,
-          n,
-          inputLength: input.length,
-          regExpTimeMs: null,
-          regExpVerdict: 'SKIPPED',
-          nfaTimeMs: nfaRes.durationMs,
-          nfaVerdict: nfaRes.verdict
-        };
-        currentStressRows.push(row);
-        updateStressActionButtons();
-
-        if (stressTableBody && gen === stressGeneration) {
-          stressTableBody.appendChild(renderStressTableRow(row));
-        }
-
-        if (stressChartContainer && gen === stressGeneration) {
-          updateStressChart();
-        }
-
-        await new Promise((r) => setTimeout(r, 0));
-      }
-
-      if (gen === stressGeneration && stressStatusEl) {
-        stressStatusEl.textContent = stressCancelled
-          ? 'Stress test cancelled.'
-          : 'Stress test complete: NFA completed all inputs up to n = 1,000 in linear time.';
-        if (currentStressRows.length > 0) {
-          const maxN = Math.max(...currentStressRows.map((r) => r.n));
-          const summaryStripEl = document.getElementById('validation-summary-strip');
-          if (summaryStripEl) {
-            updateSummaryStrip(summaryStripEl, {
-              stressMaxN: maxN,
-              stressIsLinear: true
-            });
-          }
-        }
-      }
-    } finally {
-      stressIsActive = false;
-      updateStressActionButtons();
-      if (gen === stressGeneration) {
-        stressRunBtn.disabled = diffIsActive;
-        if (stressFamilySelect) {
-          stressFamilySelect.disabled = false;
-        }
-        if (stressCancelBtn) {
-          stressCancelBtn.style.display = 'none';
-        }
-        if (diffRunBtn && !diffIsActive) {
-          diffRunBtn.disabled = false;
-        }
-      }
-    }
-  });
-}
 
 if (copyLinkBtn) {
   copyLinkBtn.addEventListener('click', async () => {
