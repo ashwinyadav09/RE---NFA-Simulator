@@ -3144,7 +3144,10 @@ const assert = require('node:assert');
   assert.strictEqual(zoomBtnEnabled, true, 'Toolbar buttons must still work after replacements');
 
   // AC15: Visual proof screenshots
-  const scratchDir = 'C:/Users/ydash/.gemini/antigravity/brain/2b158c28-fe75-4f43-87fa-2e91bb0a163a/scratch';
+  const scratchDir = process.env.SCREENSHOT_DIR || path.resolve(__dirname, '../.scratch');
+  if (!fs.existsSync(scratchDir)) {
+    fs.mkdirSync(scratchDir, { recursive: true });
+  }
   await page.fill('#regex-input', expr161);
   await page.click('#build-button');
   await page.waitForFunction(() => document.querySelector('#step-counter')?.textContent.includes('step 1 / 161'));

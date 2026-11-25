@@ -2,7 +2,7 @@
 
 > Handover document for **Stitch** (screen design) and for the engineer who will port the result into the existing codebase.
 > Project: *Automata Theory and Computability* — RE → NFA (Thompson's construction) simulator.
-> Repo: `D:\Projects\Automata` · build: single static file `dist/index.html` (≈1.46 MB, no backend).
+> Repo: `RE---NFA-Simulator` · build: single static file `dist/index.html` (≈1.5 MB, no backend).
 > Written 10 Nov 2026 against the build with `dist/index.html` = 1,462,130 bytes (Ticket 19: Copy Link, Export SVG, keyboard-help dialog).
 
 ---

@@ -141,7 +141,7 @@ function runSelfTest() {
 
 + '<svg WRONG_FINAL>'
 ${diffLines}
-    at D:/Projects/Automata/tests/e2e.cjs:3208:10 {
+    at /workspace/tests/e2e.cjs:3208:10 {
   generatedMessage: false,
   code: 'ERR_ASSERTION'
 }`;
