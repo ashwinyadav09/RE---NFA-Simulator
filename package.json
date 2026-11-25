@@ -1,13 +1,26 @@
 {
   "name": "re-nfa-simulator",
-  "private": true,
+  "version": "1.0.0",
+  "description": "Thompson's construction RE -> NFA simulator and educational workbench",
+  "author": "Ashwin Yadav",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ashwinyadav09/RE---NFA-Simulator.git"
+  },
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "typecheck": "tsc -p .",
     "test": "vitest run",
     "build": "vite build",
+    "preview": "vite preview",
     "check": "tsc -p . && vitest run && vite build",
     "test:mutants": "node tests/mutation-gate.cjs",
+    "test:ui-mutants": "node tests/ui-mutants.cjs",
+    "test:e2e": "node tests/e2e.cjs",
     "e2e": "node tests/e2e.cjs"
   },
   "dependencies": {
@@ -24,4 +37,3 @@
     "vitest": "5.1.0"
   }
 }
-
