@@ -8,7 +8,6 @@ import {
   sameFrame,
   toTransformString,
   getEffectiveLimits,
-  LEGIBLE_MIN_ZOOM,
   type ViewportState,
   type Rect
 } from '../src/ui/viewport';

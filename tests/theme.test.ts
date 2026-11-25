@@ -1,11 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   THEME_STORAGE_KEY,
   getSavedTheme,
   saveTheme,
   applyTheme,
-  initTheme,
-  type ThemeMode
+  initTheme
 } from '../src/ui/theme.js';
 
 class MockStorage {

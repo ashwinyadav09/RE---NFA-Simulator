@@ -180,3 +180,65 @@ export function updateSummaryStrip(container: HTMLElement, data: ValidationSumma
     if (stressVal) stressVal.textContent = 'Not run';
   }
 }
+
+/**
+ * Escape HTML special characters to prevent XSS / markup injection.
+ */
+export function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export interface DifferentialResultsData {
+  oracles: {
+    enumerator: { name: string; status: string; testedCount: number };
+    derivatives: { name: string; status: string; testedCount: number };
+    regExp: { name: string; status: string; testedCount: number };
+  };
+  mismatches: string[];
+}
+
+/**
+ * Render differential test results into the results container with HTML escaping on user-derived strings.
+ */
+export function renderDifferentialResults(
+  diffResultsEl: HTMLElement,
+  diffResult: DifferentialResultsData
+): void {
+  const regExpStatus = diffResult.oracles.regExp.status;
+  const regExpBadgeClass =
+    regExpStatus === 'pass'
+      ? 'badge-pass'
+      : regExpStatus === 'skipped (timeout)'
+        ? 'badge-skipped'
+        : 'badge-fail';
+
+  diffResultsEl.innerHTML = `
+    <div class="diff-oracle-row" data-oracle="enumerator">
+      <strong>${escapeHtml(diffResult.oracles.enumerator.name)}:</strong>
+      <span class="badge ${diffResult.oracles.enumerator.status === 'pass' ? 'badge-pass' : 'badge-fail'}">${escapeHtml(diffResult.oracles.enumerator.status.toUpperCase())}</span>
+      (${diffResult.oracles.enumerator.testedCount.toLocaleString()} strings)
+    </div>
+    <div class="diff-oracle-row" data-oracle="derivatives">
+      <strong>${escapeHtml(diffResult.oracles.derivatives.name)}:</strong>
+      <span class="badge ${diffResult.oracles.derivatives.status === 'pass' ? 'badge-pass' : 'badge-fail'}">${escapeHtml(diffResult.oracles.derivatives.status.toUpperCase())}</span>
+      (${diffResult.oracles.derivatives.testedCount.toLocaleString()} strings)
+    </div>
+    <div class="diff-oracle-row" data-oracle="regExp">
+      <strong>${escapeHtml(diffResult.oracles.regExp.name)}:</strong>
+      <span class="badge ${regExpBadgeClass}">${escapeHtml(regExpStatus)}</span>
+      (${diffResult.oracles.regExp.testedCount.toLocaleString()} strings)
+    </div>
+    <div class="diff-mismatches-summary">
+      ${
+        diffResult.mismatches.length === 0
+          ? '<p class="mismatches-none">No mismatches found.</p>'
+          : `<p class="mismatches-found">Mismatches found (${diffResult.mismatches.length}): <code>${escapeHtml(diffResult.mismatches.slice(0, 20).join(', '))}</code></p>`
+      }
+    </div>
+  `;
+}

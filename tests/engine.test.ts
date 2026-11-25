@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { analyze, run, runLines, validateAlphabet, getStepSnapshot, validateInvariants, checkSizeFormula, checkStepReplay, runBuiltinSuite, computeDifferentialK, runDifferential, validate, allStrings, lang, derivMatch, toJs, EPS, CAPS, AnalysisResult, AnalysisSuccess, NFA, STRESS_FAMILIES, STRESS_N_SERIES, STRESS_SCALE_N_SERIES, runStressNfa, detectBrowserEngine, PRESETS, type Preset } from '../src/engine/index';
+import { analyze, run, runLines, validateAlphabet, getStepSnapshot, validateInvariants, checkSizeFormula, checkStepReplay, runBuiltinSuite, computeDifferentialK, runDifferential, validate, EPS, CAPS, AnalysisResult, AnalysisSuccess, NFA, STRESS_FAMILIES, STRESS_N_SERIES, STRESS_SCALE_N_SERIES, runStressNfa, detectBrowserEngine, PRESETS } from '../src/engine/index';
 import { parseRD } from './oracles';
 
 function assertSuccess(result: AnalysisResult): asserts result is AnalysisSuccess {

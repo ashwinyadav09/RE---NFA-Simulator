@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { toDot, FakeRenderer, VizRenderer, computeMasterLayout, checkDiagramCap, CAPS, renderStressChartSvg, postProcessDiagramSvg, type StressChartPoint, type DiagramRenderer } from '../src/diagram/index';
+import { toDot, FakeRenderer, VizRenderer, computeMasterLayout, checkDiagramCap, renderStressChartSvg, postProcessDiagramSvg, type StressChartPoint, type DiagramRenderer } from '../src/diagram/index';
 import { type StepSnapshot, analyze, getStepSnapshot } from '../src/engine/index';
 
 test('toDot produces DOT text with id on every node and edge, start arrow, and double-circle accept', () => {
@@ -408,7 +408,7 @@ test('[T08-2] computeMasterLayout extracts node positions for all NFA states usi
     expect(vizLayout.positions.has(0)).toBe(true);
     expect(vizLayout.positions.has(1)).toBe(true);
     const [x0, y0] = vizLayout.positions.get(0)!;
-    const [x1, y1] = vizLayout.positions.get(1)!;
+    const [x1] = vizLayout.positions.get(1)!;
     expect(typeof x0).toBe('number');
     expect(typeof y0).toBe('number');
     // Rankdir=LR: accept state x1 is to the right of start state x0
@@ -649,7 +649,7 @@ test('[T08-7] step 2 of (a|b)*a with pinned positions keeps SVG viewBox height w
 
 test('[T08-8] per-step render fallback: when pinned neato render fails, falling back to unpinned DOT succeeds', async () => {
   const failingNeatoRenderer: DiagramRenderer = {
-    async render(dot, options) {
+    async render(_dot, options) {
       if (options?.engine === 'neato') {
         return { ok: false, error: 'Simulated neato engine failure' };
       }
@@ -1283,6 +1283,27 @@ test('[T35-2] postProcessDiagramSvg adds label pills, standardizes ε dasharray,
 
   expect(verifiedEdges).toBeGreaterThan(0);
 });
+
+test('SEC-02: toDot safely escapes newlines and control characters in DOT labels and renders via VizRenderer', async () => {
+  const nfa = {
+    states: [0, 1],
+    start: 0,
+    accept: 1,
+    transitions: [{ from: 0, to: 1, label: 'a\n\r"evil\x00\x1f' }]
+  };
+  const dot = toDot(nfa);
+  expect(dot).not.toContain('\r');
+  expect(dot).not.toContain('\x00');
+  expect(dot).not.toContain('\x1f');
+  expect(dot).toContain('\\"evil');
+  expect(dot).toContain('\\n');
+
+  // Verify that VizRenderer can render this DOT without syntax errors
+  const vizRenderer = new VizRenderer();
+  const res = await vizRenderer.render(dot);
+  expect(res.ok).toBe(true);
+});
+
 
 
 

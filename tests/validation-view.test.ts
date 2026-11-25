@@ -3,7 +3,9 @@ import {
   formatSuiteSummary,
   extractCodeBadge,
   renderInvariantRow,
-  updateSummaryStrip
+  updateSummaryStrip,
+  renderDifferentialResults,
+  escapeHtml
 } from '../src/ui/validation-view.js';
 import type { CheckResult } from '../src/engine/index.js';
 
@@ -19,6 +21,23 @@ class MockElement {
     this.classList.classes = new Set(val.split(/\s+/).filter(Boolean));
   }
   textContent = '';
+  private _innerHTML = '';
+  get innerHTML(): string {
+    return this._innerHTML;
+  }
+  set innerHTML(val: string) {
+    this._innerHTML = val;
+    this.children = [];
+    // Basic parser for mock DOM child elements
+    const tagMatches = [...val.matchAll(/<([a-zA-Z0-9]+)([^>]*)>/g)];
+    for (const tm of tagMatches) {
+      const child = new MockElement(tm[1]);
+      const idMatch = tm[2].match(/id="([^"]+)"/);
+      if (idMatch) child.setAttribute('id', idMatch[1]);
+      this.children.push(child);
+    }
+    this.textContent = val.replace(/<[^>]*>/g, '');
+  }
   children: MockElement[] = [];
   attributes: Record<string, string> = {};
   classList = {
@@ -53,6 +72,7 @@ class MockElement {
     const idMatch = selector.startsWith('#') ? selector.slice(1) : null;
     const match = (el: MockElement): MockElement | null => {
       if (idMatch && el.attributes['id'] === idMatch) return el;
+      if (!idMatch && el.tagName.toLowerCase() === selector.toLowerCase()) return el;
       for (const c of el.children) {
         const found = match(c);
         if (found) return found;
@@ -126,5 +146,30 @@ describe('validation-view (src/ui/validation-view.ts)', () => {
 
     expect(invPill.textContent).toBe('PASS');
     expect(invVal.textContent).toBe('6 / 6 pass');
+  });
+
+  it('SEC-01: renderDifferentialResults escapes HTML in mismatches, creating no element for malicious string', () => {
+    const container = new MockElement('div');
+    const maliciousPayload = '<img src=x onerror=alert(1)>';
+    renderDifferentialResults(container as unknown as HTMLElement, {
+      oracles: {
+        enumerator: { name: 'Enumerator', status: 'pass', testedCount: 511 },
+        derivatives: { name: 'Derivatives', status: 'pass', testedCount: 511 },
+        regExp: { name: 'RegExp', status: 'pass', testedCount: 511 }
+      },
+      mismatches: [maliciousPayload]
+    });
+
+    // Malicious payload must not be parsed into an img element
+    expect(container.querySelector('img')).toBeNull();
+    // HTML characters must be escaped in innerHTML
+    expect(container.innerHTML).not.toContain('<img src=x');
+    expect(container.innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt;');
+  });
+
+  it('escapeHtml safely converts special characters to entities', () => {
+    expect(escapeHtml('<script>alert("xss & \'evil\'")</script>')).toBe(
+      '&lt;script&gt;alert(&quot;xss &amp; &#39;evil&#39;&quot;)&lt;/script&gt;'
+    );
   });
 });

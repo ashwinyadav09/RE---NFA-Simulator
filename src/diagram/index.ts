@@ -1,4 +1,4 @@
-import { CAPS, type SizeCaps, type NFA, type StepSnapshot, type Fragment } from '../engine/index';
+import { CAPS, type SizeCaps, type NFA, type StepSnapshot } from '../engine/index';
 import { instance, type Viz } from '@viz-js/viz';
 
 export { CAPS, type SizeCaps };
@@ -279,7 +279,12 @@ export function checkDiagramCap(
 }
 
 function escapeLabel(label: string): string {
-  return label.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return label
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r?\n/g, '\\n')
+    .replace(/\r/g, '\\n')
+    .replace(/[\x00-\x1f\x7f]/g, (ch) => (ch === '\t' ? ' ' : ''));
 }
 
 export function toDot(input: NFA | StepSnapshot, options?: DiagramOptions): string {

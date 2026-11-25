@@ -24,8 +24,7 @@ import {
   STRESS_SCALE_N_SERIES,
   runStressNfa,
   detectBrowserEngine,
-  PRESETS,
-  type Preset
+  PRESETS
 } from '../engine/index';
 import { toDot, VizRenderer, computeMasterLayout, checkDiagramCap, type DiagramOptions, renderStressChartSvg, type StressChartPoint } from '../diagram/index';
 import { formatStandaloneSvg, getExportFilename } from './export';
@@ -49,7 +48,7 @@ import {
   renderFragmentStack
 } from './step-table-view';
 import { formatDockSummary, renderTraceCards } from './test-dock';
-import { renderInvariantRow, updateSummaryStrip, formatSuiteSummary } from './validation-view';
+import { renderInvariantRow, updateSummaryStrip, formatSuiteSummary, renderDifferentialResults } from './validation-view';
 import {
   initLegend,
   isLegendOpen,
@@ -200,7 +199,6 @@ const alphabetInputEl = document.getElementById('alphabet-input') as HTMLInputEl
 const alphabetMessageEl = document.getElementById('alphabet-message');
 const statsEl = document.getElementById('stats');
 const canvasEl = document.getElementById('canvas');
-const canvasToolbarEl = document.getElementById('canvas-toolbar');
 const zoomInBtn = document.getElementById('zoom-in-btn') as HTMLButtonElement | null;
 const zoomOutBtn = document.getElementById('zoom-out-btn') as HTMLButtonElement | null;
 const zoomFitBtn = document.getElementById('zoom-fit-btn') as HTMLButtonElement | null;
@@ -2296,38 +2294,7 @@ if (diffRunBtn) {
       }
 
       if (diffResultsEl) {
-        const regExpStatus = diffResult.oracles.regExp.status;
-        const regExpBadgeClass =
-          regExpStatus === 'pass'
-            ? 'badge-pass'
-            : regExpStatus === 'skipped (timeout)'
-              ? 'badge-skipped'
-              : 'badge-fail';
-
-        diffResultsEl.innerHTML = `
-          <div class="diff-oracle-row" data-oracle="enumerator">
-            <strong>${diffResult.oracles.enumerator.name}:</strong>
-            <span class="badge ${diffResult.oracles.enumerator.status === 'pass' ? 'badge-pass' : 'badge-fail'}">${diffResult.oracles.enumerator.status.toUpperCase()}</span>
-            (${diffResult.oracles.enumerator.testedCount.toLocaleString()} strings)
-          </div>
-          <div class="diff-oracle-row" data-oracle="derivatives">
-            <strong>${diffResult.oracles.derivatives.name}:</strong>
-            <span class="badge ${diffResult.oracles.derivatives.status === 'pass' ? 'badge-pass' : 'badge-fail'}">${diffResult.oracles.derivatives.status.toUpperCase()}</span>
-            (${diffResult.oracles.derivatives.testedCount.toLocaleString()} strings)
-          </div>
-          <div class="diff-oracle-row" data-oracle="regExp">
-            <strong>${diffResult.oracles.regExp.name}:</strong>
-            <span class="badge ${regExpBadgeClass}">${regExpStatus}</span>
-            (${diffResult.oracles.regExp.testedCount.toLocaleString()} strings)
-          </div>
-          <div class="diff-mismatches-summary">
-            ${
-              diffResult.mismatches.length === 0
-                ? '<p class="mismatches-none">No mismatches found.</p>'
-                : `<p class="mismatches-found">Mismatches found (${diffResult.mismatches.length}): <code>${diffResult.mismatches.slice(0, 20).join(', ')}</code></p>`
-            }
-          </div>
-        `;
+        renderDifferentialResults(diffResultsEl, diffResult);
       }
     } finally {
       diffIsActive = false;

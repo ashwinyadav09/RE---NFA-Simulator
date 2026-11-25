@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { isPostfixStar, typesetRegex, updateRegexMirror } from '../src/ui/typeset-regex.js';
 
 class MockNode {

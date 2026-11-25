@@ -62,7 +62,6 @@ export function typesetRegex(text: string): HTMLElement {
  * Updates text nodes and scroll offset without innerHTML.
  */
 export function updateRegexMirror(inputEl: HTMLInputElement, mirrorEl: HTMLElement): void {
-  const doc = typeof document !== 'undefined' ? document : (globalThis as any).document;
   if (typeof mirrorEl.replaceChildren === 'function') {
     mirrorEl.replaceChildren();
   } else {

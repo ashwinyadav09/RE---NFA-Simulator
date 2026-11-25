@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  LEGEND_ITEMS,
   getLegendItems,
   isLegendOpen,
   openLegend,
